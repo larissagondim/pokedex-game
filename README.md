@@ -1,194 +1,254 @@
 # Pokédex Game
 
-Pokédex interativa em 3D, com batalhas, predição de vitória por machine learning e um Tamagotchi. Projeto de fã, sem fins lucrativos, feito para portfólio e aprendizado.
+An interactive 3D Pokédex with battles, machine-learning win prediction and a Tamagotchi. A non-profit fan project built for portfolio and learning purposes, developed with **agentic programming** using [Claude Code](https://claude.com/claude-code).
 
-> **Status:** em desenvolvimento inicial. Hoje existe apenas a **coleta de dados** (script + dataset + imagens). Tudo o que aparece como _(planejado)_ abaixo ainda não foi implementado.
+> **Status:** early development. Working today: the **data scraper**, a **procedural 3D device** (opens like a book, with working buttons and a zoom camera) and a **Pokédex screen** (list of all 1025 Pokémon and a detail page with an animated sprite). Anything marked _(planned)_ below is not implemented yet.
 
-## Sumário
+## Table of contents
 
+- [Built with agentic programming](#built-with-agentic-programming)
 - [Features](#features)
 - [Screenshots](#screenshots)
-- [Arquitetura](#arquitetura)
+- [Architecture](#architecture)
 - [Stack](#stack)
-- [Estrutura de pastas](#estrutura-de-pastas)
-- [Como rodar](#como-rodar)
-- [Como treinar o modelo](#como-treinar-o-modelo)
-- [Estruturas de dados e algoritmos](#estruturas-de-dados-e-algoritmos)
+- [Project structure](#project-structure)
+- [Getting started](#getting-started)
+- [Training the model](#training-the-model)
+- [Data structures and algorithms](#data-structures-and-algorithms)
 - [Roadmap](#roadmap)
-- [Controles](#controles)
-- [Aviso legal](#aviso-legal)
-- [Créditos](#créditos)
+- [Controls](#controls)
+- [Legal notice](#legal-notice)
+- [Credits](#credits)
+
+## Built with agentic programming
+
+This project is developed in pair with an AI coding agent (Claude Code). The workflow:
+
+- **I set the direction:** the product idea, the roadmap, the design decisions and the review of every change.
+- **The agent does the legwork:** it reads the codebase, proposes and implements changes, runs the linter and the dev server, and fixes what breaks.
+- **Small, reviewable commits:** work is split into focused steps and committed with [Conventional Commits](https://www.conventionalcommits.org/) (`feat(screen): ...`, `fix(screen): ...`, `chore(web): ...`).
+- **Agent guidance lives in the repo:** [`web/AGENTS.md`](web/AGENTS.md) tells coding agents to read the bundled Next.js docs before writing code, since this Next.js version has breaking changes compared to older releases.
+
+The commit history shows how the project grew step by step: scraper, then web scaffold, input system, retro UI prototype, 3D shell, and finally the real Pokédex page.
 
 ## Features
 
-| Feature | Descrição | Status |
+| Feature | Description | Status |
 | --- | --- | --- |
-| Coleta de dados | Script que baixa dados e imagens dos 1025 Pokémon (gerações 1 a 9) da PokéAPI | ✅ Pronto |
-| Carcaça 3D | Dispositivo original vermelho e branco que abre como livro. Gira, abre, fecha e dá zoom na tela. A interface roda dentro da tela 4:3, em estilo handheld 16-bit | 🕒 Planejado |
-| Pokédex | Lista por geração ou completa, busca por nome ou número, detalhes com sprite animado, som (cry), tipos, stats base e fun facts. A geração 10 aparece como "em breve" (anunciada para 2027, só os iniciais revelados) | 🕒 Planejado |
-| Batalhas | 1x1 entre quaisquer Pokémon e 6x6 por times, com o motor `@pkmn/sim` rodando em API routes do Next.js | 🕒 Planejado |
-| Predição de vitória | Probabilidade de vitória antes e durante a batalha, calculada por um modelo treinado e servido via FastAPI | 🕒 Planejado |
-| Tamagotchi | Adote um Pokémon e cuide de fome, felicidade, energia e XP, que decaem com o tempo. Ações: alimentar, brincar, dormir e treinar | 🕒 Planejado |
+| Data scraping | Script that downloads data, sprites, artwork and animated sprites for all 1025 Pokémon (generations 1 to 9) from PokéAPI and Pokémon Showdown | ✅ Done |
+| 3D device | Original red and white device built procedurally with React Three Fiber. Opens like a book on a hinge, rotates, and zooms into the main screen with a camera rig. Physical buttons (D-pad, A, B, MENU, ZOOM) are pressable in 3D | ✅ Done |
+| Input system | Keyboard and 3D buttons emit the same events through a priority-based handler stack | ✅ Done |
+| Pokédex screen | 4:3 retro handheld UI inside the device. Scrollable list of all 1025 Pokémon with a preview panel, and a detail page with animated sprite, types, base stats, height, weight, abilities and a typewriter-style dialog box with the dex entry. Respects `prefers-reduced-motion` | ✅ Done |
+| Search and filters | Search by name or number, filter by generation. Generation 10 will show as "coming soon" (announced for 2027, only the starters revealed) | 🕒 Planned |
+| Cries and fun facts | Pokémon cries and fun facts on the detail page | 🕒 Planned |
+| Battles | 1v1 between any two Pokémon and 6v6 by teams, using the `@pkmn/sim` engine in Next.js API routes | 🕒 Planned |
+| Win prediction | Win probability before and during a battle, computed by a trained model served via FastAPI | 🕒 Planned |
+| Tamagotchi | Adopt a Pokémon and take care of hunger, happiness, energy and XP, which decay over time. Actions: feed, play, sleep and train | 🕒 Planned |
+
+The BATTLE and TAMAGOTCHI tabs exist on the screen but currently show a "coming soon" placeholder. The on-screen text is in Portuguese for now.
 
 ## Screenshots
 
-_Placeholders. Serão adicionados conforme as telas forem ficando prontas._
+_Placeholders. They will be added as the screens are finished._
 
-| Carcaça 3D | Lista da Pokédex | Detalhes |
+| 3D device | Pokédex list | Details |
 | --- | --- | --- |
-| ![Carcaça 3D](docs/screenshots/shell.png) | ![Lista](docs/screenshots/list.png) | ![Detalhes](docs/screenshots/detail.png) |
+| ![3D device](docs/screenshots/shell.png) | ![List](docs/screenshots/list.png) | ![Details](docs/screenshots/detail.png) |
 
-| Batalha | Predição de vitória | Tamagotchi |
+| Battle | Win prediction | Tamagotchi |
 | --- | --- | --- |
-| ![Batalha](docs/screenshots/battle.png) | ![Predição](docs/screenshots/prediction.png) | ![Tamagotchi](docs/screenshots/tamagotchi.png) |
+| ![Battle](docs/screenshots/battle.png) | ![Prediction](docs/screenshots/prediction.png) | ![Tamagotchi](docs/screenshots/tamagotchi.png) |
 
-## Arquitetura
+## Architecture
 
-_(planejada)_
+The `web` app and the scraper exist today. The rest is _(planned)_.
 
 ```mermaid
 flowchart LR
-    U[Navegador] -->|HTTP| W[web<br/>Next.js + R3F]
-    W -->|API routes| S[@pkmn/sim<br/>motor de batalha]
-    W -->|REST| M[ml<br/>FastAPI + modelo]
+    U[Browser] -->|HTTP| W[web<br/>Next.js + R3F]
+    W -->|API routes| S[@pkmn/sim<br/>battle engine]
+    W -->|REST| M[ml<br/>FastAPI + model]
     W -->|SQL| D[(db<br/>Postgres)]
-    M -.->|dataset de batalhas simuladas| S
-    P[PokéAPI] -->|scrape_pokemon.py| J[data/pokemon.json<br/>sprites/ artwork/]
-    J --> W
+    M -.->|simulated battle dataset| S
+    P[PokéAPI + Showdown] -->|scrape_pokemon.py| J[data/pokemon.json<br/>sprites/ animated/ artwork/]
+    J -->|sync-assets.mjs| W
     J --> M
 ```
 
-Serviços do Docker Compose: **web**, **ml** e **db**. No início, o estado do Tamagotchi fica em `localStorage`, e o Postgres entra depois para persistência e histórico.
+Planned Docker Compose services: **web**, **ml** and **db**. At first the Tamagotchi state will live in `localStorage`; Postgres comes later for persistence and history.
+
+Inside `web`, the app is split into three layers:
+
+- **Stores (zustand):** `deviceInput` (button events and subscriptions), `deviceState` (open and zoomed) and `pokedex` (loading and selection).
+- **Device (`components/device`):** the procedural 3D shell, hinge, buttons and camera rig. The scene is loaded lazily.
+- **Screen (`components/screen`):** the 2D UI rendered inside the main screen. It subscribes to device input with higher priority than the device controller, so the UI gets the first say on each button.
 
 ## Stack
 
-| Camada | Tecnologias |
+| Layer | Technologies |
 | --- | --- |
-| Front | Next.js (App Router), TypeScript, React Three Fiber, drei, zustand |
-| Batalha | `@pkmn/sim` (engine do Pokémon Showdown) |
-| ML / backend | Python, FastAPI, scikit-learn (ou similar) |
-| Banco | Postgres (Tamagotchi e histórico), `localStorage` no início |
-| Infra | Docker e Docker Compose |
-| Coleta de dados (já existente) | Python 3, somente biblioteca padrão |
+| Front end | Next.js 16 (App Router), React 19, TypeScript, React Three Fiber, drei, three.js, camera-controls, zustand |
+| Battle _(planned)_ | `@pkmn/sim` (Pokémon Showdown engine) |
+| ML / backend _(planned)_ | Python, FastAPI, scikit-learn (or similar) |
+| Database _(planned)_ | Postgres (Tamagotchi and history), `localStorage` at first |
+| Infra _(planned)_ | Docker and Docker Compose |
+| Data scraping | Python 3, standard library only |
 
-## Estrutura de pastas
+## Project structure
 
-Pastas marcadas com _(planejado)_ ainda não existem.
+Folders marked _(planned)_ do not exist yet.
 
 ```
 pokedex-game/
-├── scrape_pokemon.py     # coleta dados e imagens da PokéAPI
+├── scrape_pokemon.py       # scrapes data and images from PokéAPI / Showdown
 ├── data/
-│   └── pokemon.json      # 1025 Pokémon (cache bruto em data/cache/, ignorado pelo git)
-├── sprites/              # <id>.png, sprite pequeno
-├── artwork/              # <id>.png, artwork oficial em alta resolução
-├── web/                  # (planejado) Next.js + R3F + API routes de batalha
-├── ml/                   # (planejado) dataset, treino e FastAPI
-├── docker-compose.yml    # (planejado) web, ml, db
-├── .env.example          # (planejado)
+│   └── pokemon.json        # 1025 Pokémon (raw cache in data/cache/, git-ignored)
+├── sprites/                # <id>.png, small sprite
+├── artwork/                # <id>.png, high-resolution official artwork
+├── animated/               # <id>.gif, animated sprite (~72 MB, git-ignored)
+├── web/                    # Next.js app
+│   ├── app/                # App Router entry
+│   ├── components/
+│   │   ├── device/         # procedural 3D shell, hinge, buttons, camera rig
+│   │   └── screen/         # Pokédex UI inside the 4:3 screen
+│   ├── hooks/              # keyboard input, device controller, typewriter, reduced motion
+│   ├── stores/             # zustand stores (deviceInput, deviceState, pokedex)
+│   ├── data/               # Pokémon types and helpers
+│   ├── scripts/
+│   │   └── sync-assets.mjs # copies images and builds public/data/pokedex.json
+│   └── AGENTS.md           # guidance for coding agents
+├── ml/                     # (planned) dataset, training and FastAPI
+├── docker-compose.yml      # (planned) web, ml, db
+├── .env.example            # (planned)
 └── README.md
 ```
 
-## Como rodar
+## Getting started
 
-### Coleta de dados (disponível hoje)
+### 1. Scrape the data
 
-Requer apenas Python 3, sem instalar dependências.
+Requires only Python 3, no dependencies to install.
 
 ```bash
-python3 scrape_pokemon.py              # todos os 1025 Pokémon
-python3 scrape_pokemon.py --limit 151  # só a primeira geração
-python3 scrape_pokemon.py --no-images  # só o JSON, sem imagens
-python3 scrape_pokemon.py --workers 4  # menos requisições em paralelo
+python3 scrape_pokemon.py              # all 1025 Pokémon
+python3 scrape_pokemon.py --limit 151  # first generation only
+python3 scrape_pokemon.py --no-images  # JSON only, no images
+python3 scrape_pokemon.py --workers 4  # fewer parallel requests
 ```
 
-O script é retomável: respostas da API ficam em cache em `data/cache/` e imagens já baixadas são puladas. Formas alternativas (mega, regionais etc.) não são incluídas, apenas as formas padrão.
+The script is resumable: API responses are cached in `data/cache/` and images already downloaded are skipped. Alternate forms (mega, regional, etc.) are not included, only the default forms. Animated GIFs are not available for every Pokémon; the UI falls back to the static sprite when one is missing.
 
-Campos de cada Pokémon em `data/pokemon.json`:
+Fields of each Pokémon in `data/pokemon.json`:
 
-`id`, `name`, `display_name`, `genus`, `description`, `types`, `height_m`, `weight_kg`, `base_experience`, `stats`, `abilities`, `color`, `habitat`, `generation`, `is_legendary`, `is_mythical`, `capture_rate`, `evolves_from`, `evolution_chain_id`, `sprite`, `artwork`, `sprite_url`, `artwork_url`.
+`id`, `name`, `display_name`, `genus`, `description`, `types`, `height_m`, `weight_kg`, `base_experience`, `stats`, `abilities`, `color`, `habitat`, `generation`, `is_legendary`, `is_mythical`, `capture_rate`, `evolves_from`, `evolution_chain_id`, `sprite`, `artwork`, `animated`, `sprite_url`, `artwork_url`, `animated_url`.
 
-> Cries (sons), sprites animados e fun facts ainda **não** são coletados; entram junto com a Pokédex.
+> Cries (sounds) and fun facts are **not** scraped yet.
 
-### Aplicação completa _(planejado)_
+### 2. Run the web app
+
+Requires Node.js and npm.
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Then open http://localhost:3000. `npm run dev` and `npm run build` first run `npm run sync-assets`, which copies `sprites/` and `animated/` into `web/public/` and builds a trimmed `web/public/data/pokedex.json` from `data/pokemon.json`. If the scraper has not been run, the script warns and the Pokédex will fail to load.
+
+```bash
+npm run lint    # ESLint
+npm run build   # production build
+npm run start   # serve the production build
+```
+
+### 3. Full application _(planned)_
 
 ```bash
 cp .env.example .env
 docker compose up
 ```
 
-Variáveis de ambiente previstas no `.env.example` (nomes sujeitos a mudança):
+Planned environment variables for `.env.example` (names may change):
 
-| Variável | Para quê |
+| Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Conexão com o Postgres |
-| `ML_API_URL` | URL do serviço FastAPI usada pelo `web` |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Credenciais do serviço `db` |
+| `DATABASE_URL` | Postgres connection |
+| `ML_API_URL` | URL of the FastAPI service used by `web` |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Credentials for the `db` service |
 
-## Como treinar o modelo
+## Training the model
 
-_(planejado)_ O pipeline previsto:
+_(planned)_ The intended pipeline:
 
-1. **Dataset:** simular milhares de batalhas com `@pkmn/sim` entre pares de Pokémon e registrar o vencedor.
-2. **Features:** stats de cada lado, vantagem de tipo, velocidade relativa e soma de stats.
-3. **Treino:** regressão logística como baseline e gradient boosting para comparar.
-4. **Serviço:** servir o modelo treinado via FastAPI, devolvendo a probabilidade de vitória.
-5. **Comparação:** confrontar o modelo com uma estimativa por **Monte Carlo** (simular a mesma batalha N vezes e contar as vitórias) para medir erro e custo de cada abordagem.
+1. **Dataset:** simulate thousands of battles with `@pkmn/sim` between pairs of Pokémon and record the winner.
+2. **Features:** stats of each side, type advantage, relative speed and total stats.
+3. **Training:** logistic regression as a baseline and gradient boosting for comparison.
+4. **Serving:** serve the trained model through FastAPI, returning the win probability.
+5. **Comparison:** compare the model against a **Monte Carlo** estimate (simulate the same battle N times and count wins) to measure the error and cost of each approach.
 
-Comandos exatos serão documentados aqui quando o `ml/` existir.
+Exact commands will be documented here once `ml/` exists.
 
-## Estruturas de dados e algoritmos
+## Data structures and algorithms
 
-### Busca por prefixo com busca binária _(planejado)_
+### Prefix search with binary search _(planned)_
 
-Os Pokémon ficam em uma **lista ordenada por nome**. Para a busca por prefixo (o usuário digita "pik" e vê Pikachu, Pikipek...), usamos busca binária para achar a **primeira posição** cujo nome é `>= prefixo` (um _lower bound_) e depois varremos para frente enquanto os nomes começarem com o prefixo.
+Pokémon are kept in a **list sorted by name**. For prefix search (the user types "pik" and sees Pikachu, Pikipek...), we use binary search to find the **first position** whose name is `>= prefix` (a _lower bound_), then scan forward while names still start with the prefix.
 
-**Por quê:**
+**Why:**
 
-- Os dados são estáticos (1025 itens), então ordenar uma vez compensa.
-- Filtrar a lista inteira a cada tecla custa `O(n)`; aqui o custo é menor e previsível.
-- Não precisa de estrutura extra como uma trie, que gastaria mais memória para um ganho pequeno nesse tamanho.
+- The data is static (1025 items), so sorting once pays off.
+- Filtering the whole list on every keystroke costs `O(n)`; here the cost is lower and predictable.
+- No extra structure such as a trie is needed, which would spend more memory for a small gain at this size.
 
-**Complexidade:**
+**Complexity:**
 
-| Operação | Custo |
+| Operation | Cost |
 | --- | --- |
-| Ordenar (uma vez) | `O(n log n)` |
-| Achar o início do intervalo | `O(log n)` |
-| Coletar os `k` resultados | `O(k)` |
-| Busca completa | `O(log n + k)` |
+| Sort (once) | `O(n log n)` |
+| Find the start of the range | `O(log n)` |
+| Collect the `k` results | `O(k)` |
+| Full search | `O(log n + k)` |
 
-Busca por número (id) é acesso direto por índice, `O(1)`.
+Lookup by number (id) is direct index access, `O(1)`.
 
 ## Roadmap
 
-- [x] Script de coleta de dados e imagens (PokéAPI, 1025 Pokémon)
-- [ ] **Fase 1:** Pokédex 2D (dados, lista, busca, detalhes) + Docker
-- [ ] **Fase 2:** Carcaça 3D envolvendo a interface
-- [ ] **Fase 3:** Batalha 1x1
-- [ ] **Fase 4:** Dataset, modelo e barra de probabilidade
-- [ ] **Fase 5:** Batalha 6x6
-- [ ] **Fase 6:** Tamagotchi
+- [x] Data and image scraper (PokéAPI, 1025 Pokémon, animated sprites)
+- [x] Next.js scaffold with R3F, drei and zustand
+- [x] Input system (keyboard and 3D buttons)
+- [x] Procedural 3D device with hinge, buttons and camera rig
+- [x] Pokédex screen: list, preview and detail page for all 1025 Pokémon
+- [ ] **Phase 1:** finish the Pokédex (search, generation filter, cries, fun facts) + Docker
+- [ ] **Phase 2:** polish the 3D device around the interface
+- [ ] **Phase 3:** 1v1 battle
+- [ ] **Phase 4:** dataset, model and probability bar
+- [ ] **Phase 5:** 6v6 battle
+- [ ] **Phase 6:** Tamagotchi
 
-## Controles
+## Controls
 
-_(planejado)_ Teclado e botões físicos da carcaça fazem a mesma coisa.
+Keyboard and the physical buttons on the device do the same thing. Each key maps to the same button event that clicking the 3D button emits.
 
-| Teclado | Botão da carcaça | Ação |
+| Keyboard | Device button | Action |
 | --- | --- | --- |
-| ↑ ↓ ← → | Direcional | Navegar |
-| `Z` ou `Enter` | A | Confirmar |
-| `X` ou `Backspace` | B | Voltar |
-| `Esc` | MENU | Abrir o menu |
-| `+` / `-` | ZOOM | Aproximar ou afastar a tela |
+| ↑ ↓ ← → | D-pad | Navigate (hold to repeat). Left/right switches tabs; in the detail page, they step through Pokémon |
+| `Z` | A | Confirm / open details / advance the dialog |
+| `X` | B | Go back |
+| `Enter` | MENU | Open the tab menu |
+| `Space` | ZOOM | Zoom in or out of the screen |
+| `Esc` | n/a | Leave zoom |
 
-O mapeamento exato pode mudar durante a implementação.
+The mapping may still change during development.
 
-## Aviso legal
+## Legal notice
 
-Pokémon e todos os nomes, imagens e sons relacionados são marcas e propriedade da Nintendo, Game Freak e The Pokémon Company. Este é um projeto de fã, sem fins lucrativos e sem afiliação com essas empresas. O design da carcaça é original.
+Pokémon and all related names, images and sounds are trademarks and property of Nintendo, Game Freak and The Pokémon Company. This is a non-profit fan project with no affiliation with these companies. The device design is original.
 
-## Créditos
+## Credits
 
-- [PokéAPI](https://pokeapi.co/): dados, sprites e artworks dos Pokémon.
-- [`@pkmn/sim`](https://github.com/pkmn/ps): motor de batalha baseado no Pokémon Showdown.
+- [PokéAPI](https://pokeapi.co/): Pokémon data, sprites and artwork.
+- [Pokémon Showdown](https://play.pokemonshowdown.com/): animated sprites.
+- [`@pkmn/sim`](https://github.com/pkmn/ps): battle engine based on Pokémon Showdown.
+- [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans): pixel font, licensed under the SIL OFL.
+- [Claude Code](https://claude.com/claude-code): AI coding agent used to build the project.
