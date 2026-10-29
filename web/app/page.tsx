@@ -1,3 +1,9 @@
+import { DeviceExperience } from "@/components/device/DeviceExperience";
+
 export default function Home() {
-  return <main />;
+  return (
+    <main>
+      <DeviceExperience />
+    </main>
+  );
 }
