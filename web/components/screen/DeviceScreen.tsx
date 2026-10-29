@@ -128,7 +128,11 @@ export function DeviceScreen({ onRequestZoom }: Props) {
             items={MOCK_POKEMON}
             cursor={cursor}
             selectedId={selectedId}
-            onRowClick={(i) => (i === cursor ? confirm(i) : setCursor(i))}
+            onRowClick={(i) => {
+              if (dialog !== null) return; // the dialog has focus until dismissed
+              if (i === cursor) confirm(i);
+              else setCursor(i);
+            }}
           />
           <PreviewPanel pokemon={focused} />
         </div>
