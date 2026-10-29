@@ -1,0 +1,22 @@
+:root {
+  --red: #c8102e;
+  --red-dark: #a50d26;
+  --white: #ffffff;
+  --graphite: #1e1e24;
+  --gray-light: #f6f6f8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #14141a;
+  color: var(--gray-light);
+  font-family: var(--font-vt), monospace;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
