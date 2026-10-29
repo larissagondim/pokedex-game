@@ -6,8 +6,14 @@ export function hpTone(percent: number) {
   return "low";
 }
 
-export function HpBar({ percent }: { percent: number }) {
-  const clamped = Math.max(0, Math.min(100, percent));
+interface Props {
+  percent: number;
+  /** Text after the bar; defaults to the percentage. */
+  value?: string;
+}
+
+export function HpBar({ percent, value }: Props) {
+  const clamped = Math.round(Math.max(0, Math.min(100, percent)));
   return (
     <div className={styles.hp}>
       <span className={styles.hpLabel}>HP</span>
@@ -21,7 +27,7 @@ export function HpBar({ percent }: { percent: number }) {
       >
         <div className={styles.hpFill} data-tone={hpTone(clamped)} style={{ width: `${clamped}%` }} />
       </div>
-      <span className={styles.hpValue}>{clamped}%</span>
+      <span className={styles.hpValue}>{value ?? `${clamped}%`}</span>
     </div>
   );
 }

@@ -1,10 +1,10 @@
-import { formatDexNumber, type MockPokemon } from "@/data/mockPokemon";
+import { formatDexNumber, type Pokemon } from "@/data/pokedex";
 import styles from "./screen.module.css";
 
 export const VISIBLE_ROWS = 6;
 
 interface Props {
-  items: MockPokemon[];
+  items: Pokemon[];
   cursor: number;
   selectedId: number | null;
   onRowClick: (index: number) => void;

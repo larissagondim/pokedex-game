@@ -1,8 +1,11 @@
-import { formatDexNumber, type MockPokemon } from "@/data/mockPokemon";
+import { formatDexNumber, type Pokemon } from "@/data/pokedex";
 import { HpBar } from "./HpBar";
 import styles from "./screen.module.css";
 
-export function PreviewPanel({ pokemon }: { pokemon: MockPokemon }) {
+/** Base HP that fills the bar; few Pokémon go above it. */
+const HP_SCALE = 150;
+
+export function PreviewPanel({ pokemon }: { pokemon: Pokemon }) {
   return (
     <div className={styles.panel + " " + styles.preview}>
       <div className={styles.spriteFrame}>
@@ -28,7 +31,7 @@ export function PreviewPanel({ pokemon }: { pokemon: MockPokemon }) {
           </span>
         ))}
       </div>
-      <HpBar percent={pokemon.hpPercent} />
+      <HpBar percent={(pokemon.stats.hp / HP_SCALE) * 100} value={String(pokemon.stats.hp)} />
     </div>
   );
 }
