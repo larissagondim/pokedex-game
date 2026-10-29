@@ -5,6 +5,7 @@ Gera:
   data/pokemon.json        lista com todos os Pokémon (formas padrão)
   sprites/<id>.png         sprite pequeno (front_default)
   artwork/<id>.png         artwork oficial em alta resolução
+  animated/<id>.gif        sprite animado (estilo Showdown), quando existir
 
 É retomável: arquivos de imagem já baixados são pulados e as respostas da API
 ficam em cache em data/cache/, então pode rodar de novo sem refazer tudo.
@@ -29,6 +30,7 @@ DATA_DIR = ROOT / "data"
 CACHE_DIR = DATA_DIR / "cache"
 SPRITES_DIR = ROOT / "sprites"
 ARTWORK_DIR = ROOT / "artwork"
+ANIMATED_DIR = ROOT / "animated"
 USER_AGENT = "pokedex-game-scraper/1.0"
 
 # ids >= 10000 na PokéAPI são formas alternativas (mega, regionais, etc.)
@@ -86,11 +88,13 @@ def build_pokemon(pid, images):
 
     other = p["sprites"]["other"]
     artwork_url = other["official-artwork"]["front_default"]
+    animated_url = (other.get("showdown") or {}).get("front_default")
     sprite_url = p["sprites"]["front_default"]
 
     if images:
         download(sprite_url, SPRITES_DIR / f"{pid}.png")
         download(artwork_url, ARTWORK_DIR / f"{pid}.png")
+        download(animated_url, ANIMATED_DIR / f"{pid}.gif")
 
     display_name = pick_text(s["names"], "name", "en")
     genus = pick_text(s["genera"], "genus", "en")
@@ -123,8 +127,10 @@ def build_pokemon(pid, images):
         "evolution_chain_id": int(s["evolution_chain"]["url"].rstrip("/").split("/")[-1]),
         "sprite": f"sprites/{pid}.png" if sprite_url else None,
         "artwork": f"artwork/{pid}.png" if artwork_url else None,
+        "animated": f"animated/{pid}.gif" if animated_url else None,
         "sprite_url": sprite_url,
         "artwork_url": artwork_url,
+        "animated_url": animated_url,
     }
 
 
@@ -132,10 +138,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--limit", type=int, help="só os N primeiros Pokémon")
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--no-images", action="store_true", help="não baixa sprites/artwork")
+    ap.add_argument("--no-images", action="store_true", help="não baixa sprites/artwork/animados")
     args = ap.parse_args()
 
-    for d in (DATA_DIR, CACHE_DIR, SPRITES_DIR, ARTWORK_DIR):
+    for d in (DATA_DIR, CACHE_DIR, SPRITES_DIR, ARTWORK_DIR, ANIMATED_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
     listing = json.loads(http_get(f"{API}/pokemon?limit=100000"))
