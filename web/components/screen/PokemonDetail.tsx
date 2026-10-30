@@ -124,7 +124,7 @@ export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack 
           {pokemon.abilities.map((a) => (
             <span key={a.name} data-hidden={a.hidden}>
               {a.name.replace("-", " ").toUpperCase()}
-              {a.hidden && " (oculta)"}
+              {a.hidden && " (hidden)"}
             </span>
           ))}
         </div>
