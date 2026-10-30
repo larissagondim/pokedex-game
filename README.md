@@ -43,7 +43,7 @@ The commit history shows how the project grew step by step: scraper, then web sc
 | Search | Search by name prefix (binary search, results A→Z) or by number (`25`, `#25`). Type with the real keyboard (`/` focuses the field) or with the device buttons on an on-screen keyboard | ✅ Done |
 | Regions and music | The list shows the region of the focused Pokémon (Kanto … Paldea, by dex number); ◀ ▶ jump between regions. Each region has its own background music, which crossfades when the cursor crosses a region boundary. The themes are original synthesized chiptune loops (no game music is bundled); your own recordings can be mapped per region in `web/lib/music.ts` | ✅ Done |
 | Filters, sorting and favorites | Options row above the list: filter by type or ★ favorites, sort by number, name or base stat total. Rows show a mini sprite, type dots and the searched prefix highlighted. Favorites (MENU on a Pokémon page) are saved in `localStorage`. Jumping past Paldea shows a "Gen X: coming soon" slot | ✅ Done |
-| Fun facts | Fun facts on the detail page | 🕒 Planned |
+| Fun facts | Each Pokémon page ends with three "Did you know?" facts computed from the data by comparing it with all 1025 Pokémon: stat total ranking, top-1% stats, rare typings ("the only Bug/Ghost Pokémon"), size extremes or weight in Pikachu, catch rate, branched evolutions… (`web/lib/funFacts.ts`) | ✅ Done |
 | Battles | 1v1 between any two Pokémon and 6v6 by teams, using the `@pkmn/sim` engine in Next.js API routes | 🕒 Planned |
 | Win prediction | Win probability before and during a battle, computed by a trained model served via FastAPI | 🕒 Planned |
 | Tamagotchi | Adopt up to 5 Pokémon from the list (A at the end of a Pokémon page, or ♥ ADOPT). Food, joy and energy decay with real time; feed, play, sleep and train them. XP raises the level and they **evolve** (babies also need to be happy). Coins earned by playing and training buy **eggs** that hatch into a random base-stage or baby Pokémon. Hearts when happy, mood bubbles, reactions per action, idle animation by evolution stage, and clicking one plays its cry. Saved in `localStorage` | ✅ Done (v1) |
@@ -146,9 +146,9 @@ The script is resumable: API responses are cached in `data/cache/` and images al
 
 Fields of each Pokémon in `data/pokemon.json`:
 
-`id`, `name`, `display_name`, `genus`, `description`, `types`, `height_m`, `weight_kg`, `base_experience`, `stats`, `abilities`, `color`, `habitat`, `generation`, `is_legendary`, `is_mythical`, `capture_rate`, `evolves_from`, `evolution_chain_id`, `sprite`, `artwork`, `animated`, `sprite_url`, `artwork_url`, `animated_url`, `cry_url`.
+`id`, `name`, `display_name`, `genus`, `description`, `types`, `height_m`, `weight_kg`, `base_experience`, `stats`, `abilities`, `color`, `habitat`, `generation`, `is_legendary`, `is_mythical`, `capture_rate`, `evolves_from`, `evolution_chain_id`, `sprite`, `artwork`, `animated`, `sprite_url`, `artwork_url`, `animated_url`, `cry_url`, `evolves_from_id`, `is_baby`.
 
-> Cries are not downloaded: the app streams them from `cry_url` (PokéAPI cries repository). Fun facts are not scraped yet.
+> Cries are not downloaded: the app streams them from `cry_url` (PokéAPI cries repository). Fun facts are computed in the app from these fields, not scraped.
 
 ### 2. Run the web app
 
@@ -238,7 +238,8 @@ The tests cover the lower bound edges, case/accent handling, number lookups and 
 - [x] Search by name prefix (binary search) or number, with an on-screen keyboard
 - [x] Region bar and per-region background music
 - [x] Type filter, sorting, favorites and a "coming soon" slot for the next generation
-- [ ] **Phase 1:** finish the Pokédex (fun facts) + Docker
+- [x] Fun facts
+- [ ] **Phase 1:** Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
 - [x] Tamagotchi v1 (party of 5, needs, evolution, eggs)
 - [ ] **Phase 3:** 1v1 battle (built by hand)
