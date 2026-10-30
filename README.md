@@ -40,7 +40,8 @@ The commit history shows how the project grew step by step: scraper, then web sc
 | Input system | Keyboard, gamepad and 3D buttons emit the same events through a priority-based handler stack. Held directions repeat | ✅ Done |
 | Sound | Synthesized UI blips (WebAudio) and Pokémon cries played from the speaker grill (positional audio). Mute button; audio starts after the first interaction | ✅ Done |
 | Pokédex screen | 4:3 retro handheld UI inside the device. Scrollable list of all 1025 Pokémon with a preview panel, and a detail page with animated sprite, types, base stats, height, weight, abilities and a typewriter-style dialog box with the dex entry. Respects `prefers-reduced-motion` | ✅ Done |
-| Search | Search by name prefix (binary search, results A→Z) or by number (`25`, `#25`) from a field above the list; `/` focuses it | ✅ Done |
+| Search | Search by name prefix (binary search, results A→Z) or by number (`25`, `#25`). Type with the real keyboard (`/` focuses the field) or with the device buttons on an on-screen keyboard | ✅ Done |
+| Regions and music | The list shows the region of the focused Pokémon (Kanto … Paldea, by dex number); ◀ ▶ jump between regions. Each region has its own background music, which crossfades when the cursor crosses a region boundary. The themes are original synthesized chiptune loops (no game music is bundled); your own recordings can be mapped per region in `web/lib/music.ts` | ✅ Done |
 | Generation filter | Filter by generation. Generation 10 will show as "coming soon" (announced for 2027, only the starters revealed) | 🕒 Planned |
 | Fun facts | Fun facts on the detail page | 🕒 Planned |
 | Battles | 1v1 between any two Pokémon and 6v6 by teams, using the `@pkmn/sim` engine in Next.js API routes | 🕒 Planned |
@@ -219,6 +220,10 @@ When the Pokédex loads, a search index is built once: the Pokémon **sorted by 
 
 A numeric query (`25`, `#25`, `#0025`) is an exact lookup by number in a `Map`, `O(1)`.
 
+### Region of a Pokémon
+
+Regions are contiguous dex ranges sorted by their first number ([`web/lib/regions.ts`](web/lib/regions.ts)). The region of an id is found with a binary search for the last range starting at or before it, `O(log r)`; the tests check every boundary (e.g. #151 Kanto, #152 Johto) against a linear scan.
+
 The tests cover the lower bound edges, case/accent handling, number lookups and a comparison against a brute-force filter on 500 prefixes.
 
 ## Roadmap
@@ -229,7 +234,8 @@ The tests cover the lower bound edges, case/accent handling, number lookups and 
 - [x] Procedural 3D device with hinge, buttons and camera rig
 - [x] Pokédex screen: list, preview and detail page for all 1025 Pokémon
 - [x] 3D device v2: phase state machine, spring hinge, boot animation, sound, cries, gamepad
-- [x] Search by name prefix (binary search) or number
+- [x] Search by name prefix (binary search) or number, with an on-screen keyboard
+- [x] Region bar and per-region background music
 - [ ] **Phase 1:** finish the Pokédex (generation filter, fun facts) + Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
 - [ ] **Phase 3:** 1v1 battle
@@ -243,10 +249,10 @@ Keyboard and the physical buttons on the device do the same thing. Each key maps
 
 | Keyboard | Device button | Action |
 | --- | --- | --- |
-| ↑ ↓ ← → | D-pad | Navigate (hold to repeat: 300 ms, then every 90 ms). Left/right switches tabs; in the detail page, they step through Pokémon |
-| `Z` | A | Confirm / open details / advance the dialog |
-| `X` | B | Go back; at the root, leave zoom |
-| `Enter` | MENU | Next tab (List, Battle, Tamagotchi) |
+| ↑ ↓ ← → | D-pad | Navigate (hold to repeat: 300 ms, then every 90 ms). In the list, ↑ ↓ move and ← → jump between regions; ↑ on the first row selects the search field. On a Pokémon page they step through the National Dex. On the on-screen keyboard they move between keys |
+| `Z` | A | Confirm / open details / advance the dialog / open the keyboard / type a key |
+| `X` | B | Go back (clears the search; deletes a letter on the keyboard); at the root, leave zoom |
+| `Enter` | MENU | Next tab (List, Battle, Tamagotchi); on the keyboard, done |
 | `Space` | ZOOM | Zoom in or out of the screen (opens the device if closed) |
 | `Esc` | n/a | Leave zoom (in the search field: clear it, then leave the field) |
 | `/` | n/a | Focus the search field. While typing, ↑ ↓ move through the results and `Enter` opens one |
