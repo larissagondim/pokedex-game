@@ -46,6 +46,9 @@ if (!existsSync(dataFile)) {
     isBaby: Boolean(p.is_baby),
     isLegendary: Boolean(p.is_legendary),
     isMythical: Boolean(p.is_mythical),
+    captureRate: p.capture_rate,
+    color: p.color,
+    habitat: p.habitat,
   }));
   mkdirSync(join(web, "public", "data"), { recursive: true });
   writeFileSync(join(web, "public", "data", "pokedex.json"), JSON.stringify(pokedex));

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useScreenPower } from "@/hooks/useScreenPower";
 import { useTypewriter } from "@/hooks/useTypewriter";
+import { funFacts } from "@/lib/funFacts";
 import { applyListing, FILTERS, SORTS, type Sort } from "@/lib/listing";
 import { REGIONS, regionIndexOf } from "@/lib/regions";
 import { normalize, searchPokemon } from "@/lib/search";
@@ -138,17 +139,15 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     if (zoomed) root.current?.focus({ preventScroll: true });
   }, [zoomed]);
 
-  const pages = useMemo(
-    () =>
-      detailPokemon
-        ? paginate(
-            [`${detailPokemon.name.toUpperCase()}${detailPokemon.genus ? `, the ${detailPokemon.genus}` : ""}.`, detailPokemon.description]
-              .filter(Boolean)
-              .join(" "),
-          )
-        : [],
-    [detailPokemon],
-  );
+  // Dialog pages: the dex entry, then "Did you know?" fun facts (A advances).
+  const pages = useMemo(() => {
+    if (!detailPokemon) return [];
+    const entry = [`${detailPokemon.name.toUpperCase()}${detailPokemon.genus ? `, the ${detailPokemon.genus}` : ""}.`, detailPokemon.description]
+      .filter(Boolean)
+      .join(" ");
+    const facts = funFacts(detailPokemon, list).flatMap((fact) => paginate(`★ Did you know? ${fact}`));
+    return [...paginate(entry), ...facts];
+  }, [detailPokemon, list]);
   /** One-off message in the dialog box (adoption, Tamagotchi events...). */
   const [notice, setNotice] = useState<{ text: string; id: number } | null>(null);
   const noticeCount = useRef(0);

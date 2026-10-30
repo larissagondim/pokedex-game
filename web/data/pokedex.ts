@@ -28,6 +28,11 @@ export interface Pokemon {
   isBaby: boolean;
   isLegendary: boolean;
   isMythical: boolean;
+  /** 3 (hardest) .. 255 (easiest). */
+  captureRate: number;
+  color: string | null;
+  /** Only known for generations I–III. */
+  habitat: string | null;
 }
 
 export const POKEDEX_URL = "/data/pokedex.json";

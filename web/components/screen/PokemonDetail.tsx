@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useState } from "react";
+import { useState } from "react";
 import { formatDexNumber, type Pokemon, type Stats } from "@/data/pokedex";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import styles from "./screen.module.css";
@@ -38,7 +38,7 @@ interface Props {
 function AnimatedSprite({ pokemon }: { pokemon: Pokemon }) {
   const reducedMotion = useReducedMotion();
   const [gifFailed, setGifFailed] = useState(false);
-  const [scale, setScale] = useState(1);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const useGif = pokemon.animated && !reducedMotion && !gifFailed;
 
   return (
@@ -50,10 +50,12 @@ function AnimatedSprite({ pokemon }: { pokemon: Pokemon }) {
         src={useGif ? `/animated/${pokemon.id}.gif` : `/sprites/${pokemon.id}.png`}
         alt={pokemon.name}
         draggable={false}
-        style={{ "--scale": scale } as CSSProperties}
+        style={useGif && size ? size : undefined}
         onLoad={(e) => {
           const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
-          setScale(Math.min(STAGE_FIT.maxScale, STAGE_FIT.width / w, STAGE_FIT.height / h));
+          // Real size, not transform: scale() keeps the layout box at natural size and overflows the stage.
+          const fit = Math.min(STAGE_FIT.maxScale, STAGE_FIT.width / w, STAGE_FIT.height / h);
+          setSize({ width: Math.round(w * fit), height: Math.round(h * fit) });
         }}
         onError={() => setGifFailed(true)}
       />

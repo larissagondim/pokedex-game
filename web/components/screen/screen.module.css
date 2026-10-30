@@ -633,9 +633,8 @@
   transform-origin: 50% 100%;
 }
 
-/* Showdown GIFs vary in size; --scale is set on load to fit the stage. */
+/* Showdown GIFs vary in size; width/height are set on load to fit the stage. */
 .stageGif {
-  transform: scale(var(--scale, 1));
   animation: hop 1.4s steps(4) infinite;
 }
 
@@ -907,10 +906,10 @@
 @keyframes hop {
   0%,
   100% {
-    transform: scale(var(--scale, 1)) translateY(0);
+    transform: translateY(0);
   }
   50% {
-    transform: scale(var(--scale, 1)) translateY(-3px);
+    transform: translateY(-3px);
   }
 }
 
