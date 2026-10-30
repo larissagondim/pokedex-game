@@ -124,8 +124,7 @@
   font-size: 20px;
 }
 
-.row[data-focused="true"] .cursor,
-.menuItem[data-focused="true"] .cursor {
+.row[data-focused="true"] .cursor {
   animation: nudge 0.6s steps(2) infinite;
 }
 
@@ -664,8 +663,7 @@
   .more,
   .stageGif,
   .stageStatic,
-  .row[data-focused="true"] .cursor,
-  .menuItem[data-focused="true"] .cursor {
+  .row[data-focused="true"] .cursor {
     animation: none;
   }
 

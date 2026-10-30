@@ -2,7 +2,7 @@
 
 An interactive 3D Pokédex with battles, machine-learning win prediction and a Tamagotchi. A non-profit fan project built for portfolio and learning purposes, developed with **agentic programming** using [Claude Code](https://claude.com/claude-code).
 
-> **Status:** early development. Working today: the **data scraper**, a **procedural 3D device** (opens like a book, with working buttons and a zoom camera) and a **Pokédex screen** (list of all 1025 Pokémon and a detail page with an animated sprite). Anything marked _(planned)_ below is not implemented yet.
+> **Status:** early development. Working today: the **data scraper**, a **procedural 3D device** (opens like a book on a spring hinge, pressable buttons, zoom camera, sound, gamepad) and a **Pokédex screen** (list of all 1025 Pokémon and a detail page with an animated sprite and cry). Anything marked _(planned)_ below is not implemented yet.
 
 ## Table of contents
 
@@ -36,11 +36,12 @@ The commit history shows how the project grew step by step: scraper, then web sc
 | Feature | Description | Status |
 | --- | --- | --- |
 | Data scraping | Script that downloads data, sprites, artwork and animated sprites for all 1025 Pokémon (generations 1 to 9) from PokéAPI and Pokémon Showdown | ✅ Done |
-| 3D device | Original red and white device built procedurally with React Three Fiber. Opens like a book on a hinge, rotates, and zooms into the main screen with a camera rig. Physical buttons (D-pad, A, B, MENU, ZOOM) are pressable in 3D | ✅ Done |
-| Input system | Keyboard and 3D buttons emit the same events through a priority-based handler stack | ✅ Done |
+| 3D device | Original red device built procedurally with React Three Fiber, with every measurement in `device.config.ts`. The screen half opens to the left like a book cover on a spring hinge; idle float while closed; retro boot animation; status LED; secondary screen with the focused Pokémon. Drag to rotate, zoom into the main screen. Physical buttons (D-pad, A, B, MENU, ZOOM) are pressable in 3D | ✅ Done |
+| Input system | Keyboard, gamepad and 3D buttons emit the same events through a priority-based handler stack. Held directions repeat | ✅ Done |
+| Sound | Synthesized UI blips (WebAudio) and Pokémon cries played from the speaker grill (positional audio). Mute button; audio starts after the first interaction | ✅ Done |
 | Pokédex screen | 4:3 retro handheld UI inside the device. Scrollable list of all 1025 Pokémon with a preview panel, and a detail page with animated sprite, types, base stats, height, weight, abilities and a typewriter-style dialog box with the dex entry. Respects `prefers-reduced-motion` | ✅ Done |
 | Search and filters | Search by name or number, filter by generation. Generation 10 will show as "coming soon" (announced for 2027, only the starters revealed) | 🕒 Planned |
-| Cries and fun facts | Pokémon cries and fun facts on the detail page | 🕒 Planned |
+| Fun facts | Fun facts on the detail page | 🕒 Planned |
 | Battles | 1v1 between any two Pokémon and 6v6 by teams, using the `@pkmn/sim` engine in Next.js API routes | 🕒 Planned |
 | Win prediction | Win probability before and during a battle, computed by a trained model served via FastAPI | 🕒 Planned |
 | Tamagotchi | Adopt a Pokémon and take care of hunger, happiness, energy and XP, which decay over time. Actions: feed, play, sleep and train | 🕒 Planned |
@@ -79,8 +80,8 @@ Planned Docker Compose services: **web**, **ml** and **db**. At first the Tamago
 
 Inside `web`, the app is split into three layers:
 
-- **Stores (zustand):** `deviceInput` (button events and subscriptions), `deviceState` (open and zoomed) and `pokedex` (loading and selection).
-- **Device (`components/device`):** the procedural 3D shell, hinge, buttons and camera rig. The scene is loaded lazily.
+- **Stores (zustand):** `deviceInput` (button events, hold-to-repeat and subscriptions), `deviceState` (phase state machine: `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex` (loading, focus, selection and cries) and `audio` (mute and unlock).
+- **Device (`components/device`):** the procedural 3D shell, hinge, buttons and camera rig. The scene is loaded lazily. Conventions for working on it are in [`CLAUDE.md`](CLAUDE.md).
 - **Screen (`components/screen`):** the 2D UI rendered inside the main screen. It subscribes to device input with higher priority than the device controller, so the UI gets the first say on each button.
 
 ## Stack
@@ -109,15 +110,17 @@ pokedex-game/
 ├── web/                    # Next.js app
 │   ├── app/                # App Router entry
 │   ├── components/
-│   │   ├── device/         # procedural 3D shell, hinge, buttons, camera rig
+│   │   ├── device/         # 3D shell; all measurements in device.config.ts
 │   │   └── screen/         # Pokédex UI inside the 4:3 screen
-│   ├── hooks/              # keyboard input, device controller, typewriter, reduced motion
-│   ├── stores/             # zustand stores (deviceInput, deviceState, pokedex)
+│   ├── hooks/              # keyboard/gamepad input, device controller, sound, screen power
+│   ├── stores/             # zustand stores (deviceInput, deviceState, pokedex, audio)
+│   ├── lib/                # synthesized sound effects
 │   ├── data/               # Pokémon types and helpers
 │   ├── scripts/
 │   │   └── sync-assets.mjs # copies images and builds public/data/pokedex.json
 │   └── AGENTS.md           # guidance for coding agents
 ├── ml/                     # (planned) dataset, training and FastAPI
+├── CLAUDE.md               # conventions for the 3D device (for coding agents)
 ├── docker-compose.yml      # (planned) web, ml, db
 ├── .env.example            # (planned)
 └── README.md
@@ -140,9 +143,9 @@ The script is resumable: API responses are cached in `data/cache/` and images al
 
 Fields of each Pokémon in `data/pokemon.json`:
 
-`id`, `name`, `display_name`, `genus`, `description`, `types`, `height_m`, `weight_kg`, `base_experience`, `stats`, `abilities`, `color`, `habitat`, `generation`, `is_legendary`, `is_mythical`, `capture_rate`, `evolves_from`, `evolution_chain_id`, `sprite`, `artwork`, `animated`, `sprite_url`, `artwork_url`, `animated_url`.
+`id`, `name`, `display_name`, `genus`, `description`, `types`, `height_m`, `weight_kg`, `base_experience`, `stats`, `abilities`, `color`, `habitat`, `generation`, `is_legendary`, `is_mythical`, `capture_rate`, `evolves_from`, `evolution_chain_id`, `sprite`, `artwork`, `animated`, `sprite_url`, `artwork_url`, `animated_url`, `cry_url`.
 
-> Cries (sounds) and fun facts are **not** scraped yet.
+> Cries are not downloaded: the app streams them from `cry_url` (PokéAPI cries repository). Fun facts are not scraped yet.
 
 ### 2. Run the web app
 
@@ -219,7 +222,8 @@ Lookup by number (id) is direct index access, `O(1)`.
 - [x] Input system (keyboard and 3D buttons)
 - [x] Procedural 3D device with hinge, buttons and camera rig
 - [x] Pokédex screen: list, preview and detail page for all 1025 Pokémon
-- [ ] **Phase 1:** finish the Pokédex (search, generation filter, cries, fun facts) + Docker
+- [x] 3D device v2: phase state machine, spring hinge, boot animation, sound, cries, gamepad
+- [ ] **Phase 1:** finish the Pokédex (search, generation filter, fun facts) + Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
 - [ ] **Phase 3:** 1v1 battle
 - [ ] **Phase 4:** dataset, model and probability bar
@@ -232,12 +236,14 @@ Keyboard and the physical buttons on the device do the same thing. Each key maps
 
 | Keyboard | Device button | Action |
 | --- | --- | --- |
-| ↑ ↓ ← → | D-pad | Navigate (hold to repeat). Left/right switches tabs; in the detail page, they step through Pokémon |
+| ↑ ↓ ← → | D-pad | Navigate (hold to repeat: 300 ms, then every 90 ms). Left/right switches tabs; in the detail page, they step through Pokémon |
 | `Z` | A | Confirm / open details / advance the dialog |
-| `X` | B | Go back |
-| `Enter` | MENU | Open the tab menu |
-| `Space` | ZOOM | Zoom in or out of the screen |
+| `X` | B | Go back; at the root, leave zoom |
+| `Enter` | MENU | Next tab (List, Battle, Tamagotchi) |
+| `Space` | ZOOM | Zoom in or out of the screen (opens the device if closed) |
 | `Esc` | n/a | Leave zoom |
+
+Gamepads with the standard mapping also work: D-pad or left stick, A/B (bottom/right face buttons), Start = MENU, Select or Y = ZOOM. Opening: click the cover, press A, or use the "Open device" page button. Closing: the ⏻ button on the screen, a click on the hinge, or the page button.
 
 The mapping may still change during development.
 
@@ -247,7 +253,7 @@ Pokémon and all related names, images and sounds are trademarks and property of
 
 ## Credits
 
-- [PokéAPI](https://pokeapi.co/): Pokémon data, sprites and artwork.
+- [PokéAPI](https://pokeapi.co/): Pokémon data, sprites, artwork and cries.
 - [Pokémon Showdown](https://play.pokemonshowdown.com/): animated sprites.
 - [`@pkmn/sim`](https://github.com/pkmn/ps): battle engine based on Pokémon Showdown.
 - [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans): pixel font, licensed under the SIL OFL.
