@@ -35,7 +35,7 @@ function useLathe(points: [number, number][]) {
  * pressed direction instead of sinking.
  */
 export function DPad() {
-  const { diameter, raise, x, y, centerDiameter, tiltDeg } = CONTROL_HALF.dpad;
+  const { diameter, raise, centerDiameter, tiltDeg } = CONTROL_HALF.dpad;
   const R = diameter / 2;
   const rc = centerDiameter / 2;
   const disc = useLathe([
@@ -68,7 +68,7 @@ export function DPad() {
   const arrowR = R * 0.68;
 
   return (
-    <group position={[x, y, 0]}>
+    <group>
       <group ref={tilt}>
         <ModelPart name="dpad">
           <mesh geometry={disc} castShadow>

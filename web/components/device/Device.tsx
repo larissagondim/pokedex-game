@@ -4,6 +4,7 @@ import { useCursor } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import { type Group, MathUtils, type Object3D } from "three";
+import { useCompactLayout } from "@/hooks/useDeviceLayout";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { isLidOpen, isZoomedIn, useDeviceState } from "@/stores/deviceState";
 import { BaseHalf } from "./BaseHalf";
@@ -27,6 +28,7 @@ function isCoverHit(e: ThreeEvent<PointerEvent | MouseEvent>) {
 /** Root of the device: fixed controls half, hinge and the spring-driven screen lid. */
 export function Device() {
   const reducedMotion = useReducedMotion();
+  const compact = useCompactLayout();
   const idle = useRef<Group>(null);
   const lid = useRef<Group>(null);
   const angle = useRef(0); // degrees, 0 = closed
@@ -51,7 +53,8 @@ export function Device() {
     const { phase, interacted, finish } = useDeviceState.getState();
 
     // Lid: damped spring toward the target angle (slight overshoot when opening).
-    const target = isZoomedIn(phase) ? HINGE.zoomDeg : isLidOpen(phase) ? HINGE.openDeg : 0;
+    // Phones open the lid flat: the screen half (with all the controls) faces the camera.
+    const target = isZoomedIn(phase) || (compact && isLidOpen(phase)) ? HINGE.zoomDeg : isLidOpen(phase) ? HINGE.openDeg : 0;
     const waitingForScreenOff = phase === "CLOSING" && performance.now() - closingSince.current < HINGE.closeDelayS * 1000;
     if (reducedMotion) {
       angle.current = target;

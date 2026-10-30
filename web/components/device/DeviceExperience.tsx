@@ -5,6 +5,7 @@ import type { MouseEvent } from "react";
 import { formatDexNumber } from "@/data/pokedex";
 import { regionOf } from "@/lib/regions";
 import { useDeviceController } from "@/hooks/useDeviceController";
+import { useCompactLayout } from "@/hooks/useDeviceLayout";
 import { useGamepadInput } from "@/hooks/useGamepadInput";
 import { useKeyboardInput } from "@/hooks/useKeyboardInput";
 import { useRegionMusic } from "@/hooks/useRegionMusic";
@@ -42,6 +43,7 @@ export function DeviceExperience() {
   useRegionMusic();
 
   const phase = useDeviceState((s) => s.phase);
+  const compact = useCompactLayout();
   const open = isLidOpen(phase);
   const zoomed = isZoomedIn(phase);
   const { toggle, toggleZoom, resetView } = useDeviceState.getState();
@@ -60,9 +62,11 @@ export function DeviceExperience() {
             Leave zoom
           </button>
         )}
-        <button type="button" onMouseUp={releaseFocus} onClick={resetView}>
-          Reset view
-        </button>
+        {!compact && (
+          <button type="button" onMouseUp={releaseFocus} onClick={resetView}>
+            Reset view
+          </button>
+        )}
         <button type="button" onMouseUp={releaseFocus} onClick={useAudio.getState().toggleMute} aria-pressed={!muted}>
           {muted || !unlocked ? "Sound: off" : "Sound: on"}
         </button>
@@ -77,7 +81,9 @@ export function DeviceExperience() {
           {zoomed
             ? "ESC, ZOOM or B to leave zoom"
             : open
-              ? "Drag to rotate · double-click the screen to zoom · click the hinge to close"
+              ? compact
+                ? "Tap the buttons · double-tap the screen to zoom"
+                : "Drag to rotate · double-click the screen to zoom · click the hinge to close"
               : "Click the cover to open"}
         </p>
         <div className={styles.actions}>

@@ -148,7 +148,7 @@ export const CAMERA = {
   /** camera-controls smoothTime; ~0.25 s gives transitions of about 0.8 s. */
   smoothTime: 0.25,
   /** Generous margins so the device stays in frame when rotated. */
-  padding: { closed: 1.8, open: 1.8, zoomed: 0.08 },
+  padding: { closed: 1.8, open: 1.8, zoomed: 0.08, compactOpen: 0.3 },
   minPolarAngle: Math.PI / 2 - 0.7,
   maxPolarAngle: Math.PI / 2 + 0.35,
   minAzimuthAngle: -1.0,
@@ -192,6 +192,52 @@ export const SECONDARY_CENTER = {
 } as const;
 
 export const PILL_Y = bottom + CONTROL_HALF.pill.fromBottom;
+
+// Control layouts ----------------------------------------------------------
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+/** Where the D-pad, A/B and MENU/ZOOM sit, in some half's inner frame. */
+export interface ControlLayout {
+  /** Size of every control relative to the config above. */
+  scale: number;
+  dpad: Point;
+  a: Point;
+  b: Point;
+  menu: Point;
+  zoom: Point;
+}
+
+const pillOffset = (CONTROL_HALF.pill.width + CONTROL_HALF.pill.gap) / 2;
+
+/** Desktop: controls on the right half (x ∈ [0, WIDTH]). */
+export const SPLIT_CONTROLS: ControlLayout = {
+  scale: 1,
+  dpad: { x: CONTROL_HALF.dpad.x, y: CONTROL_HALF.dpad.y },
+  a: CONTROL_HALF.action.a,
+  b: CONTROL_HALF.action.b,
+  menu: { x: BODY.width / 2 - pillOffset, y: PILL_Y },
+  zoom: { x: BODY.width / 2 + pillOffset, y: PILL_Y },
+};
+
+/**
+ * Phones (portrait, touch): every control on the screen half, under the
+ * screen (x ∈ [-WIDTH, 0]), so one half fills the display.
+ */
+export const COMPACT_CONTROLS: ControlLayout = {
+  scale: 0.8,
+  dpad: { x: -4.5, y: -1.8 },
+  a: { x: -1.2, y: -1.3 },
+  b: { x: -2.3, y: -2.2 },
+  menu: { x: -4.0, y: -3.6 },
+  zoom: { x: -2.0, y: -3.6 },
+};
+
+/** Smaller speaker grill for the compact layout (under the pills). */
+export const COMPACT_SPEAKER = { x: -BODY.width / 2, y: -4.35, slits: 3, width: 0.9 } as const;
 
 /**
  * drei <Html transform> renders 400 / distanceFactor CSS px per world unit.

@@ -5,6 +5,7 @@ import { useThree } from "@react-three/fiber";
 import CameraControlsImpl from "camera-controls";
 import { useEffect, useRef } from "react";
 import { Box3, MathUtils, Vector3 } from "three";
+import { useCompactLayout } from "@/hooks/useDeviceLayout";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { type DevicePhase, isLidOpen, isZoomedIn, useDeviceState } from "@/stores/deviceState";
 import { SCREEN_HALF, BODY, CAMERA, GAP, HINGE, SCREEN_CENTER } from "./device.config";
@@ -16,12 +17,14 @@ const { width: W, height: H, depth: D } = BODY;
 const openLean = Math.sin(MathUtils.degToRad(180 - HINGE.openDeg)) * W;
 const screenZ = SCREEN_HALF.bezel.raise - SCREEN_HALF.screen.recess;
 
-type View = "closed" | "open" | "zoomed";
+type View = "closed" | "open" | "compactOpen" | "zoomed";
 
 // World-space boxes the camera frames for each view.
 const BOXES: Record<View, Box3> = {
   closed: new Box3(new Vector3(0, -H / 2, -D), new Vector3(W, H / 2, GAP + D)),
   open: new Box3(new Vector3(-W, -H / 2, -D), new Vector3(W, H / 2, openLean)),
+  // Phones: just the flat screen half, which carries all the controls.
+  compactOpen: new Box3(new Vector3(-W, -H / 2, -D), new Vector3(0, H / 2, 0.3)),
   // Zoom lays the lid flat, so the screen box is its layout box.
   zoomed: new Box3(
     new Vector3(SCREEN_CENTER.x - SCREEN_HALF.screen.width / 2, SCREEN_CENTER.y - SCREEN_HALF.screen.height / 2, screenZ),
@@ -29,7 +32,8 @@ const BOXES: Record<View, Box3> = {
   ),
 };
 
-const viewFor = (p: DevicePhase): View => (isZoomedIn(p) ? "zoomed" : isLidOpen(p) ? "open" : "closed");
+const viewFor = (p: DevicePhase, compact: boolean): View =>
+  isZoomedIn(p) ? "zoomed" : isLidOpen(p) ? (compact ? "compactOpen" : "open") : "closed";
 
 /**
  * Drag to rotate within polar/azimuth limits. No wheel/pinch zoom except in
@@ -37,7 +41,8 @@ const viewFor = (p: DevicePhase): View => (isZoomedIn(p) ? "zoomed" : isLidOpen(
  */
 export function CameraRig() {
   const ref = useRef<CameraControlsImpl>(null);
-  const view = useDeviceState((s) => viewFor(s.phase));
+  const compact = useCompactLayout();
+  const view = useDeviceState((s) => viewFor(s.phase, compact));
   const viewResetNonce = useDeviceState((s) => s.viewResetNonce);
   const reducedMotion = useReducedMotion();
   const width = useThree((s) => s.size.width);
@@ -56,12 +61,14 @@ export function CameraRig() {
     const controls = ref.current;
     if (!controls) return;
     const zoomed = view === "zoomed";
+    // On phones a finger on a button must not turn the device: no rotation.
+    const locked = zoomed || compact;
 
-    controls.mouseButtons.left = zoomed ? ACTION.NONE : ACTION.ROTATE;
+    controls.mouseButtons.left = locked ? ACTION.NONE : ACTION.ROTATE;
     controls.mouseButtons.middle = ACTION.NONE;
     controls.mouseButtons.right = ACTION.NONE;
     controls.mouseButtons.wheel = zoomed ? ACTION.DOLLY : ACTION.NONE;
-    controls.touches.one = zoomed ? ACTION.NONE : ACTION.TOUCH_ROTATE;
+    controls.touches.one = locked ? ACTION.NONE : ACTION.TOUCH_ROTATE;
     controls.touches.two = zoomed ? ACTION.TOUCH_DOLLY : ACTION.NONE;
     controls.touches.three = ACTION.NONE;
     controls.minDistance = zoomed ? 3 : 1;
@@ -80,7 +87,7 @@ export function CameraRig() {
         useDeviceState.getState().finish(phaseAtStart);
       }
     });
-  }, [view, viewResetNonce, reducedMotion, width, height]);
+  }, [view, compact, viewResetNonce, reducedMotion, width, height]);
 
   return (
     <CameraControls
