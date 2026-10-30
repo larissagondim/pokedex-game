@@ -41,6 +41,7 @@ if (!existsSync(dataFile)) {
       speed: p.stats.speed,
     },
     animated: Boolean(p.animated),
+    cry: p.cry_url ?? null,
   }));
   mkdirSync(join(web, "public", "data"), { recursive: true });
   writeFileSync(join(web, "public", "data", "pokedex.json"), JSON.stringify(pokedex));

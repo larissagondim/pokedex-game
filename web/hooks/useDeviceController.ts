@@ -2,33 +2,28 @@
 
 import { useEffect } from "react";
 import { useDeviceInput } from "@/stores/deviceInput";
-import { useDeviceState } from "@/stores/deviceState";
+import { isZoomedIn, useDeviceState } from "@/stores/deviceState";
 
 /**
  * Device-level fallback for button events the screen didn't consume
- * (priority 0, below the screen). Opening, zooming and leaving zoom live here.
+ * (priority 0, below the screen): zoom, opening with A, leaving zoom with B.
  */
 export function useDeviceController() {
   useEffect(
     () =>
       useDeviceInput.getState().subscribe((button) => {
         const device = useDeviceState.getState();
-
         if (button === "ZOOM") {
-          device.setZoomed(!device.zoomed);
+          device.toggleZoom();
           return true;
         }
-        if (!device.open) {
-          // Closed: A wakes the device up.
-          if (button === "A") {
-            device.setOpen(true);
-            return true;
-          }
-          return;
+        if (button === "A" && device.phase === "CLOSED") {
+          device.open();
+          return true;
         }
-        // B reaches here only when the screen had nothing to go back to.
-        if (button === "B" && device.zoomed) {
-          device.setZoomed(false);
+        // B reaches here only when the interface is at its root.
+        if (button === "B" && isZoomedIn(device.phase)) {
+          device.zoomOut();
           return true;
         }
       }, 0),

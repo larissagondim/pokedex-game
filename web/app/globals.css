@@ -4,6 +4,21 @@
   --white: #ffffff;
   --graphite: #1e1e24;
   --gray-light: #f6f6f8;
+
+  /* Neutral light background; graphite in dark mode. */
+  --page-bg: #e9e9ee;
+  --panel: #f6f6f8;
+  --hud-text: #2a2a32;
+  --hud-muted: #6b6b76;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page-bg: #1e1e24;
+    --panel: #2a2a32;
+    --hud-text: #e4e4ea;
+    --hud-muted: #9a9aa6;
+  }
 }
 
 * {
@@ -14,8 +29,8 @@ html,
 body {
   height: 100%;
   margin: 0;
-  background: #14141a;
-  color: var(--gray-light);
+  background: var(--page-bg);
+  color: var(--hud-text);
   font-family: var(--font-vt), monospace;
   overflow: hidden;
   overscroll-behavior: none;

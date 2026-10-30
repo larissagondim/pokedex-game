@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useScreenPower } from "@/hooks/useScreenPower";
 import { useTypewriter } from "@/hooks/useTypewriter";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
-import { useDeviceState } from "@/stores/deviceState";
+import { acceptsInput, useDeviceState } from "@/stores/deviceState";
 import { usePokedex } from "@/stores/pokedex";
 import { DialogBox } from "./DialogBox";
 import { PokemonDetail } from "./PokemonDetail";
@@ -12,8 +13,8 @@ import { PreviewPanel } from "./PreviewPanel";
 import styles from "./screen.module.css";
 import { TabBar } from "./TabBar";
 
-const TABS = ["POKÉDEX", "BATALHA", "TAMAGOTCHI"] as const;
-const LIST_HINT = "▶ Direcional: navegar   A: abrir   MENU: menu   ZOOM: zoom";
+const TABS = ["LISTA", "BATALHA", "TAMAGOTCHI"] as const;
+const LIST_HINT = "▶ Direcional: navegar   A: abrir   MENU: trocar aba   ZOOM: zoom";
 
 /** Runs before the device controller, so the UI gets first say on each button. */
 const SCREEN_INPUT_PRIORITY = 10;
@@ -47,58 +48,66 @@ interface Props {
 export function DeviceScreen({ onRequestZoom }: Props) {
   const [tab, setTab] = useState(0);
   const [cursor, setCursor] = useState(0);
-  const [menu, setMenu] = useState<number | null>(null);
   /** Index of the Pokémon whose page is open, or null for the list. */
   const [detail, setDetail] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
   const selectedId = usePokedex((s) => s.selectedId);
   const list = usePokedex((s) => s.list);
   const status = usePokedex((s) => s.status);
+  const power = useScreenPower();
+  const zoomed = useDeviceState((s) => s.phase === "ZOOMED");
+  const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     usePokedex.getState().load();
   }, []);
 
-  const [page, setPage] = useState(0);
+  // The secondary screen shows whatever is under the cursor.
+  useEffect(() => {
+    usePokedex.getState().focus(list[cursor]?.id ?? null);
+  }, [list, cursor]);
+
+  // Zoomed in: the interface takes keyboard focus.
+  useEffect(() => {
+    if (zoomed) root.current?.focus({ preventScroll: true });
+  }, [zoomed]);
 
   const detailPokemon = detail !== null ? list[detail] : null;
   const pages = useMemo(
     () =>
       detailPokemon
         ? paginate(
-            [`${detailPokemon.name.toUpperCase()}${detailPokemon.genus ? `, o ${detailPokemon.genus}` : ""}.`, detailPokemon.description]
+            [`${detailPokemon.name.toUpperCase()}${detailPokemon.genus ? `, the ${detailPokemon.genus}` : ""}.`, detailPokemon.description]
               .filter(Boolean)
               .join(" "),
           )
         : [],
     [detailPokemon],
   );
-  const typing = useTypewriter(pages[page] ?? null);
+  const typing = useTypewriter(power === "on" ? (pages[page] ?? null) : null);
   const hasNextPage = page < pages.length - 1;
 
   const openDetail = (index: number) => {
+    const p = list[index];
     setCursor(index);
     setDetail(index);
     setPage(0);
-    usePokedex.getState().select(list[index].id);
+    usePokedex.getState().select(p.id);
+    usePokedex.getState().playCry(p.id);
   };
   const stepDetail = (delta: number) => {
     if (detail !== null) openDetail(wrap(detail + delta, list.length));
+  };
+  const switchTab = (next: number) => {
+    setTab(next);
+    setDetail(null);
   };
 
   /** Returns true when the screen consumed the button. */
   const handle = (button: DeviceButton): boolean => {
     if (button === "ZOOM") return false;
-
-    if (menu !== null) {
-      if (button === "UP" || button === "DOWN") {
-        setMenu(wrap(menu + (button === "UP" ? -1 : 1), TABS.length));
-      } else if (button === "A") {
-        setTab(menu);
-        setDetail(null);
-        setMenu(null);
-      } else if (button === "B" || button === "MENU") {
-        setMenu(null);
-      }
+    if (button === "MENU") {
+      switchTab(wrap(tab + 1, TABS.length));
       return true;
     }
 
@@ -108,46 +117,43 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       else if (button === "A") {
         if (!typing.done) typing.finish();
         else if (hasNextPage) setPage((p) => p + 1);
-      }
-      else if (button === "B") setDetail(null);
-      else if (button === "MENU") setMenu(tab);
+      } else if (button === "B") setDetail(null);
       return true;
     }
 
     switch (button) {
       case "UP":
       case "DOWN":
-        if (tab === 0) setCursor((c) => wrap(c + (button === "UP" ? -1 : 1), list.length));
+        if (tab === 0 && list.length > 0) setCursor((c) => wrap(c + (button === "UP" ? -1 : 1), list.length));
         return true;
       case "LEFT":
       case "RIGHT":
-        setTab((t) => wrap(t + (button === "LEFT" ? -1 : 1), TABS.length));
+        switchTab(wrap(tab + (button === "LEFT" ? -1 : 1), TABS.length));
         return true;
       case "A":
         if (tab === 0 && list.length > 0) openDetail(cursor);
         return true;
-      case "MENU":
-        setMenu(tab);
-        return true;
       case "B":
         if (tab !== 0) {
-          setTab(0);
+          switchTab(0);
           return true;
         }
-        return false; // nothing to go back to: let the device leave zoom
+        return false; // at the root: let the device leave zoom
     }
     return false;
   };
 
   // Subscribe once; always call the latest handler (it closes over state).
   const handler = useRef(handle);
+  const powerRef = useRef(power);
   useEffect(() => {
     handler.current = handle;
+    powerRef.current = power;
   });
   useEffect(
     () =>
       useDeviceInput.getState().subscribe((button) => {
-        if (!useDeviceState.getState().open) return false;
+        if (!acceptsInput(useDeviceState.getState().phase) || powerRef.current !== "on") return false;
         return handler.current(button);
       }, SCREEN_INPUT_PRIORITY),
     [],
@@ -197,6 +203,10 @@ export function DeviceScreen({ onRequestZoom }: Props) {
 
   return (
     <div
+      ref={root}
+      tabIndex={-1}
+      role="application"
+      aria-label="Tela da Pokédex"
       className={styles.screen}
       // Keep pointer input inside the screen from rotating the camera.
       onPointerDown={(e) => e.stopPropagation()}
@@ -206,40 +216,17 @@ export function DeviceScreen({ onRequestZoom }: Props) {
         onRequestZoom();
       }}
     >
-      <TabBar
-        tabs={TABS}
-        active={tab}
-        onChange={(i) => {
-          setTab(i);
-          setDetail(null);
-        }}
-      />
-
+      <TabBar tabs={TABS} active={tab} onChange={switchTab} onClose={() => useDeviceState.getState().close()} />
       {body}
-
       <DialogBox text={dialogText} waiting={typing.done && hasNextPage} />
 
-      {menu !== null && (
-        <div className={styles.menu} role="menu">
-          <h3>MENU</h3>
-          {TABS.map((t, i) => (
-            <div
-              key={t}
-              role="menuitem"
-              className={styles.menuItem}
-              data-focused={i === menu}
-              onClick={() => {
-                setTab(i);
-                setDetail(null);
-                setMenu(null);
-              }}
-            >
-              <span className={styles.cursor}>{i === menu ? "▶" : ""}</span>
-              {t}
-            </div>
-          ))}
+      <div className={styles.powerOverlay} data-power={power} aria-hidden>
+        <div className={styles.bootLine} />
+        <div className={styles.bootLogo}>
+          POKÉDEX
+          <span>GAME</span>
         </div>
-      )}
+      </div>
     </div>
   );
 }

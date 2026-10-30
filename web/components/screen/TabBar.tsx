@@ -4,9 +4,10 @@ interface Props {
   tabs: readonly string[];
   active: number;
   onChange: (index: number) => void;
+  onClose: () => void;
 }
 
-export function TabBar({ tabs, active, onChange }: Props) {
+export function TabBar({ tabs, active, onChange, onClose }: Props) {
   const step = (delta: number) => onChange((active + delta + tabs.length) % tabs.length);
   return (
     <nav className={styles.tabBar}>
@@ -30,6 +31,9 @@ export function TabBar({ tabs, active, onChange }: Props) {
       </div>
       <button type="button" className={styles.tabArrow} onClick={() => step(1)} aria-label="Próxima aba">
         ▶
+      </button>
+      <button type="button" className={styles.tabArrow + " " + styles.closeButton} onClick={onClose} aria-label="Fechar dispositivo">
+        ⏻
       </button>
     </nav>
   );

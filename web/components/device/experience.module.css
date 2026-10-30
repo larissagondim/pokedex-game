@@ -14,7 +14,7 @@
   pointer-events: none;
   text-align: center;
   font-size: 20px;
-  color: #c9c9d2;
+  color: var(--hud-text);
 }
 
 .hint,
@@ -24,30 +24,62 @@
 
 .keys {
   font-size: 16px;
-  color: #8a8a96;
+  color: var(--hud-muted);
 }
 
-.actions {
+.actions,
+.corner {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
   pointer-events: auto;
 }
 
-.actions button {
+.corner {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  justify-content: flex-end;
+}
+
+.actions button,
+.corner button {
   font: inherit;
   font-family: var(--font-pixel), monospace;
-  font-size: 15px;
-  padding: 6px 14px;
-  border: 3px solid #f6f6f8;
+  font-size: 14px;
+  padding: 6px 12px;
+  border: 3px solid var(--graphite);
   border-radius: 8px;
-  background: #c8102e;
+  background: var(--red);
   color: #fff;
   cursor: pointer;
 }
 
-.actions button:focus-visible {
+.corner button {
+  background: var(--panel);
+  color: var(--hud-text);
+  font-size: 12px;
+}
+
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.actions button:focus-visible,
+.corner button:focus-visible {
   outline: 3px solid #ffd23f;
   outline-offset: 2px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .fallback {
@@ -58,20 +90,30 @@
   justify-items: center;
   gap: 16px;
   font-size: 24px;
+  color: var(--hud-text);
 }
 
 .fallbackDevice {
-  width: 150px;
-  height: 240px;
-  border-radius: 22px;
-  background: #c8102e;
-  box-shadow: inset -10px 0 0 #a50d26;
+  width: 120px;
+  height: 200px;
+  border-radius: 12px;
+  background: linear-gradient(var(--red) 66%, var(--graphite) 66% 68%, #fff 68%);
   animation: pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes pulse {
   50% {
     opacity: 0.6;
+  }
+}
+
+@media (max-width: 480px) {
+  .keys {
+    display: none;
+  }
+
+  .hint {
+    font-size: 17px;
   }
 }
 

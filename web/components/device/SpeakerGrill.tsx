@@ -1,22 +1,27 @@
 "use client";
 
-import { COLORS } from "./colors";
+import { SCREEN_HALF, BODY, COLORS } from "./device.config";
+import { CryEmitter } from "./CryEmitter";
+import { ModelPart } from "./ModelPart";
 
-interface Props {
-  position: [number, number];
-  slits?: number;
-  width?: number;
-}
+/** Six slits at the bottom right of the base; Pokémon cries come from here. */
+export function SpeakerGrill() {
+  const { slits, slitWidth, slitHeight, spacing, fromRight, fromBottom } = SCREEN_HALF.speaker;
+  const x = -fromRight;
+  const y = -BODY.height / 2 + fromBottom;
+  const firstY = ((slits - 1) * spacing) / 2;
 
-export function SpeakerGrill({ position: [x, y], slits = 4, width = 0.36 }: Props) {
   return (
-    <group position={[x, y, 0.003]}>
-      {Array.from({ length: slits }, (_, i) => (
-        <mesh key={i} position={[0, -i * 0.05, 0]}>
-          <boxGeometry args={[width, 0.022, 0.006]} />
-          <meshStandardMaterial color={COLORS.redDark} roughness={0.7} />
-        </mesh>
-      ))}
+    <group position={[x, y, 0]}>
+      <ModelPart name="speaker">
+        {Array.from({ length: slits }, (_, i) => (
+          <mesh key={i} position={[0, firstY - i * spacing, 0.001]}>
+            <planeGeometry args={[slitWidth, slitHeight]} />
+            <meshBasicMaterial color={COLORS.graphite} />
+          </mesh>
+        ))}
+      </ModelPart>
+      <CryEmitter />
     </group>
   );
 }

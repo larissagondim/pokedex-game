@@ -21,6 +21,8 @@ export interface Pokemon {
   stats: Stats;
   /** Whether animated/<id>.gif exists (falls back to the static sprite). */
   animated: boolean;
+  /** Remote .ogg URL of the cry. */
+  cry: string | null;
 }
 
 export const POKEDEX_URL = "/data/pokedex.json";

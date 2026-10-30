@@ -2,23 +2,26 @@
 
 import { useCursor } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
-import { type ReactNode, useRef, useState } from "react";
-import { MathUtils, type Group } from "three";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { Group } from "three";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
-import { CONTROLS } from "./layout";
+import { BUTTON } from "./device.config";
+import { ButtonHoverContext } from "./materials";
 
 interface Props {
   button: DeviceButton;
-  position: [number, number, number];
+  position?: [number, number, number];
+  /** How far the cap sinks when pressed (0 for parts that animate themselves). */
+  travel?: number;
   children: ReactNode;
 }
 
 /**
  * Makes its children a physical button: pointer down emits the deviceInput
- * event, and the visual sinks whenever the button is pressed (by pointer or
- * keyboard, since both go through the same store).
+ * event, and the cap sinks whenever the button is pressed (by pointer,
+ * keyboard or gamepad, since all go through the same store).
  */
-export function PressableButton({ button, position, children }: Props) {
+export function PressableButton({ button, position = [0, 0, 0], travel = BUTTON.travel, children }: Props) {
   const cap = useRef<Group>(null);
   const holding = useRef(false);
   const [hovered, setHovered] = useState(false);
@@ -26,20 +29,34 @@ export function PressableButton({ button, position, children }: Props) {
   useCursor(hovered);
 
   useFrame((_, dt) => {
-    if (!cap.current) return;
-    const target = pressed ? -CONTROLS.travel : 0;
-    cap.current.position.z = MathUtils.damp(cap.current.position.z, target, 40, dt);
+    if (!cap.current || travel === 0) return;
+    const target = pressed ? -travel : 0;
+    const z = cap.current.position.z;
+    const step = (travel / BUTTON.pressS) * dt;
+    cap.current.position.z = Math.abs(target - z) <= step ? target : z + Math.sign(target - z) * step;
+  });
+
+  const up = () => {
+    if (!holding.current) return;
+    holding.current = false;
+    useDeviceInput.getState().release(button);
+  };
+
+  // A pointer released outside the button still ends the press.
+  useEffect(() => {
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
   });
 
   const down = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     holding.current = true;
+    navigator.vibrate?.(10);
     useDeviceInput.getState().press(button);
-  };
-  const up = () => {
-    if (!holding.current) return;
-    holding.current = false;
-    useDeviceInput.getState().release(button);
   };
 
   return (
@@ -47,10 +64,6 @@ export function PressableButton({ button, position, children }: Props) {
       <group
         ref={cap}
         onPointerDown={down}
-        onPointerUp={(e) => {
-          e.stopPropagation();
-          up();
-        }}
         onPointerOver={(e) => {
           e.stopPropagation();
           setHovered(true);
@@ -60,7 +73,7 @@ export function PressableButton({ button, position, children }: Props) {
           up();
         }}
       >
-        {children}
+        <ButtonHoverContext.Provider value={hovered}>{children}</ButtonHoverContext.Provider>
       </group>
     </group>
   );

@@ -1,55 +1,52 @@
 "use client";
 
 import { Html } from "@react-three/drei";
-import type { RefObject } from "react";
-import type { Object3D } from "three";
 import { DeviceScreen } from "@/components/screen/DeviceScreen";
 import { useDeviceState } from "@/stores/deviceState";
-import { COLORS } from "./colors";
-import { useRoundedSlab } from "./geometry";
-import { htmlDistanceFactor, MAIN_SCREEN } from "./layout";
+import { useRoundedFrame } from "./geometry";
+import { SCREEN_HALF, COLORS, htmlDistanceFactor, SCREEN_CENTER } from "./device.config";
 import { ModelPart } from "./ModelPart";
 
-interface Props {
-  /** Meshes that can hide the screen (the shell halves). */
-  occluders: RefObject<Object3D | null>[];
-}
-
-/** 4:3 main screen: graphite bezel plus the DOM interface mounted on top. */
-export function MainScreen({ occluders }: Props) {
-  const { x, y, width, height, bezel, bezelDepth, cssWidth, cssHeight } = MAIN_SCREEN;
-  const frame = useRoundedSlab(width + 2 * bezel, height + 2 * bezel, bezelDepth, 0.06, 0.01);
-  const zoomIn = () => useDeviceState.getState().setZoomed(true);
+/**
+ * 4:3 main screen on the base: graphite bezel, recessed black screen, the DOM
+ * interface (drei <Html>, blending occlusion) and a faint glass layer on top.
+ */
+export function MainScreen() {
+  const { width, height, recess, glassOpacity, cssWidth, cssHeight } = SCREEN_HALF.screen;
+  const bezel = SCREEN_HALF.bezel;
+  const frame = useRoundedFrame(bezel.width, bezel.height, bezel.raise, bezel.radius, width, height);
+  const screenZ = bezel.raise - recess;
+  const zoomIn = () => useDeviceState.getState().zoomIn();
 
   return (
-    <group position={[x, y, 0]}>
-      <group
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          zoomIn();
-        }}
-      >
-        <ModelPart name="screen_bezel">
-          <mesh geometry={frame} position={[0, 0, bezelDepth / 2]}>
-            <meshStandardMaterial color={COLORS.graphite} roughness={0.55} />
-          </mesh>
-        </ModelPart>
-        <mesh position={[0, 0, bezelDepth + 0.001]}>
-          <planeGeometry args={[width, height]} />
-          <meshBasicMaterial color={COLORS.screenOff} />
+    <group position={[SCREEN_CENTER.x, SCREEN_CENTER.y, 0]}>
+      <ModelPart name="screen_bezel">
+        <mesh geometry={frame} position={[0, 0, bezel.raise / 2]}>
+          <meshStandardMaterial color={COLORS.graphite} roughness={0.3} />
         </mesh>
-      </group>
+      </ModelPart>
+
+      {/* Black backing, kept well behind the Html's blending hole so the two
+          never z-fight (the hole must win for the DOM to show through). */}
+      <mesh position={[0, 0, screenZ - 0.015]} onDoubleClick={zoomIn}>
+        <planeGeometry args={[width, height]} />
+        <meshBasicMaterial color={COLORS.screenOff} />
+      </mesh>
 
       <Html
         transform
-        occlude={occluders as RefObject<Object3D>[]}
-        position={[0, 0, bezelDepth + 0.002]}
+        occlude="blending"
+        position={[0, 0, screenZ]}
         distanceFactor={htmlDistanceFactor(width, cssWidth)}
         style={{ width: cssWidth, height: cssHeight }}
-        zIndexRange={[10, 0]}
       >
         <DeviceScreen onRequestZoom={zoomIn} />
       </Html>
+
+      <mesh position={[0, 0, screenZ + 0.008]} raycast={() => null}>
+        <planeGeometry args={[width, height]} />
+        <meshPhysicalMaterial color={COLORS.white} roughness={0.1} transparent opacity={glassOpacity} depthWrite={false} />
+      </mesh>
     </group>
   );
 }
