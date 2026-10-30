@@ -22,8 +22,8 @@ export function SearchBar({ ref, value, onChange, onMove, onSubmit }: Props) {
         ref={ref}
         type="search"
         value={value}
-        placeholder="Buscar nome ou nº  ( / )"
-        aria-label="Buscar Pokémon por nome ou número"
+        placeholder="Search name or #  ( / )"
+        aria-label="Search Pokémon by name or number"
         autoComplete="off"
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}

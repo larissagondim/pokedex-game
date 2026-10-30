@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Baixa dados e sprites de todos os Pokémon da PokéAPI.
+"""Downloads data and sprites for every Pokémon from PokéAPI.
 
-Gera:
-  data/pokemon.json        lista com todos os Pokémon (formas padrão)
-  sprites/<id>.png         sprite pequeno (front_default)
-  artwork/<id>.png         artwork oficial em alta resolução
-  animated/<id>.gif        sprite animado (estilo Showdown), quando existir
+Writes:
+  data/pokemon.json        every Pokémon (default forms)
+  sprites/<id>.png         small sprite (front_default)
+  artwork/<id>.png         high-resolution official artwork
+  animated/<id>.gif        animated sprite (Showdown style), when available
 
-É retomável: arquivos de imagem já baixados são pulados e as respostas da API
-ficam em cache em data/cache/, então pode rodar de novo sem refazer tudo.
+Resumable: images already downloaded are skipped and API responses are cached
+in data/cache/, so it can be re-run without redoing everything.
 
-Uso:
-  python3 scrape_pokemon.py            # todos
+Usage:
+  python3 scrape_pokemon.py            # all
   python3 scrape_pokemon.py --limit 151
   python3 scrape_pokemon.py --workers 4 --no-images
 """
@@ -33,7 +33,7 @@ ARTWORK_DIR = ROOT / "artwork"
 ANIMATED_DIR = ROOT / "animated"
 USER_AGENT = "pokedex-game-scraper/1.0"
 
-# ids >= 10000 na PokéAPI são formas alternativas (mega, regionais, etc.)
+# PokéAPI ids >= 10000 are alternate forms (mega, regional, etc.)
 MAX_DEFAULT_ID = 10000
 
 
@@ -54,7 +54,7 @@ def http_get(url, retries=4):
 
 
 def get_json(path):
-    """GET na API com cache em disco. `path` é tipo 'pokemon/25'."""
+    """GET from the API with an on-disk cache. `path` looks like 'pokemon/25'."""
     cache_file = CACHE_DIR / (path.replace("/", "_") + ".json")
     if cache_file.exists():
         return json.loads(cache_file.read_text())
@@ -98,7 +98,7 @@ def build_pokemon(pid, images):
 
     display_name = pick_text(s["names"], "name", "en")
     genus = pick_text(s["genera"], "genus", "en")
-    # a última entrada em inglês é a mais recente
+    # the last English entry is the most recent
     descriptions = pick_text(s["flavor_text_entries"], "flavor_text", "en", first_only=False)
     description = clean(descriptions[-1]) if descriptions else None
 
@@ -137,9 +137,9 @@ def build_pokemon(pid, images):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--limit", type=int, help="só os N primeiros Pokémon")
+    ap.add_argument("--limit", type=int, help="only the first N Pokémon")
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--no-images", action="store_true", help="não baixa sprites/artwork/animados")
+    ap.add_argument("--no-images", action="store_true", help="skip sprites/artwork/animated downloads")
     args = ap.parse_args()
 
     for d in (DATA_DIR, CACHE_DIR, SPRITES_DIR, ARTWORK_DIR, ANIMATED_DIR):
@@ -152,7 +152,7 @@ def main():
     ids = [i for i in ids if i < MAX_DEFAULT_ID]
     if args.limit:
         ids = ids[: args.limit]
-    print(f"{len(ids)} Pokémon para processar")
+    print(f"{len(ids)} Pokémon to process")
 
     results, failed = {}, []
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
@@ -161,18 +161,18 @@ def main():
             pid = futures[fut]
             try:
                 results[pid] = fut.result()
-            except Exception as e:  # noqa: BLE001 - queremos seguir mesmo com falhas isoladas
+            except Exception as e:  # noqa: BLE001 - keep going past isolated failures
                 failed.append(pid)
-                print(f"\n[erro] #{pid}: {e}", file=sys.stderr)
+                print(f"\n[error] #{pid}: {e}", file=sys.stderr)
             print(f"\r{n}/{len(ids)}", end="", flush=True)
     print()
 
     pokemon = [results[i] for i in sorted(results)]
     out = DATA_DIR / "pokemon.json"
     out.write_text(json.dumps(pokemon, ensure_ascii=False, indent=2))
-    print(f"{len(pokemon)} Pokémon salvos em {out}")
+    print(f"{len(pokemon)} Pokémon saved to {out}")
     if failed:
-        print(f"Falharam: {sorted(failed)} (rode de novo pra tentar outra vez)")
+        print(f"Failed: {sorted(failed)} (run again to retry)")
         sys.exit(1)
 
 

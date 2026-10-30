@@ -18,8 +18,8 @@ import { SearchBar } from "./SearchBar";
 import styles from "./screen.module.css";
 import { TabBar } from "./TabBar";
 
-const TABS = ["LISTA", "BATALHA", "TAMAGOTCHI"] as const;
-const LIST_HINT = "▲▼ Pokémon   ◀▶ região   A: abrir   /: buscar   MENU: aba   ZOOM: zoom";
+const TABS = ["LIST", "BATTLE", "TAMAGOTCHI"] as const;
+const LIST_HINT = "▲▼ Pokémon   ◀▶ region   A: open   /: search   MENU: tab   ZOOM: zoom";
 
 /** Runs before the device controller, so the UI gets first say on each button. */
 const SCREEN_INPUT_PRIORITY = 10;
@@ -228,20 +228,20 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const dialogText = detailPokemon ? typing.visible : tab === 0 ? LIST_HINT : "Em breve!";
+  const dialogText = detailPokemon ? typing.visible : tab === 0 ? LIST_HINT : "Coming soon!";
 
   let body;
   if (tab !== 0) {
     body = (
       <div className={styles.panel + " " + styles.soon}>
         <h2>{TABS[tab]}</h2>
-        <p>Em breve</p>
+        <p>Coming soon</p>
       </div>
     );
   } else if (status !== "ready") {
     body = (
       <div className={styles.panel + " " + styles.soon}>
-        <p>{status === "error" ? "Erro ao carregar a Pokédex." : "Carregando…"}</p>
+        <p>{status === "error" ? "Could not load the Pokédex." : "Loading…"}</p>
       </div>
     );
   } else if (detailPokemon) {
@@ -264,7 +264,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
           cursor={cursor}
           selectedId={selectedId}
           onRowClick={(i) => (i === cursor ? openDetail(i) : setCursor(i))}
-          emptyText="Nenhum Pokémon encontrado."
+          emptyText="No Pokémon found."
           header={
             <>
               <SearchBar
@@ -288,7 +288,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       ref={root}
       tabIndex={-1}
       role="application"
-      aria-label="Tela da Pokédex"
+      aria-label="Pokédex screen"
       className={styles.screen}
       // Keep pointer input inside the screen from rotating the camera.
       onPointerDown={(e) => e.stopPropagation()}

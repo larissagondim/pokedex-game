@@ -18,7 +18,7 @@ const DeviceScene = dynamic(() => import("./DeviceScene"), {
   loading: () => (
     <div className={styles.fallback} role="status">
       <div className={styles.fallbackDevice} />
-      <p>Carregando Pokédex…</p>
+      <p>Loading Pokédex…</p>
     </div>
   ),
 });
@@ -46,33 +46,33 @@ export function DeviceExperience() {
 
       <div className={styles.corner}>
         <button type="button" onClick={resetView}>
-          Resetar visão
+          Reset view
         </button>
         <button type="button" onClick={useAudio.getState().toggleMute} aria-pressed={!muted}>
-          {muted || !unlocked ? "Som: desligado" : "Som: ligado"}
+          {muted || !unlocked ? "Sound: off" : "Sound: on"}
         </button>
         <button type="button" onClick={useAudio.getState().toggleMusic} aria-pressed={musicOn}>
-          {musicOn ? `♪ Música: ${(focused && regionOf(focused.id)?.name) ?? "ligada"}` : "♪ Música: desligada"}
+          {musicOn ? `♪ Music: ${(focused && regionOf(focused.id)?.name) ?? "on"}` : "♪ Music: off"}
         </button>
       </div>
 
       <div className={styles.hud}>
         <p className={styles.hint}>
           {zoomed
-            ? "ESC, ZOOM ou B para sair do zoom"
+            ? "ESC, ZOOM or B to leave zoom"
             : open
-              ? "Arraste para girar · duplo clique na tela para zoom · clique na dobradiça para fechar"
-              : "Clique na capa para abrir"}
+              ? "Drag to rotate · double-click the screen to zoom · click the hinge to close"
+              : "Click the cover to open"}
         </p>
         <div className={styles.actions}>
           <button type="button" onClick={toggle}>
-            {open ? "Fechar dispositivo" : "Abrir dispositivo"}
+            {open ? "Close device" : "Open device"}
           </button>
           <button type="button" onClick={toggleZoom} disabled={!open}>
-            {zoomed ? "Sair do zoom" : "Zoom na tela"}
+            {zoomed ? "Leave zoom" : "Zoom into screen"}
           </button>
         </div>
-        <p className={styles.keys}>Setas: direcional · Z: A · X: B · Enter: MENU · Espaço: ZOOM · Esc: sair do zoom</p>
+        <p className={styles.keys}>Arrows: D-pad · Z: A · X: B · Enter: MENU · Space: ZOOM · Esc: leave zoom · /: search</p>
       </div>
 
       {/* The secondary screen is WebGL text; mirror it for screen readers. */}

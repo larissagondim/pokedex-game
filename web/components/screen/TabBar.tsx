@@ -11,7 +11,7 @@ export function TabBar({ tabs, active, onChange, onClose }: Props) {
   const step = (delta: number) => onChange((active + delta + tabs.length) % tabs.length);
   return (
     <nav className={styles.tabBar}>
-      <button type="button" className={styles.tabArrow} onClick={() => step(-1)} aria-label="Aba anterior">
+      <button type="button" className={styles.tabArrow} onClick={() => step(-1)} aria-label="Previous tab">
         ◀
       </button>
       <div className={styles.tabs} role="tablist">
@@ -29,10 +29,10 @@ export function TabBar({ tabs, active, onChange, onClose }: Props) {
           </button>
         ))}
       </div>
-      <button type="button" className={styles.tabArrow} onClick={() => step(1)} aria-label="Próxima aba">
+      <button type="button" className={styles.tabArrow} onClick={() => step(1)} aria-label="Next tab">
         ▶
       </button>
-      <button type="button" className={styles.tabArrow + " " + styles.closeButton} onClick={onClose} aria-label="Fechar dispositivo">
+      <button type="button" className={styles.tabArrow + " " + styles.closeButton} onClick={onClose} aria-label="Close device">
         ⏻
       </button>
     </nav>

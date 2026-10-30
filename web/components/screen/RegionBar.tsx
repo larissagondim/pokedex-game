@@ -11,7 +11,7 @@ interface Props {
 export function RegionBar({ region, onStep }: Props) {
   return (
     <div className={styles.regionBar}>
-      <button type="button" onClick={() => onStep(-1)} aria-label="Região anterior">
+      <button type="button" onClick={() => onStep(-1)} aria-label="Previous region">
         ◀
       </button>
       <span className={styles.regionName}>{region ? region.name.toUpperCase() : "—"}</span>
@@ -20,7 +20,7 @@ export function RegionBar({ region, onStep }: Props) {
           {formatDexNumber(region.first)}–{formatDexNumber(region.last)}
         </span>
       )}
-      <button type="button" onClick={() => onStep(1)} aria-label="Próxima região">
+      <button type="button" onClick={() => onStep(1)} aria-label="Next region">
         ▶
       </button>
     </div>

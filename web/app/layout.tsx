@@ -15,7 +15,7 @@ const vt323 = VT323({
 
 export const metadata: Metadata = {
   title: "Pokédex Game",
-  description: "Pokédex interativa em 3D. Projeto de fã, sem fins lucrativos.",
+  description: "Interactive 3D Pokédex. Non-profit fan project.",
 };
 
 export const viewport: Viewport = {
@@ -27,7 +27,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="pt-BR" className={`${pixelify.variable} ${vt323.variable}`}>
+    <html lang="en" className={`${pixelify.variable} ${vt323.variable}`}>
       <body>{children}</body>
     </html>
   );

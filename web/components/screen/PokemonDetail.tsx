@@ -67,10 +67,10 @@ export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack 
       <div className={styles.panel + " " + styles.detailLeft}>
         <AnimatedSprite key={pokemon.id} pokemon={pokemon} />
         <div className={styles.detailNav}>
-          <button type="button" onClick={onPrev} aria-label="Pokémon anterior">
+          <button type="button" onClick={onPrev} aria-label="Previous Pokémon">
             ◀ {formatDexNumber(prevId)}
           </button>
-          <button type="button" onClick={onNext} aria-label="Próximo Pokémon">
+          <button type="button" onClick={onNext} aria-label="Next Pokémon">
             {formatDexNumber(nextId)} ▶
           </button>
         </div>
@@ -91,7 +91,7 @@ export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack 
         <div className={styles.detailHeader}>
           <h3>STATUS</h3>
           <button type="button" className={styles.backButton} onClick={onBack}>
-            B VOLTAR
+            B BACK
           </button>
         </div>
         <dl className={styles.stats}>
@@ -117,8 +117,8 @@ export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack 
           </div>
         </dl>
         <div className={styles.facts}>
-          <span>ALT {pokemon.heightM.toFixed(1)} m</span>
-          <span>PESO {pokemon.weightKg.toFixed(1)} kg</span>
+          <span>HT {pokemon.heightM.toFixed(1)} m</span>
+          <span>WT {pokemon.weightKg.toFixed(1)} kg</span>
         </div>
         <div className={styles.abilities}>
           {pokemon.abilities.map((a) => (

@@ -47,7 +47,7 @@ The commit history shows how the project grew step by step: scraper, then web sc
 | Win prediction | Win probability before and during a battle, computed by a trained model served via FastAPI | 🕒 Planned |
 | Tamagotchi | Adopt a Pokémon and take care of hunger, happiness, energy and XP, which decay over time. Actions: feed, play, sleep and train | 🕒 Planned |
 
-The BATTLE and TAMAGOTCHI tabs exist on the screen but currently show a "coming soon" placeholder. The on-screen text is in Portuguese for now.
+The BATTLE and TAMAGOTCHI tabs exist on the screen but currently show a "coming soon" placeholder.
 
 ## Screenshots
 
