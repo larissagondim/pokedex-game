@@ -11,6 +11,7 @@ import { usePokedex } from "@/stores/pokedex";
 import type { Pokemon } from "@/data/pokedex";
 import { DialogBox } from "./DialogBox";
 import { PokemonDetail } from "./PokemonDetail";
+import { type KeyDef, type KeyPos, keyFor, moveKey, OnScreenKeyboard } from "./OnScreenKeyboard";
 import { PokemonList } from "./PokemonList";
 import { PreviewPanel } from "./PreviewPanel";
 import { RegionBar } from "./RegionBar";
@@ -25,6 +26,16 @@ const LIST_HINT = "▲▼ Pokémon   ◀▶ region   A: open   /: search   MENU:
 const SCREEN_INPUT_PRIORITY = 10;
 
 const wrap = (i: number, n: number) => (i + n) % n;
+
+const MAX_QUERY = 16;
+
+/** D-pad direction → (dx, dy) on the on-screen keyboard. */
+const KEY_STEPS: Partial<Record<DeviceButton, [number, number]>> = {
+  UP: [0, -1],
+  DOWN: [0, 1],
+  LEFT: [-1, 0],
+  RIGHT: [1, 0],
+};
 
 /** About three lines of the dialog box. */
 const PAGE_CHARS = 135;
@@ -60,6 +71,10 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const list = usePokedex((s) => s.list);
   const searchIndex = usePokedex((s) => s.searchIndex);
   const [query, setQuery] = useState("");
+  /** The D-pad is on the search field (above the first row). */
+  const [searchSelected, setSearchSelected] = useState(false);
+  /** On-screen keyboard cursor, or null when it's closed. */
+  const [keyPos, setKeyPos] = useState<KeyPos | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   /** What the list shows: search results, or every Pokémon by number. */
   const items = useMemo(
@@ -107,6 +122,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const hasNextPage = page < pages.length - 1;
 
   const showPokemon = (p: Pokemon) => {
+    dismissKeyboard();
     setDetailId(p.id);
     setPage(0);
     // Keep the list cursor on it when it's among the listed items.
@@ -141,7 +157,29 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     setQuery(value);
     setCursor(0);
   };
+  const openKeyboard = () => {
+    setSearchSelected(true);
+    setKeyPos({ row: 0, col: 0 });
+  };
+  /** Leaves the keyboard and the search field. */
+  function dismissKeyboard() {
+    setKeyPos(null);
+    setSearchSelected(false);
+  }
+  /** Done typing: back on the list, at the first result. */
+  const closeKeyboard = () => {
+    dismissKeyboard();
+    setCursor(0);
+  };
+  const pressKey = (key: KeyDef, pos: KeyPos) => {
+    setKeyPos(pos);
+    if (key.value === "BACKSPACE") changeQuery(query.slice(0, -1));
+    else if (key.value === "CLEAR") changeQuery("");
+    else if (key.value === "OK") closeKeyboard();
+    else if (query.length < MAX_QUERY) changeQuery(query + key.value);
+  };
   const switchTab = (next: number) => {
+    dismissKeyboard();
     setTab(next);
     setDetailId(null);
   };
@@ -149,6 +187,25 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   /** Returns true when the screen consumed the button. */
   const handle = (button: DeviceButton): boolean => {
     if (button === "ZOOM") return false;
+
+    if (keyPos) {
+      const step = KEY_STEPS[button];
+      if (step) setKeyPos(moveKey(keyPos, ...step));
+      else if (button === "A") pressKey(keyFor(keyPos), keyPos);
+      else if (button === "B") {
+        if (query) changeQuery(query.slice(0, -1));
+        else closeKeyboard();
+      } else if (button === "MENU") closeKeyboard();
+      return true;
+    }
+
+    if (searchSelected) {
+      if (button === "A") openKeyboard();
+      else if (button === "DOWN" || button === "B") setSearchSelected(false);
+      else if (button === "MENU") switchTab(wrap(tab + 1, TABS.length));
+      return true;
+    }
+
     if (button === "MENU") {
       switchTab(wrap(tab + 1, TABS.length));
       return true;
@@ -167,7 +224,10 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     switch (button) {
       case "UP":
       case "DOWN":
-        if (tab === 0) moveCursor(button === "UP" ? -1 : 1);
+        if (tab !== 0) return true;
+        // Above the first row is the search field.
+        if (button === "UP" && cursor === 0) setSearchSelected(true);
+        else moveCursor(button === "UP" ? -1 : 1);
         return true;
       case "LEFT":
       case "RIGHT":
@@ -228,7 +288,15 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const dialogText = detailPokemon ? typing.visible : tab === 0 ? LIST_HINT : "Coming soon!";
+  const dialogText = detailPokemon
+    ? typing.visible
+    : tab !== 0
+      ? "Coming soon!"
+      : keyPos
+        ? "◀▲▼▶ move   A: type   B: delete   MENU: done"
+        : searchSelected
+          ? "A: open the keyboard   ▼: back to the list"
+          : LIST_HINT;
 
   let body;
   if (tab !== 0) {
@@ -261,7 +329,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       <div className={styles.body}>
         <PokemonList
           items={items}
-          cursor={cursor}
+          cursor={searchSelected || keyPos ? -1 : cursor}
           selectedId={selectedId}
           onRowClick={(i) => (i === cursor ? openDetail(i) : setCursor(i))}
           emptyText="No Pokémon found."
@@ -273,12 +341,20 @@ export function DeviceScreen({ onRequestZoom }: Props) {
                 onChange={changeQuery}
                 onMove={moveCursor}
                 onSubmit={() => openDetail(cursor)}
+                selected={searchSelected && !keyPos}
+                onOpenKeyboard={openKeyboard}
               />
               <RegionBar region={items[cursor] ? REGIONS[regionIndexOf(items[cursor].id)] ?? null : null} onStep={jumpRegion} />
             </>
           }
         />
-        {items[cursor] ? <PreviewPanel pokemon={items[cursor]} /> : <div className={styles.panel} />}
+        {keyPos ? (
+          <OnScreenKeyboard pos={keyPos} resultCount={query.trim() ? items.length : 0} onKey={pressKey} />
+        ) : items[cursor] ? (
+          <PreviewPanel pokemon={items[cursor]} />
+        ) : (
+          <div className={styles.panel} />
+        )}
       </div>
     );
   }
