@@ -31,6 +31,7 @@ interface Props {
   onBack: () => void;
   favorite: boolean;
   onToggleFavorite: () => void;
+  onAdopt: () => void;
 }
 
 /** Animated sprite; static sprite under reduced motion or when no GIF exists. */
@@ -61,7 +62,7 @@ function AnimatedSprite({ pokemon }: { pokemon: Pokemon }) {
   );
 }
 
-export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack, favorite, onToggleFavorite }: Props) {
+export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack, favorite, onToggleFavorite, onAdopt }: Props) {
   const total = Object.values(pokemon.stats).reduce((a, b) => a + b, 0);
 
   return (
@@ -94,6 +95,9 @@ export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack,
         <div className={styles.detailHeader}>
           <h3>STATUS</h3>
           <span className={styles.detailActions}>
+            <button type="button" className={styles.backButton} onClick={onAdopt}>
+              ♥ ADOPT
+            </button>
             <button type="button" className={styles.backButton} onClick={onToggleFavorite} aria-pressed={favorite}>
               MENU {favorite ? "★" : "☆"}
             </button>

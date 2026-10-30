@@ -1,0 +1,464 @@
+/* TAMAGOTCHI tab. Sizes are CSS px of the 640x480 screen. */
+
+.tama {
+  display: grid;
+  grid-template-columns: 196px 1fr;
+  gap: 8px;
+  min-height: 0;
+  color: var(--graphite);
+}
+
+.party,
+.main {
+  border: 3px solid var(--graphite);
+  border-radius: 8px;
+  background: var(--gray-light);
+}
+
+/* Party */
+
+.party {
+  padding: 6px;
+}
+
+.partyHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--graphite);
+  color: var(--gray-light);
+  font-family: var(--font-pixel), monospace;
+  font-size: 13px;
+}
+
+.coins {
+  color: #ffd23f;
+}
+
+.party ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.party li {
+  display: grid;
+  grid-template-columns: 14px 30px 1fr auto;
+  align-items: center;
+  gap: 3px;
+  height: 42px;
+  padding: 0 4px;
+  border: 3px solid transparent;
+  border-radius: 6px;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.party li[data-focused="true"] {
+  border-color: var(--red);
+  background: var(--white);
+}
+
+.party li[data-empty="true"] {
+  color: #9a9aa6;
+  cursor: default;
+}
+
+.cursor {
+  color: var(--red);
+  font-size: 14px;
+}
+
+.slotIcon {
+  width: 30px;
+  height: 30px;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.miniEgg {
+  justify-self: center;
+  width: 18px;
+  height: 24px;
+  border: 2px solid var(--graphite);
+  border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%;
+  background: radial-gradient(circle at 35% 40%, #7ccf6a 0 3px, transparent 4px), radial-gradient(circle at 65% 70%, #7ccf6a 0 3px, transparent 4px), #fffbea;
+}
+
+.slotName {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.slotLevel {
+  color: #6b6b76;
+  font-size: 17px;
+}
+
+/* Main */
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.stage {
+  --stage: #d9d9e0;
+  position: relative;
+  display: grid;
+  place-items: end center;
+  height: 112px;
+  padding-bottom: 8px;
+  overflow: hidden;
+  border: 3px solid var(--graphite);
+  border-radius: 8px;
+  background:
+    radial-gradient(ellipse at 50% 88%, rgba(255, 255, 255, 0.85) 0 26%, transparent 27%),
+    linear-gradient(var(--stage), var(--white));
+}
+
+.stage[data-type="grass"] { --stage: #b7e3a6; }
+.stage[data-type="fire"] { --stage: #f7c19f; }
+.stage[data-type="water"] { --stage: #a9c8f2; }
+.stage[data-type="electric"] { --stage: #f7e28a; }
+.stage[data-type="bug"] { --stage: #d6e39a; }
+.stage[data-type="normal"] { --stage: #e3e3d2; }
+.stage[data-type="poison"] { --stage: #dcb5e6; }
+.stage[data-type="ground"] { --stage: #ead7a8; }
+.stage[data-type="fairy"] { --stage: #f5c9e2; }
+.stage[data-type="fighting"] { --stage: #efb3ab; }
+.stage[data-type="psychic"] { --stage: #f5b5cb; }
+.stage[data-type="rock"] { --stage: #ddd2a3; }
+.stage[data-type="ghost"] { --stage: #c9bde0; }
+.stage[data-type="ice"] { --stage: #bfe9e9; }
+.stage[data-type="dragon"] { --stage: #c3b5f5; }
+.stage[data-type="dark"] { --stage: #cbbfb5; }
+.stage[data-type="steel"] { --stage: #d6d6e2; }
+.stage[data-type="flying"] { --stage: #c9d3f5; }
+
+.stage[data-mood="sleeping"] {
+  filter: brightness(0.75) saturate(0.8);
+}
+
+.stage[data-mood="sad"] {
+  filter: saturate(0.6);
+}
+
+.petButton {
+  position: relative;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+/* Sprites vary in size: give them a common height, then scale by stage. */
+.pet {
+  display: block;
+  width: auto;
+  height: 72px;
+  max-width: 130px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  transform-origin: 50% 100%;
+}
+
+/* Size and idle animation depend on the evolution stage. */
+.pet[data-size="baby"] {
+  transform: scale(0.8);
+  animation: bounce 0.5s steps(2) infinite;
+}
+
+.pet[data-size="basic"] {
+  animation: hop 1s steps(3) infinite;
+}
+
+.pet[data-size="middle"] {
+  transform: scale(1.1);
+  animation: sway 1.6s steps(4) infinite;
+}
+
+.pet[data-size="final"] {
+  transform: scale(1.2);
+  animation: breathe 2.2s steps(4) infinite;
+}
+
+.stage[data-mood="sleeping"] .pet {
+  animation: breathe 3s steps(3) infinite;
+}
+
+/* Reactions override the idle loop briefly. */
+.pet[data-reaction="eat"] { animation: munch 0.25s steps(2) 4; }
+.pet[data-reaction="play"],
+.pet[data-reaction="pet"] { animation: jump 0.4s steps(3) 3; }
+.pet[data-reaction="train"] { animation: shake 0.12s steps(2) 8; }
+.pet[data-reaction="no"] { animation: shake 0.2s steps(2) 3; }
+.pet[data-reaction="evolve"],
+.pet[data-reaction="hatch"] { animation: evolveFlash 0.3s steps(2) 5; }
+
+.shadow {
+  position: absolute;
+  bottom: 8px;
+  width: 64px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(30, 30, 36, 0.25);
+}
+
+.hearts {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.hearts i {
+  position: absolute;
+  bottom: 30px;
+  color: #ff4d7a;
+  font-style: normal;
+  font-size: 20px;
+  opacity: 0;
+  animation: heart 1.8s steps(6) infinite;
+}
+
+.hearts i:nth-child(1) { left: 34%; animation-delay: 0s; }
+.hearts i:nth-child(2) { left: 52%; animation-delay: 0.6s; font-size: 16px; }
+.hearts i:nth-child(3) { left: 64%; animation-delay: 1.2s; }
+
+.bubble {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 2;
+  padding: 0 8px;
+  border: 2px solid var(--graphite);
+  border-radius: 10px;
+  background: var(--white);
+  font-size: 18px;
+}
+
+.stage[data-mood="sleeping"] .bubble {
+  border: 0;
+  background: none;
+  color: var(--white);
+  font-family: var(--font-pixel), monospace;
+  animation: drift 2s steps(4) infinite;
+}
+
+.reaction {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  color: var(--red);
+  font-family: var(--font-pixel), monospace;
+  font-size: 22px;
+  animation: pop 1.6s steps(6) forwards;
+}
+
+.reaction[data-kind="evolve"],
+.reaction[data-kind="hatch"] {
+  inset: 0;
+  background: var(--white);
+  animation: flash 1.6s steps(8) forwards;
+}
+
+.egg {
+  position: relative;
+  z-index: 1;
+  width: 58px;
+  height: 74px;
+  border: 3px solid var(--graphite);
+  border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%;
+  background:
+    radial-gradient(circle at 32% 38%, #7ccf6a 0 7px, transparent 8px),
+    radial-gradient(circle at 66% 62%, #7ccf6a 0 9px, transparent 10px),
+    radial-gradient(circle at 40% 80%, #7ccf6a 0 5px, transparent 6px),
+    #fffbea;
+  transform-origin: 50% 100%;
+  animation: wiggle 2.4s steps(4) infinite;
+}
+
+.egg[data-soon="true"] {
+  animation: wiggle 0.6s steps(4) infinite;
+}
+
+.emptyStage {
+  display: grid;
+  flex: 1;
+  place-content: center;
+  padding: 0 12px;
+  text-align: center;
+  font-size: 20px;
+}
+
+.emptyStage p {
+  margin: 4px 0;
+}
+
+.info {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-pixel), monospace;
+  font-size: 15px;
+}
+
+.level {
+  color: var(--red);
+}
+
+.eggText {
+  margin: 4px 0;
+  font-size: 20px;
+  text-align: center;
+}
+
+/* Needs */
+
+.needs {
+  display: grid;
+  gap: 2px;
+}
+
+.need {
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  align-items: center;
+  font-size: 17px;
+}
+
+.track {
+  height: 9px;
+  border: 2px solid var(--graphite);
+  border-radius: 5px;
+  background: var(--graphite);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+}
+
+.fill[data-tone="high"] { background: #3ddc84; }
+.fill[data-tone="mid"] { background: #ffd23f; }
+.fill[data-tone="low"] { background: #ff4d5e; }
+.fill[data-tone="xp"] { background: #6f9cff; }
+
+.evolveHint {
+  margin: 0;
+  color: #6b6b76;
+  font-size: 16px;
+  text-align: right;
+}
+
+/* Action menu */
+
+.menu {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+  margin-top: auto;
+}
+
+.menu button {
+  padding: 2px 0;
+  border: 2px solid var(--graphite);
+  border-radius: 5px;
+  background: var(--white);
+  color: var(--graphite);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.menu button[data-focused="true"] {
+  background: var(--red);
+  color: var(--white);
+}
+
+@keyframes bounce {
+  50% { transform: scale(0.8) translateY(-5px); }
+}
+
+@keyframes hop {
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes sway {
+  25% { transform: scale(1.1) translateX(-2px); }
+  75% { transform: scale(1.1) translateX(2px); }
+}
+
+@keyframes breathe {
+  50% { transform: scale(1.2) scaleY(1.03); }
+}
+
+@keyframes munch {
+  50% { transform: scaleY(0.92); }
+}
+
+@keyframes jump {
+  50% { transform: translateY(-14px); }
+}
+
+@keyframes shake {
+  50% { transform: translateX(4px); }
+}
+
+@keyframes evolveFlash {
+  50% { filter: brightness(0) invert(1); }
+}
+
+@keyframes heart {
+  0% { opacity: 0; transform: translateY(0); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-50px); }
+}
+
+@keyframes drift {
+  50% { transform: translate(4px, -4px); }
+}
+
+@keyframes pop {
+  0% { opacity: 0; transform: translateY(6px); }
+  20% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes flash {
+  0%, 100% { opacity: 0; }
+  20%, 60% { opacity: 1; }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-8deg); }
+  75% { transform: rotate(8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet,
+  .pet[data-reaction],
+  .egg,
+  .hearts i,
+  .bubble,
+  .reaction {
+    animation: none !important;
+  }
+
+  .reaction[data-kind="evolve"],
+  .reaction[data-kind="hatch"] {
+    display: none;
+  }
+}

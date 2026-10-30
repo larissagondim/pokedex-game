@@ -9,6 +9,7 @@ import { normalize, searchPokemon } from "@/lib/search";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { acceptsInput, useDeviceState } from "@/stores/deviceState";
 import { useFavorites } from "@/stores/favorites";
+import { useTamagotchi } from "@/stores/tamagotchi";
 import { usePokedex } from "@/stores/pokedex";
 import type { Pokemon } from "@/data/pokedex";
 import { DialogBox } from "./DialogBox";
@@ -21,8 +22,12 @@ import { RegionBar } from "./RegionBar";
 import { SearchBar } from "./SearchBar";
 import styles from "./screen.module.css";
 import { TabBar } from "./TabBar";
+import { TamagotchiScreen } from "./TamagotchiScreen";
+import { describeEvent } from "./tamaMessages";
 
 const TABS = ["LIST", "BATTLE", "TAMAGOTCHI"] as const;
+const TAMAGOTCHI_TAB = 2;
+const TAMA_HINT = "▲▼ party   ◀▶ action   A: do it   Click your Pokémon to hear it!";
 const LIST_HINT = "▲▼ Pokémon   ◀▶ region   A: open   MENU: tab   ▲ on the first row: filters, then search (A = keyboard)";
 
 /** Runs before the device controller, so the UI gets first say on each button. */
@@ -102,6 +107,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const status = usePokedex((s) => s.status);
   const power = useScreenPower();
   const zoomed = useDeviceState((s) => s.phase === "ZOOMED");
+  const phaseAcceptsInput = useDeviceState((s) => acceptsInput(s.phase));
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -136,11 +142,17 @@ export function DeviceScreen({ onRequestZoom }: Props) {
         : [],
     [detailPokemon],
   );
-  const typing = useTypewriter(power === "on" ? (pages[page] ?? null) : null);
+  /** One-off message in the dialog box (adoption, Tamagotchi events...). */
+  const [notice, setNotice] = useState<string | null>(null);
+  /** On a Pokémon page, "Adopt X?" is waiting for A (yes) or B (no). */
+  const [adoptPrompt, setAdoptPrompt] = useState(false);
+  const typing = useTypewriter(power === "on" ? (notice ?? pages[page] ?? null) : null);
   const hasNextPage = page < pages.length - 1;
 
   const showPokemon = (p: Pokemon) => {
     dismissKeyboard();
+    setNotice(null);
+    setAdoptPrompt(false);
     setDetailId(p.id);
     setPage(0);
     // Keep the list cursor on it when it's among the listed items.
@@ -222,9 +234,28 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   };
   const switchTab = (next: number) => {
     dismissKeyboard();
+    setNotice(null);
+    setAdoptPrompt(false);
     setTab(next);
     setDetailId(null);
   };
+
+  const askToAdopt = () => {
+    if (!detailPokemon) return;
+    setAdoptPrompt(true);
+    setNotice(`Adopt ${detailPokemon.name.toUpperCase()}? A: yes   B: no`);
+  };
+
+  // Tamagotchi events (adoption, actions, evolution...) speak through the dialog box.
+  useEffect(
+    () =>
+      useTamagotchi.subscribe(({ event }, prev) => {
+        if (!event || event === prev.event) return;
+        const { list: dexList } = usePokedex.getState();
+        setNotice(describeEvent(event, (id) => (dexList.find((p) => p.id === id)?.name ?? "the egg").toUpperCase()));
+      }),
+    [],
+  );
 
   /** Returns true when the screen consumed the button. */
   const handle = (button: DeviceButton): boolean => {
@@ -262,13 +293,25 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       return true;
     }
 
+    if (detailId !== null && adoptPrompt) {
+      setAdoptPrompt(false);
+      if (button === "A") useTamagotchi.getState().adopt(detailId);
+      else setNotice(null);
+      return true;
+    }
+
     if (detailId !== null) {
       if (button === "LEFT" || button === "UP") stepDetail(-1);
       else if (button === "RIGHT" || button === "DOWN") stepDetail(1);
       else if (button === "A") {
         if (!typing.done) typing.finish();
+        else if (notice) setNotice(null);
         else if (hasNextPage) setPage((p) => p + 1);
-      } else if (button === "B") setDetailId(null);
+        else askToAdopt();
+      } else if (button === "B") {
+        if (notice) setNotice(null);
+        else setDetailId(null);
+      }
       else if (button === "MENU") useFavorites.getState().toggle(detailId);
       return true;
     }
@@ -351,9 +394,13 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const dialogText = detailPokemon
+  const tamaActive = tab === TAMAGOTCHI_TAB && power === "on" && phaseAcceptsInput;
+
+  const dialogText = notice || detailPokemon
     ? typing.visible
-    : tab !== 0
+    : tab === TAMAGOTCHI_TAB
+      ? TAMA_HINT
+      : tab !== 0
       ? "Coming soon!"
       : keyPos
         ? "◀▲▼▶ move   A: type   B: delete   MENU: done"
@@ -366,7 +413,9 @@ export function DeviceScreen({ onRequestZoom }: Props) {
               : LIST_HINT;
 
   let body;
-  if (tab !== 0) {
+  if (tab === TAMAGOTCHI_TAB) {
+    body = <TamagotchiScreen active={tamaActive} onNotice={setNotice} />;
+  } else if (tab !== 0) {
     body = (
       <div className={styles.panel + " " + styles.soon}>
         <h2>{TABS[tab]}</h2>
@@ -391,6 +440,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
         onBack={() => setDetailId(null)}
         favorite={favorites.has(detailPokemon.id)}
         onToggleFavorite={() => useFavorites.getState().toggle(detailPokemon.id)}
+        onAdopt={() => useTamagotchi.getState().adopt(detailPokemon.id)}
       />
     );
   } else {
@@ -461,7 +511,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     >
       <TabBar tabs={TABS} active={tab} onChange={switchTab} onClose={() => useDeviceState.getState().close()} />
       {body}
-      <DialogBox text={dialogText} waiting={typing.done && hasNextPage} />
+      <DialogBox text={dialogText} waiting={typing.done && hasNextPage && !notice} />
 
       <div className={styles.powerOverlay} data-power={power} aria-hidden>
         <div className={styles.bootLine} />
