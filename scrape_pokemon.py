@@ -131,6 +131,7 @@ def build_pokemon(pid, images):
         "sprite_url": sprite_url,
         "artwork_url": artwork_url,
         "animated_url": animated_url,
+        "cry_url": (p.get("cries") or {}).get("latest"),
     }
 
 
