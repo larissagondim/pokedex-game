@@ -20,6 +20,11 @@ Guidance for coding agents working in this repo. The Next.js app lives in `web/`
 
 `Device.tsx` (root: lid spring, idle float/sway, cover click) → `BaseHalf.tsx`, `LidHalf.tsx`, `Hinge.tsx`, `MainScreen.tsx`, `SecondaryScreen.tsx`, `DPad.tsx`, `ActionButton.tsx`, `PillButton.tsx`, `SpeakerGrill.tsx` (+ `CryEmitter.tsx`), `StatusLed.tsx`, `Cover.tsx`. Shared: `materials.tsx`, `geometry.ts`, `PressableButton.tsx`, `CameraRig.tsx`, `DeviceScene.tsx` (Canvas, lazy-loaded by `DeviceExperience.tsx`).
 
+### Layouts
+
+- `hooks/useDeviceLayout.ts` decides between the **split** layout (desktop: controls on the right half) and the **compact** one (touch + portrait: controls under the screen on the left half, lid flat, camera on that half, rotation off). `?layout=compact|split` forces one.
+- Control positions for both live in `device.config.ts` (`SPLIT_CONTROLS`, `COMPACT_CONTROLS`) and are rendered by `Controls.tsx`.
+
 ### Swapping in a Blender .glb
 
 - Set `DEVICE_GLB_URL` in `ModelPart.tsx` (e.g. `"/models/device.glb"`, file in `web/public/models/`).
