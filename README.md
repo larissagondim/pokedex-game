@@ -47,6 +47,7 @@ The commit history shows how the project grew step by step: scraper, then web sc
 | Battles | 1v1 between any two Pokémon and 6v6 by teams, using the `@pkmn/sim` engine in Next.js API routes | 🕒 Planned |
 | Win prediction | Win probability before and during a battle, computed by a trained model served via FastAPI | 🕒 Planned |
 | Tamagotchi | Adopt a Pokémon and take care of hunger, happiness, energy and XP, which decay over time. Actions: feed, play, sleep and train | 🕒 Planned |
+| Trainer profile | Create your own trainer profile: pick a name, design your trainer sprite (hair, outfit, colors, etc.) and show it on the device. The profile ties together your Tamagotchi, favorites and battle history | 🕒 Planned |
 
 The BATTLE and TAMAGOTCHI tabs exist on the screen but currently show a "coming soon" placeholder.
 
@@ -243,6 +244,7 @@ The tests cover the lower bound edges, case/accent handling, number lookups and 
 - [ ] **Phase 4:** dataset, model and probability bar
 - [ ] **Phase 5:** 6v6 battle
 - [ ] **Phase 6:** Tamagotchi
+- [ ] **Phase 7:** Trainer profile (name and customizable sprite)
 
 ## Controls
 
