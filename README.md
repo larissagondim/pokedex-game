@@ -46,7 +46,7 @@ The commit history shows how the project grew step by step: scraper, then web sc
 | Fun facts | Fun facts on the detail page | 🕒 Planned |
 | Battles | 1v1 between any two Pokémon and 6v6 by teams, using the `@pkmn/sim` engine in Next.js API routes | 🕒 Planned |
 | Win prediction | Win probability before and during a battle, computed by a trained model served via FastAPI | 🕒 Planned |
-| Tamagotchi | Adopt a Pokémon and take care of hunger, happiness, energy and XP, which decay over time. Actions: feed, play, sleep and train | 🕒 Planned |
+| Tamagotchi | Adopt up to 5 Pokémon from the list (A at the end of a Pokémon page, or ♥ ADOPT). Food, joy and energy decay with real time; feed, play, sleep and train them. XP raises the level and they **evolve** (babies also need to be happy). Coins earned by playing and training buy **eggs** that hatch into a random base-stage or baby Pokémon. Hearts when happy, mood bubbles, reactions per action, idle animation by evolution stage, and clicking one plays its cry. Saved in `localStorage` | ✅ Done (v1) |
 | Trainer profile | Create your own trainer profile: pick a name, design your trainer sprite (hair, outfit, colors, etc.) and show it on the device. The profile ties together your Tamagotchi, favorites and battle history | 🕒 Planned |
 
 The BATTLE and TAMAGOTCHI tabs exist on the screen but currently show a "coming soon" placeholder.
@@ -240,10 +240,11 @@ The tests cover the lower bound edges, case/accent handling, number lookups and 
 - [x] Type filter, sorting, favorites and a "coming soon" slot for the next generation
 - [ ] **Phase 1:** finish the Pokédex (fun facts) + Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
-- [ ] **Phase 3:** 1v1 battle
+- [x] Tamagotchi v1 (party of 5, needs, evolution, eggs)
+- [ ] **Phase 3:** 1v1 battle (built by hand)
 - [ ] **Phase 4:** dataset, model and probability bar
 - [ ] **Phase 5:** 6v6 battle
-- [ ] **Phase 6:** Tamagotchi
+- [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
 - [ ] **Phase 7:** Trainer profile (name and customizable sprite)
 
 ## Controls
@@ -256,6 +257,8 @@ Keyboard and the physical buttons on the device do the same thing. Each key maps
 | `Z` | A | Confirm / open details / advance the dialog / open the keyboard / type a key |
 | `X` | B | Go back (clears the search; deletes a letter on the keyboard); at the root, leave zoom |
 | `Enter` | MENU | Next tab (List, Battle, Tamagotchi); on a Pokémon page, toggle ★ favorite; on the keyboard, done |
+
+On the TAMAGOTCHI tab: ↑ ↓ pick a Pokémon from the party, ← → pick an action, A does it, B goes back to the list.
 | `Space` | ZOOM | Zoom in or out of the screen (opens the device if closed) |
 | `Esc` | n/a | Leave zoom (in the search field: clear it, then leave the field) |
 | `/` | n/a | Focus the search field. While typing, ↑ ↓ move through the results and `Enter` opens one |
