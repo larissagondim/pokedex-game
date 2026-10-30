@@ -147,7 +147,8 @@ export const CAMERA = {
   fov: 35,
   /** camera-controls smoothTime; ~0.25 s gives transitions of about 0.8 s. */
   smoothTime: 0.25,
-  padding: { closed: 1.2, open: 0.8, zoomed: 0.08 },
+  /** Generous margins so the device stays in frame when rotated. */
+  padding: { closed: 1.8, open: 1.8, zoomed: 0.08 },
   minPolarAngle: Math.PI / 2 - 0.7,
   maxPolarAngle: Math.PI / 2 + 0.35,
   minAzimuthAngle: -1.0,
@@ -167,6 +168,11 @@ export const COLORS = {
 } as const;
 
 export const FONT_URL = "/fonts/PixelifySans.ttf";
+
+/** z-index budget for drei's <Html>: canvas at HTML_Z_RANGE / 2, DOM below. */
+export const HTML_Z_RANGE = 100;
+/** Page overlays (HUD) sit above the canvas. Keep in sync with experience.module.css. */
+export const HUD_Z_INDEX = HTML_Z_RANGE + 1;
 
 // Derived positions -------------------------------------------------------
 

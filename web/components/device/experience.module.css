@@ -3,6 +3,12 @@
   inset: 0;
 }
 
+/* Above the canvas (see HUD_Z_INDEX in device.config.ts). */
+.hud,
+.corner {
+  z-index: 101;
+}
+
 .hud {
   position: absolute;
   left: 16px;

@@ -4,7 +4,7 @@ import { Html } from "@react-three/drei";
 import { DeviceScreen } from "@/components/screen/DeviceScreen";
 import { useDeviceState } from "@/stores/deviceState";
 import { useRoundedFrame } from "./geometry";
-import { SCREEN_HALF, COLORS, htmlDistanceFactor, SCREEN_CENTER } from "./device.config";
+import { COLORS, HTML_Z_RANGE, htmlDistanceFactor, SCREEN_CENTER, SCREEN_HALF } from "./device.config";
 import { ModelPart } from "./ModelPart";
 
 /**
@@ -36,6 +36,9 @@ export function MainScreen() {
       <Html
         transform
         occlude="blending"
+        // Blending puts the canvas at zIndexRange[0] / 2 and the DOM below it;
+        // keep both low so the page HUD (HUD_Z_INDEX) stays on top.
+        zIndexRange={[HTML_Z_RANGE, 0]}
         position={[0, 0, screenZ]}
         distanceFactor={htmlDistanceFactor(width, cssWidth)}
         style={{ width: cssWidth, height: cssHeight }}
