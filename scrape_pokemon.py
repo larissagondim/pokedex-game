@@ -122,8 +122,12 @@ def build_pokemon(pid, images):
         "generation": s["generation"]["name"],
         "is_legendary": s["is_legendary"],
         "is_mythical": s["is_mythical"],
+        "is_baby": s["is_baby"],
         "capture_rate": s["capture_rate"],
         "evolves_from": (s["evolves_from_species"] or {}).get("name"),
+        "evolves_from_id": (
+            int(s["evolves_from_species"]["url"].rstrip("/").split("/")[-1]) if s["evolves_from_species"] else None
+        ),
         "evolution_chain_id": int(s["evolution_chain"]["url"].rstrip("/").split("/")[-1]),
         "sprite": f"sprites/{pid}.png" if sprite_url else None,
         "artwork": f"artwork/{pid}.png" if artwork_url else None,

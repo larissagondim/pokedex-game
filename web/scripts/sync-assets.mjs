@@ -42,6 +42,10 @@ if (!existsSync(dataFile)) {
     },
     animated: Boolean(p.animated),
     cry: p.cry_url ?? null,
+    evolvesFromId: p.evolves_from_id ?? null,
+    isBaby: Boolean(p.is_baby),
+    isLegendary: Boolean(p.is_legendary),
+    isMythical: Boolean(p.is_mythical),
   }));
   mkdirSync(join(web, "public", "data"), { recursive: true });
   writeFileSync(join(web, "public", "data", "pokedex.json"), JSON.stringify(pokedex));

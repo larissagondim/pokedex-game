@@ -23,6 +23,11 @@ export interface Pokemon {
   animated: boolean;
   /** Remote .ogg URL of the cry. */
   cry: string | null;
+  /** Dex number of the species it evolves from, or null for a base stage. */
+  evolvesFromId: number | null;
+  isBaby: boolean;
+  isLegendary: boolean;
+  isMythical: boolean;
 }
 
 export const POKEDEX_URL = "/data/pokedex.json";
