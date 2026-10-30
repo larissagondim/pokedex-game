@@ -328,7 +328,7 @@ function Stage({ pet, species, stage, reaction, now, onPet }: StageProps) {
         </button>
       )}
       {hearts && (
-        <span className={styles.hearts} key={reaction?.key ?? "mood"} aria-hidden>
+        <span className={styles.hearts} key={`hearts-${reaction?.key ?? "mood"}`} aria-hidden>
           <i>♥</i>
           <i>♥</i>
           <i>♥</i>
@@ -336,7 +336,7 @@ function Stage({ pet, species, stage, reaction, now, onPet }: StageProps) {
       )}
       {MOOD_LABEL[mood] && <span className={styles.bubble}>{MOOD_LABEL[mood]}</span>}
       {reaction && (
-        <span key={reaction.key} className={styles.reaction} data-kind={reaction.kind} aria-hidden>
+        <span key={`reaction-${reaction.key}`} className={styles.reaction} data-kind={reaction.kind} aria-hidden>
           {REACTION_TEXT[reaction.kind]}
         </span>
       )}
