@@ -2,9 +2,11 @@
 
 import dynamic from "next/dynamic";
 import { formatDexNumber } from "@/data/pokedex";
+import { regionOf } from "@/lib/regions";
 import { useDeviceController } from "@/hooks/useDeviceController";
 import { useGamepadInput } from "@/hooks/useGamepadInput";
 import { useKeyboardInput } from "@/hooks/useKeyboardInput";
+import { useRegionMusic } from "@/hooks/useRegionMusic";
 import { useSoundEffects } from "@/hooks/useSoundEffects";
 import { useAudio } from "@/stores/audio";
 import { isLidOpen, isZoomedIn, useDeviceState } from "@/stores/deviceState";
@@ -27,6 +29,7 @@ export function DeviceExperience() {
   useGamepadInput();
   useDeviceController();
   useSoundEffects();
+  useRegionMusic();
 
   const phase = useDeviceState((s) => s.phase);
   const open = isLidOpen(phase);
@@ -34,6 +37,7 @@ export function DeviceExperience() {
   const { toggle, toggleZoom, resetView } = useDeviceState.getState();
   const muted = useAudio((s) => s.muted);
   const unlocked = useAudio((s) => s.unlocked);
+  const musicOn = useAudio((s) => s.musicOn);
   const focused = usePokedex((s) => s.list.find((p) => p.id === s.focusedId));
 
   return (
@@ -46,6 +50,9 @@ export function DeviceExperience() {
         </button>
         <button type="button" onClick={useAudio.getState().toggleMute} aria-pressed={!muted}>
           {muted || !unlocked ? "Som: desligado" : "Som: ligado"}
+        </button>
+        <button type="button" onClick={useAudio.getState().toggleMusic} aria-pressed={musicOn}>
+          {musicOn ? `♪ Música: ${(focused && regionOf(focused.id)?.name) ?? "ligada"}` : "♪ Música: desligada"}
         </button>
       </div>
 

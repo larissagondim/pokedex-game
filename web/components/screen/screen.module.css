@@ -104,7 +104,7 @@
   display: grid;
   grid-template-columns: 22px 70px 1fr;
   align-items: center;
-  height: 40px;
+  height: 36px;
   padding: 0 6px;
   border: 5px solid transparent;
   border-radius: 6px;
@@ -167,6 +167,40 @@
 
 .search input::placeholder {
   color: #9a9aa6;
+}
+
+.regionBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  margin-bottom: 4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--graphite);
+  color: var(--gray-light);
+}
+
+.regionBar button {
+  border: 0;
+  background: none;
+  color: var(--red);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.regionName {
+  font-family: var(--font-pixel), monospace;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+
+.regionRange {
+  flex: 1;
+  color: #9a9aa6;
+  font-size: 18px;
+  text-align: right;
 }
 
 .empty {
