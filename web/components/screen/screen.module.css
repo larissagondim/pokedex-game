@@ -136,6 +136,44 @@
   font-size: 28px;
 }
 
+.search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  margin-bottom: 4px;
+  padding: 0 8px;
+  border: 3px solid var(--graphite);
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--red);
+  font-size: 24px;
+}
+
+.search:focus-within {
+  outline: 3px solid #ffd23f;
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--graphite);
+  font: inherit;
+  font-size: 23px;
+}
+
+.search input::placeholder {
+  color: #9a9aa6;
+}
+
+.empty {
+  margin: 12px 8px;
+  color: #6b6b76;
+}
+
 .scrollUp,
 .scrollDown {
   position: absolute;

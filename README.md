@@ -40,7 +40,8 @@ The commit history shows how the project grew step by step: scraper, then web sc
 | Input system | Keyboard, gamepad and 3D buttons emit the same events through a priority-based handler stack. Held directions repeat | ✅ Done |
 | Sound | Synthesized UI blips (WebAudio) and Pokémon cries played from the speaker grill (positional audio). Mute button; audio starts after the first interaction | ✅ Done |
 | Pokédex screen | 4:3 retro handheld UI inside the device. Scrollable list of all 1025 Pokémon with a preview panel, and a detail page with animated sprite, types, base stats, height, weight, abilities and a typewriter-style dialog box with the dex entry. Respects `prefers-reduced-motion` | ✅ Done |
-| Search and filters | Search by name or number, filter by generation. Generation 10 will show as "coming soon" (announced for 2027, only the starters revealed) | 🕒 Planned |
+| Search | Search by name prefix (binary search, results A→Z) or by number (`25`, `#25`) from a field above the list; `/` focuses it | ✅ Done |
+| Generation filter | Filter by generation. Generation 10 will show as "coming soon" (announced for 2027, only the starters revealed) | 🕒 Planned |
 | Fun facts | Fun facts on the detail page | 🕒 Planned |
 | Battles | 1v1 between any two Pokémon and 6v6 by teams, using the `@pkmn/sim` engine in Next.js API routes | 🕒 Planned |
 | Win prediction | Win probability before and during a battle, computed by a trained model served via FastAPI | 🕒 Planned |
@@ -161,6 +162,7 @@ Then open http://localhost:3000. `npm run dev` and `npm run build` first run `np
 
 ```bash
 npm run lint    # ESLint
+npm test        # unit tests (search)
 npm run build   # production build
 npm run start   # serve the production build
 ```
@@ -194,9 +196,11 @@ Exact commands will be documented here once `ml/` exists.
 
 ## Data structures and algorithms
 
-### Prefix search with binary search _(planned)_
+### Prefix search with binary search
 
-Pokémon are kept in a **list sorted by name**. For prefix search (the user types "pik" and sees Pikachu, Pikipek...), we use binary search to find the **first position** whose name is `>= prefix` (a _lower bound_), then scan forward while names still start with the prefix.
+Implemented in [`web/lib/search.ts`](web/lib/search.ts), with tests in `web/lib/search.test.ts` (`npm test` in `web/`).
+
+When the Pokédex loads, a search index is built once: the Pokémon **sorted by normalized name** (lowercase, accents removed, so "flabe" finds Flabébé). For a prefix search (the user types "c" and sees every Pokémon starting with C, in alphabetical order), binary search finds the **first position** whose name is `>= prefix` (a _lower bound_), then the code scans forward while names still start with the prefix. All matches are contiguous in the sorted list, so the scan touches only the results.
 
 **Why:**
 
@@ -213,7 +217,9 @@ Pokémon are kept in a **list sorted by name**. For prefix search (the user type
 | Collect the `k` results | `O(k)` |
 | Full search | `O(log n + k)` |
 
-Lookup by number (id) is direct index access, `O(1)`.
+A numeric query (`25`, `#25`, `#0025`) is an exact lookup by number in a `Map`, `O(1)`.
+
+The tests cover the lower bound edges, case/accent handling, number lookups and a comparison against a brute-force filter on 500 prefixes.
 
 ## Roadmap
 
@@ -223,7 +229,8 @@ Lookup by number (id) is direct index access, `O(1)`.
 - [x] Procedural 3D device with hinge, buttons and camera rig
 - [x] Pokédex screen: list, preview and detail page for all 1025 Pokémon
 - [x] 3D device v2: phase state machine, spring hinge, boot animation, sound, cries, gamepad
-- [ ] **Phase 1:** finish the Pokédex (search, generation filter, fun facts) + Docker
+- [x] Search by name prefix (binary search) or number
+- [ ] **Phase 1:** finish the Pokédex (generation filter, fun facts) + Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
 - [ ] **Phase 3:** 1v1 battle
 - [ ] **Phase 4:** dataset, model and probability bar
@@ -241,7 +248,8 @@ Keyboard and the physical buttons on the device do the same thing. Each key maps
 | `X` | B | Go back; at the root, leave zoom |
 | `Enter` | MENU | Next tab (List, Battle, Tamagotchi) |
 | `Space` | ZOOM | Zoom in or out of the screen (opens the device if closed) |
-| `Esc` | n/a | Leave zoom |
+| `Esc` | n/a | Leave zoom (in the search field: clear it, then leave the field) |
+| `/` | n/a | Focus the search field. While typing, ↑ ↓ move through the results and `Enter` opens one |
 
 Gamepads with the standard mapping also work: D-pad or left stick, A/B (bottom/right face buttons), Start = MENU, Select or Y = ZOOM. Opening: click the cover, press A, or use the "Open device" page button. Closing: the ⏻ button on the screen, a click on the hinge, or the page button.
 

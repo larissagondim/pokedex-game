@@ -1,10 +1,13 @@
 import { create } from "zustand";
 import { type Pokemon, POKEDEX_URL } from "@/data/pokedex";
+import { buildSearchIndex, type SearchIndex } from "@/lib/search";
 
 interface PokedexState {
   /** All Pokémon, in National Dex order. Empty until loaded. */
   list: Pokemon[];
   status: "idle" | "loading" | "ready" | "error";
+  /** Built once after loading (sorted by name for binary search). */
+  searchIndex: SearchIndex | null;
   /** National Dex number under the list cursor (shown on the secondary screen). */
   focusedId: number | null;
   /** National Dex number of the confirmed (A) Pokémon, or null for none. */
@@ -20,6 +23,7 @@ interface PokedexState {
 export const usePokedex = create<PokedexState>((set, get) => ({
   list: [],
   status: "idle",
+  searchIndex: null,
   focusedId: null,
   selectedId: null,
   cryRequest: null,
@@ -30,7 +34,8 @@ export const usePokedex = create<PokedexState>((set, get) => ({
     try {
       const res = await fetch(POKEDEX_URL);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      set({ list: (await res.json()) as Pokemon[], status: "ready" });
+      const list = (await res.json()) as Pokemon[];
+      set({ list, searchIndex: buildSearchIndex(list), status: "ready" });
     } catch {
       set({ status: "error" });
     }

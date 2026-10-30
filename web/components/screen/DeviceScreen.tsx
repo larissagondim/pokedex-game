@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useScreenPower } from "@/hooks/useScreenPower";
 import { useTypewriter } from "@/hooks/useTypewriter";
+import { searchPokemon } from "@/lib/search";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { acceptsInput, useDeviceState } from "@/stores/deviceState";
 import { usePokedex } from "@/stores/pokedex";
@@ -10,11 +11,12 @@ import { DialogBox } from "./DialogBox";
 import { PokemonDetail } from "./PokemonDetail";
 import { PokemonList } from "./PokemonList";
 import { PreviewPanel } from "./PreviewPanel";
+import { SearchBar } from "./SearchBar";
 import styles from "./screen.module.css";
 import { TabBar } from "./TabBar";
 
 const TABS = ["LISTA", "BATALHA", "TAMAGOTCHI"] as const;
-const LIST_HINT = "▶ Direcional: navegar   A: abrir   MENU: trocar aba   ZOOM: zoom";
+const LIST_HINT = "▶ Direcional: navegar   A: abrir   /: buscar   MENU: trocar aba   ZOOM: zoom";
 
 /** Runs before the device controller, so the UI gets first say on each button. */
 const SCREEN_INPUT_PRIORITY = 10;
@@ -53,6 +55,14 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const [page, setPage] = useState(0);
   const selectedId = usePokedex((s) => s.selectedId);
   const list = usePokedex((s) => s.list);
+  const searchIndex = usePokedex((s) => s.searchIndex);
+  const [query, setQuery] = useState("");
+  const searchInput = useRef<HTMLInputElement>(null);
+  /** What the list shows: search results, or every Pokémon by number. */
+  const items = useMemo(
+    () => (query.trim() && searchIndex ? searchPokemon(searchIndex, query) : list),
+    [query, searchIndex, list],
+  );
   const status = usePokedex((s) => s.status);
   const power = useScreenPower();
   const zoomed = useDeviceState((s) => s.phase === "ZOOMED");
@@ -64,15 +74,16 @@ export function DeviceScreen({ onRequestZoom }: Props) {
 
   // The secondary screen shows whatever is under the cursor.
   useEffect(() => {
-    usePokedex.getState().focus(list[cursor]?.id ?? null);
-  }, [list, cursor]);
+    usePokedex.getState().focus(items[cursor]?.id ?? null);
+  }, [items, cursor]);
+
 
   // Zoomed in: the interface takes keyboard focus.
   useEffect(() => {
     if (zoomed) root.current?.focus({ preventScroll: true });
   }, [zoomed]);
 
-  const detailPokemon = detail !== null ? list[detail] : null;
+  const detailPokemon = detail !== null ? items[detail] : null;
   const pages = useMemo(
     () =>
       detailPokemon
@@ -88,7 +99,8 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const hasNextPage = page < pages.length - 1;
 
   const openDetail = (index: number) => {
-    const p = list[index];
+    const p = items[index];
+    if (!p) return;
     setCursor(index);
     setDetail(index);
     setPage(0);
@@ -96,7 +108,14 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     usePokedex.getState().playCry(p.id);
   };
   const stepDetail = (delta: number) => {
-    if (detail !== null) openDetail(wrap(detail + delta, list.length));
+    if (detail !== null) openDetail(wrap(detail + delta, items.length));
+  };
+  const moveCursor = (delta: number) => {
+    if (items.length > 0) setCursor((c) => wrap(c + delta, items.length));
+  };
+  const changeQuery = (value: string) => {
+    setQuery(value);
+    setCursor(0);
   };
   const switchTab = (next: number) => {
     setTab(next);
@@ -124,18 +143,22 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     switch (button) {
       case "UP":
       case "DOWN":
-        if (tab === 0 && list.length > 0) setCursor((c) => wrap(c + (button === "UP" ? -1 : 1), list.length));
+        if (tab === 0) moveCursor(button === "UP" ? -1 : 1);
         return true;
       case "LEFT":
       case "RIGHT":
         switchTab(wrap(tab + (button === "LEFT" ? -1 : 1), TABS.length));
         return true;
       case "A":
-        if (tab === 0 && list.length > 0) openDetail(cursor);
+        if (tab === 0) openDetail(cursor);
         return true;
       case "B":
         if (tab !== 0) {
           switchTab(0);
+          return true;
+        }
+        if (query) {
+          changeQuery("");
           return true;
         }
         return false; // at the root: let the device leave zoom
@@ -159,6 +182,27 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     [],
   );
 
+  // "/" jumps to the search field from anywhere on the list.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.target instanceof HTMLInputElement) return;
+      if (!acceptsInput(useDeviceState.getState().phase) || powerRef.current !== "on") return;
+      e.preventDefault();
+      const focusInput = () => searchInput.current?.focus({ preventScroll: true });
+      if (searchInput.current) {
+        // Focus right away so keys typed right after "/" land in the field.
+        focusInput();
+      } else {
+        // On another tab or a Pokémon page: show the list, focus once it mounts.
+        setTab(0);
+        setDetail(null);
+        requestAnimationFrame(focusInput);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const dialogText = detailPokemon ? typing.visible : tab === 0 ? LIST_HINT : "Em breve!";
 
   let body;
@@ -176,12 +220,12 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       </div>
     );
   } else if (detail !== null && detailPokemon) {
-    const n = list.length;
+    const n = items.length;
     body = (
       <PokemonDetail
         pokemon={detailPokemon}
-        prevId={list[wrap(detail - 1, n)].id}
-        nextId={list[wrap(detail + 1, n)].id}
+        prevId={items[wrap(detail - 1, n)].id}
+        nextId={items[wrap(detail + 1, n)].id}
         onPrev={() => stepDetail(-1)}
         onNext={() => stepDetail(1)}
         onBack={() => setDetail(null)}
@@ -191,12 +235,22 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     body = (
       <div className={styles.body}>
         <PokemonList
-          items={list}
+          items={items}
           cursor={cursor}
           selectedId={selectedId}
           onRowClick={(i) => (i === cursor ? openDetail(i) : setCursor(i))}
+          emptyText="Nenhum Pokémon encontrado."
+          header={
+            <SearchBar
+              ref={searchInput}
+              value={query}
+              onChange={changeQuery}
+              onMove={moveCursor}
+              onSubmit={() => openDetail(cursor)}
+            />
+          }
         />
-        <PreviewPanel pokemon={list[cursor]} />
+        {items[cursor] ? <PreviewPanel pokemon={items[cursor]} /> : <div className={styles.panel} />}
       </div>
     );
   }
