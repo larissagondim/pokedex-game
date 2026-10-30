@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useScreenPower } from "@/hooks/useScreenPower";
 import { useTypewriter } from "@/hooks/useTypewriter";
+import { applyListing, FILTERS, SORTS, type Sort } from "@/lib/listing";
 import { REGIONS, regionIndexOf } from "@/lib/regions";
-import { searchPokemon } from "@/lib/search";
+import { normalize, searchPokemon } from "@/lib/search";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { acceptsInput, useDeviceState } from "@/stores/deviceState";
+import { useFavorites } from "@/stores/favorites";
 import { usePokedex } from "@/stores/pokedex";
 import type { Pokemon } from "@/data/pokedex";
 import { DialogBox } from "./DialogBox";
+import { ListOptions } from "./ListOptions";
 import { PokemonDetail } from "./PokemonDetail";
 import { type KeyDef, type KeyPos, keyFor, moveKey, OnScreenKeyboard } from "./OnScreenKeyboard";
 import { PokemonList } from "./PokemonList";
@@ -20,7 +23,7 @@ import styles from "./screen.module.css";
 import { TabBar } from "./TabBar";
 
 const TABS = ["LIST", "BATTLE", "TAMAGOTCHI"] as const;
-const LIST_HINT = "▲▼ Pokémon   ◀▶ region   A: open   /: search   MENU: tab   ZOOM: zoom";
+const LIST_HINT = "▲▼ Pokémon   ◀▶ region   A: open   MENU: tab   ▲ on the first row: filters, then search (A = keyboard)";
 
 /** Runs before the device controller, so the UI gets first say on each button. */
 const SCREEN_INPUT_PRIORITY = 10;
@@ -75,12 +78,27 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const [searchSelected, setSearchSelected] = useState(false);
   /** On-screen keyboard cursor, or null when it's closed. */
   const [keyPos, setKeyPos] = useState<KeyPos | null>(null);
+  /** The D-pad is on the filter/sort row (between the search field and the rows). */
+  const [optionsSelected, setOptionsSelected] = useState(false);
+  const [filterIndex, setFilterIndex] = useState(0);
+  const filter = FILTERS[filterIndex];
+  const [sort, setSort] = useState<Sort>("auto");
+  /** Showing the "coming soon" region after Paldea. */
+  const [teaser, setTeaser] = useState(false);
+  const favorites = useFavorites((s) => s.ids);
   const searchInput = useRef<HTMLInputElement>(null);
-  /** What the list shows: search results, or every Pokémon by number. */
-  const items = useMemo(
-    () => (query.trim() && searchIndex ? searchPokemon(searchIndex, query) : list),
-    [query, searchIndex, list],
-  );
+
+  /** What the list shows: search results (or everything), filtered and sorted. */
+  const items = useMemo(() => {
+    const base = query.trim() && searchIndex ? searchPokemon(searchIndex, query) : list;
+    return applyListing(base, { filter, sort, favorites });
+  }, [query, searchIndex, list, filter, sort, favorites]);
+
+  // Highlight the typed prefix in names (not for number searches).
+  const normalizedQuery = normalize(query);
+  const highlight = normalizedQuery && !/^#?\d+$/.test(normalizedQuery) ? normalizedQuery.length : 0;
+  /** The list cursor is hidden while the D-pad is on the header rows. */
+  const onHeader = searchSelected || optionsSelected || keyPos !== null;
   const status = usePokedex((s) => s.status);
   const power = useScreenPower();
   const zoomed = useDeviceState((s) => s.phase === "ZOOMED");
@@ -140,22 +158,45 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const moveCursor = (delta: number) => {
     if (items.length > 0) setCursor((c) => wrap(c + delta, items.length));
   };
-  /** Moves the cursor to the first item of the previous/next region present in the list (wraps). */
+  /**
+   * Moves the cursor to the first item of the previous/next region present in
+   * the list (wraps). On the plain dex-ordered list, a "coming soon" slot for
+   * the next generation sits between Paldea and Kanto.
+   */
   const jumpRegion = (delta: number) => {
     if (items.length === 0) return;
-    const current = regionIndexOf(items[cursor]?.id ?? 0);
-    for (let step = 1; step <= REGIONS.length; step++) {
-      const target = wrap(current + delta * step, REGIONS.length);
+    const canTease = !query.trim() && filter === "all" && (sort === "auto" || sort === "number");
+    const teaserSlot = REGIONS.length;
+    const slots = canTease ? REGIONS.length + 1 : REGIONS.length;
+    const current = teaser ? teaserSlot : regionIndexOf(items[cursor]?.id ?? 0);
+    for (let step = 1; step <= slots; step++) {
+      const target = wrap(current + delta * step, slots);
+      if (target === teaserSlot) {
+        setTeaser(true);
+        return;
+      }
       const index = items.findIndex((p) => regionIndexOf(p.id) === target);
       if (index >= 0) {
+        setTeaser(false);
         setCursor(index);
         return;
       }
     }
   };
+  const stepFilter = (delta: number) => {
+    setFilterIndex((i) => wrap(i + delta, FILTERS.length));
+    setCursor(0);
+    setTeaser(false);
+  };
+  const stepSort = () => {
+    setSort((s) => SORTS[wrap(SORTS.indexOf(s) + 1, SORTS.length)]);
+    setCursor(0);
+    setTeaser(false);
+  };
   const changeQuery = (value: string) => {
     setQuery(value);
     setCursor(0);
+    setTeaser(false);
   };
   const openKeyboard = () => {
     setSearchSelected(true);
@@ -165,6 +206,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   function dismissKeyboard() {
     setKeyPos(null);
     setSearchSelected(false);
+    setOptionsSelected(false);
   }
   /** Done typing: back on the list, at the first result. */
   const closeKeyboard = () => {
@@ -201,13 +243,22 @@ export function DeviceScreen({ onRequestZoom }: Props) {
 
     if (searchSelected) {
       if (button === "A") openKeyboard();
-      else if (button === "DOWN" || button === "B") setSearchSelected(false);
+      else if (button === "DOWN") {
+        setSearchSelected(false);
+        setOptionsSelected(true);
+      } else if (button === "B") setSearchSelected(false);
       else if (button === "MENU") switchTab(wrap(tab + 1, TABS.length));
       return true;
     }
 
-    if (button === "MENU") {
-      switchTab(wrap(tab + 1, TABS.length));
+    if (optionsSelected) {
+      if (button === "LEFT" || button === "RIGHT") stepFilter(button === "LEFT" ? -1 : 1);
+      else if (button === "A") stepSort();
+      else if (button === "UP") {
+        setOptionsSelected(false);
+        setSearchSelected(true);
+      } else if (button === "DOWN" || button === "B") setOptionsSelected(false);
+      else if (button === "MENU") switchTab(wrap(tab + 1, TABS.length));
       return true;
     }
 
@@ -218,6 +269,18 @@ export function DeviceScreen({ onRequestZoom }: Props) {
         if (!typing.done) typing.finish();
         else if (hasNextPage) setPage((p) => p + 1);
       } else if (button === "B") setDetailId(null);
+      else if (button === "MENU") useFavorites.getState().toggle(detailId);
+      return true;
+    }
+
+    if (button === "MENU") {
+      switchTab(wrap(tab + 1, TABS.length));
+      return true;
+    }
+
+    if (teaser && tab === 0) {
+      if (button === "LEFT" || button === "RIGHT") jumpRegion(button === "LEFT" ? -1 : 1);
+      else if (button === "UP" || button === "DOWN" || button === "B") setTeaser(false);
       return true;
     }
 
@@ -225,8 +288,8 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       case "UP":
       case "DOWN":
         if (tab !== 0) return true;
-        // Above the first row is the search field.
-        if (button === "UP" && cursor === 0) setSearchSelected(true);
+        // Above the first row: the filter/sort row, then the search field.
+        if (button === "UP" && cursor === 0) setOptionsSelected(true);
         else moveCursor(button === "UP" ? -1 : 1);
         return true;
       case "LEFT":
@@ -295,8 +358,12 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       : keyPos
         ? "◀▲▼▶ move   A: type   B: delete   MENU: done"
         : searchSelected
-          ? "A: open the keyboard   ▼: back to the list"
-          : LIST_HINT;
+          ? "A: open the keyboard   ▼: filters"
+          : optionsSelected
+            ? "◀▶ type filter (★ = favorites)   A: sort order   ▲ search   ▼ list"
+            : teaser
+              ? "A new region is coming. ◀▶ other regions"
+              : LIST_HINT;
 
   let body;
   if (tab !== 0) {
@@ -322,6 +389,8 @@ export function DeviceScreen({ onRequestZoom }: Props) {
         onPrev={() => stepDetail(-1)}
         onNext={() => stepDetail(1)}
         onBack={() => setDetailId(null)}
+        favorite={favorites.has(detailPokemon.id)}
+        onToggleFavorite={() => useFavorites.getState().toggle(detailPokemon.id)}
       />
     );
   } else {
@@ -329,7 +398,18 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       <div className={styles.body}>
         <PokemonList
           items={items}
-          cursor={searchSelected || keyPos ? -1 : cursor}
+          cursor={onHeader ? -1 : cursor}
+          favorites={favorites}
+          highlight={highlight}
+          placeholder={
+            teaser ? (
+              <div className={styles.teaser}>
+                <h3>GEN X</h3>
+                <p>??? REGION</p>
+                <p>COMING SOON</p>
+              </div>
+            ) : undefined
+          }
           selectedId={selectedId}
           onRowClick={(i) => (i === cursor ? openDetail(i) : setCursor(i))}
           emptyText="No Pokémon found."
@@ -344,13 +424,18 @@ export function DeviceScreen({ onRequestZoom }: Props) {
                 selected={searchSelected && !keyPos}
                 onOpenKeyboard={openKeyboard}
               />
-              <RegionBar region={items[cursor] ? REGIONS[regionIndexOf(items[cursor].id)] ?? null : null} onStep={jumpRegion} />
+              <ListOptions filter={filter} sort={sort} selected={optionsSelected} onFilterStep={stepFilter} onSortStep={stepSort} />
+              <RegionBar
+                region={!onHeader && !teaser && items[cursor] ? (REGIONS[regionIndexOf(items[cursor].id)] ?? null) : null}
+                teaser={teaser}
+                onStep={jumpRegion}
+              />
             </>
           }
         />
         {keyPos ? (
           <OnScreenKeyboard pos={keyPos} resultCount={query.trim() ? items.length : 0} onKey={pressKey} />
-        ) : items[cursor] ? (
+        ) : items[cursor] && !teaser ? (
           <PreviewPanel pokemon={items[cursor]} />
         ) : (
           <div className={styles.panel} />

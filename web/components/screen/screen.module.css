@@ -102,11 +102,12 @@
 
 .row {
   display: grid;
-  grid-template-columns: 22px 70px 1fr;
+  grid-template-columns: 16px 30px 62px 1fr auto 16px;
   align-items: center;
-  height: 36px;
-  padding: 0 6px;
-  border: 5px solid transparent;
+  gap: 2px;
+  height: 32px;
+  padding: 0 4px;
+  border: 4px solid transparent;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -116,7 +117,7 @@
 }
 
 .row[data-selected="true"] {
-  border: 5px double var(--red);
+  border: 4px double var(--red);
 }
 
 .cursor {
@@ -133,7 +134,44 @@
 }
 
 .rowName {
-  font-size: 28px;
+  overflow: hidden;
+  font-size: 25px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rowName mark {
+  background: none;
+  color: var(--red);
+}
+
+.rowSprite {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  object-position: 50% 35%;
+}
+
+.rowTypes {
+  display: flex;
+  gap: 3px;
+}
+
+.typeDot {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--graphite);
+  border-radius: 50%;
+  background: #777;
+}
+
+.fav,
+.favStar {
+  color: #e0a800;
+}
+
+.rows {
+  position: relative;
 }
 
 .search {
@@ -213,6 +251,80 @@
 
 .search input::placeholder {
   color: #9a9aa6;
+}
+
+.options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin-bottom: 4px;
+  padding: 0 6px;
+  border: 2px solid var(--graphite);
+  border-radius: 6px;
+  background: var(--gray-light);
+  font-size: 19px;
+}
+
+.options[data-selected="true"] {
+  outline: 3px solid #ffd23f;
+}
+
+.options button {
+  border: 0;
+  background: none;
+  color: var(--red);
+  font: inherit;
+  cursor: pointer;
+}
+
+.optionLabel {
+  color: #6b6b76;
+}
+
+.optionValue {
+  min-width: 74px;
+  padding: 0 6px;
+  border: 2px solid var(--graphite);
+  border-radius: 5px;
+  background: var(--white);
+  font-size: 18px;
+  text-align: center;
+}
+
+.optionValue[data-type]:not([data-type="all"]):not([data-type="favorites"]) {
+  color: var(--white);
+}
+
+.options .sortButton {
+  margin-left: auto;
+  color: var(--graphite);
+}
+
+.teaser {
+  display: grid;
+  place-content: center;
+  height: 160px;
+  text-align: center;
+  background: repeating-linear-gradient(45deg, #ececf1 0 8px, #f6f6f8 8px 16px);
+  border-radius: 6px;
+}
+
+.teaser h3 {
+  margin: 0;
+  font-family: var(--font-pixel), monospace;
+  font-size: 34px;
+  color: var(--red);
+}
+
+.teaser p {
+  margin: 2px 0 0;
+  font-size: 22px;
+}
+
+.detailActions {
+  display: flex;
+  gap: 6px;
 }
 
 .regionBar {
@@ -343,6 +455,43 @@
 .type[data-type="dark"] { background: #5a4a3f; }
 .type[data-type="steel"] { background: #8a8aa6; }
 .type[data-type="fairy"] { background: #d46aa6; }
+
+.typeDot[data-type="normal"],
+.optionValue[data-type="normal"] { background: #9a9a78; }
+.typeDot[data-type="fire"],
+.optionValue[data-type="fire"] { background: #d9582b; }
+.typeDot[data-type="water"],
+.optionValue[data-type="water"] { background: #3a74d1; }
+.typeDot[data-type="electric"],
+.optionValue[data-type="electric"] { background: #d6a800; }
+.typeDot[data-type="grass"],
+.optionValue[data-type="grass"] { background: #4e9a3a; }
+.typeDot[data-type="ice"],
+.optionValue[data-type="ice"] { background: #4fb3b3; }
+.typeDot[data-type="fighting"],
+.optionValue[data-type="fighting"] { background: #b23a2e; }
+.typeDot[data-type="poison"],
+.optionValue[data-type="poison"] { background: #8a3f9e; }
+.typeDot[data-type="ground"],
+.optionValue[data-type="ground"] { background: #b8913d; }
+.typeDot[data-type="flying"],
+.optionValue[data-type="flying"] { background: #6f86d6; }
+.typeDot[data-type="psychic"],
+.optionValue[data-type="psychic"] { background: #e0457b; }
+.typeDot[data-type="bug"],
+.optionValue[data-type="bug"] { background: #7f9b1d; }
+.typeDot[data-type="rock"],
+.optionValue[data-type="rock"] { background: #9c8a3a; }
+.typeDot[data-type="ghost"],
+.optionValue[data-type="ghost"] { background: #634f8f; }
+.typeDot[data-type="dragon"],
+.optionValue[data-type="dragon"] { background: #5b3fd6; }
+.typeDot[data-type="dark"],
+.optionValue[data-type="dark"] { background: #5a4a3f; }
+.typeDot[data-type="steel"],
+.optionValue[data-type="steel"] { background: #8a8aa6; }
+.typeDot[data-type="fairy"],
+.optionValue[data-type="fairy"] { background: #d46aa6; }
 
 /* HP bar */
 

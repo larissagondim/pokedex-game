@@ -9,6 +9,10 @@
   z-index: 101;
 }
 
+.hud[hidden] {
+  display: none;
+}
+
 .hud {
   position: absolute;
   left: 16px;

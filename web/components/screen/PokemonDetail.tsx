@@ -29,6 +29,8 @@ interface Props {
   onPrev: () => void;
   onNext: () => void;
   onBack: () => void;
+  favorite: boolean;
+  onToggleFavorite: () => void;
 }
 
 /** Animated sprite; static sprite under reduced motion or when no GIF exists. */
@@ -59,7 +61,7 @@ function AnimatedSprite({ pokemon }: { pokemon: Pokemon }) {
   );
 }
 
-export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack }: Props) {
+export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack, favorite, onToggleFavorite }: Props) {
   const total = Object.values(pokemon.stats).reduce((a, b) => a + b, 0);
 
   return (
@@ -76,6 +78,7 @@ export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack 
         </div>
         <div className={styles.previewName}>
           <span>{formatDexNumber(pokemon.id)}</span> {pokemon.name.toUpperCase()}
+          {favorite && <span className={styles.favStar}> ★</span>}
         </div>
         <div className={styles.genus}>{pokemon.genus}</div>
         <div className={styles.types}>
@@ -90,9 +93,14 @@ export function PokemonDetail({ pokemon, prevId, nextId, onPrev, onNext, onBack 
       <div className={styles.panel + " " + styles.detailRight}>
         <div className={styles.detailHeader}>
           <h3>STATUS</h3>
-          <button type="button" className={styles.backButton} onClick={onBack}>
-            B BACK
-          </button>
+          <span className={styles.detailActions}>
+            <button type="button" className={styles.backButton} onClick={onToggleFavorite} aria-pressed={favorite}>
+              MENU {favorite ? "★" : "☆"}
+            </button>
+            <button type="button" className={styles.backButton} onClick={onBack}>
+              B BACK
+            </button>
+          </span>
         </div>
         <dl className={styles.stats}>
           {STAT_LABELS.map(([key, label]) => {

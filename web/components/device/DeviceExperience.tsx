@@ -45,6 +45,11 @@ export function DeviceExperience() {
       <DeviceScene />
 
       <div className={styles.corner}>
+        {zoomed && (
+          <button type="button" onClick={toggleZoom}>
+            Leave zoom
+          </button>
+        )}
         <button type="button" onClick={resetView}>
           Reset view
         </button>
@@ -56,7 +61,8 @@ export function DeviceExperience() {
         </button>
       </div>
 
-      <div className={styles.hud}>
+      {/* Zoomed in, the screen fills the window: only the corner buttons stay. */}
+      <div className={styles.hud} hidden={zoomed}>
         <p className={styles.hint}>
           {zoomed
             ? "ESC, ZOOM or B to leave zoom"
