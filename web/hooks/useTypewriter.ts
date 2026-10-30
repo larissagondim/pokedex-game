@@ -3,16 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { useReducedMotion } from "./useReducedMotion";
 
-/** Reveals `text` one character at a time. Instant under reduced motion. */
-export function useTypewriter(text: string | null, msPerChar = 28) {
+/**
+ * Reveals `text` one character at a time. Instant under reduced motion.
+ * Restarts when the text changes, or when `restartKey` changes (to replay the
+ * same message twice in a row).
+ */
+export function useTypewriter(text: string | null, restartKey: unknown = text, msPerChar = 28) {
   const reducedMotion = useReducedMotion();
   const [count, setCount] = useState(0);
   const length = text?.length ?? 0;
 
-  // Restart whenever the text changes.
-  const [prevText, setPrevText] = useState(text);
-  if (text !== prevText) {
-    setPrevText(text);
+  const [prev, setPrev] = useState({ text, restartKey });
+  if (text !== prev.text || restartKey !== prev.restartKey) {
+    setPrev({ text, restartKey });
     setCount(0);
   }
 
@@ -23,7 +26,7 @@ export function useTypewriter(text: string | null, msPerChar = 28) {
     if (done || reducedMotion) return;
     const id = setInterval(() => setCount((c) => c + 1), msPerChar);
     return () => clearInterval(id);
-  }, [done, reducedMotion, msPerChar, text]);
+  }, [done, reducedMotion, msPerChar, text, restartKey]);
 
   const finish = useCallback(() => setCount(length), [length]);
 

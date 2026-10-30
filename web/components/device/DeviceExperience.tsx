@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { MouseEvent } from "react";
 import { formatDexNumber } from "@/data/pokedex";
 import { regionOf } from "@/lib/regions";
 import { useDeviceController } from "@/hooks/useDeviceController";
@@ -22,6 +23,15 @@ const DeviceScene = dynamic(() => import("./DeviceScene"), {
     </div>
   ),
 });
+
+/**
+ * After a mouse/touch click, drop focus from the page button so Enter (MENU)
+ * and Space (ZOOM) go to the device instead of clicking it again. Keyboard
+ * activation (detail === 0) keeps focus for keyboard users.
+ */
+const releaseFocus = (e: MouseEvent<HTMLButtonElement>) => {
+  if (e.detail > 0) e.currentTarget.blur();
+};
 
 /** Client entry: lazy 3D scene, input wiring and the page-level controls. */
 export function DeviceExperience() {
@@ -46,17 +56,17 @@ export function DeviceExperience() {
 
       <div className={styles.corner}>
         {zoomed && (
-          <button type="button" onClick={toggleZoom}>
+          <button type="button" onMouseUp={releaseFocus} onClick={toggleZoom}>
             Leave zoom
           </button>
         )}
-        <button type="button" onClick={resetView}>
+        <button type="button" onMouseUp={releaseFocus} onClick={resetView}>
           Reset view
         </button>
-        <button type="button" onClick={useAudio.getState().toggleMute} aria-pressed={!muted}>
+        <button type="button" onMouseUp={releaseFocus} onClick={useAudio.getState().toggleMute} aria-pressed={!muted}>
           {muted || !unlocked ? "Sound: off" : "Sound: on"}
         </button>
-        <button type="button" onClick={useAudio.getState().toggleMusic} aria-pressed={musicOn}>
+        <button type="button" onMouseUp={releaseFocus} onClick={useAudio.getState().toggleMusic} aria-pressed={musicOn}>
           {musicOn ? `♪ Music: ${(focused && regionOf(focused.id)?.name) ?? "on"}` : "♪ Music: off"}
         </button>
       </div>
@@ -71,10 +81,10 @@ export function DeviceExperience() {
               : "Click the cover to open"}
         </p>
         <div className={styles.actions}>
-          <button type="button" onClick={toggle}>
+          <button type="button" onMouseUp={releaseFocus} onClick={toggle}>
             {open ? "Close device" : "Open device"}
           </button>
-          <button type="button" onClick={toggleZoom} disabled={!open}>
+          <button type="button" onMouseUp={releaseFocus} onClick={toggleZoom} disabled={!open}>
             {zoomed ? "Leave zoom" : "Zoom into screen"}
           </button>
         </div>

@@ -102,6 +102,9 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   // Highlight the typed prefix in names (not for number searches).
   const normalizedQuery = normalize(query);
   const highlight = normalizedQuery && !/^#?\d+$/.test(normalizedQuery) ? normalizedQuery.length : 0;
+  // Keep the cursor on the list when it shrinks (e.g. unfavoriting with ★ on).
+  if (cursor >= items.length && items.length > 0) setCursor(items.length - 1);
+
   /** The list cursor is hidden while the D-pad is on the header rows. */
   const onHeader = searchSelected || optionsSelected || keyPos !== null;
   const status = usePokedex((s) => s.status);
@@ -121,9 +124,13 @@ export function DeviceScreen({ onRequestZoom }: Props) {
 
   // The secondary screen (and the region music) follow the open page, or else
   // whatever is under the cursor.
+  // (On the Tamagotchi tab, the selected party member drives them instead.)
   useEffect(() => {
+    if (tab === TAMAGOTCHI_TAB) return;
     usePokedex.getState().focus(detailPokemon?.id ?? items[cursor]?.id ?? null);
-  }, [detailPokemon, items, cursor]);
+  }, [tab, detailPokemon, items, cursor]);
+
+
 
 
   // Zoomed in: the interface takes keyboard focus.
@@ -143,10 +150,13 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     [detailPokemon],
   );
   /** One-off message in the dialog box (adoption, Tamagotchi events...). */
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; id: number } | null>(null);
+  const noticeCount = useRef(0);
+  /** Shows a message; the same text twice still replays. */
+  const say = (text: string) => setNotice({ text, id: ++noticeCount.current });
   /** On a Pokémon page, "Adopt X?" is waiting for A (yes) or B (no). */
   const [adoptPrompt, setAdoptPrompt] = useState(false);
-  const typing = useTypewriter(power === "on" ? (notice ?? pages[page] ?? null) : null);
+  const typing = useTypewriter(power === "on" ? (notice?.text ?? pages[page] ?? null) : null, notice?.id ?? page);
   const hasNextPage = page < pages.length - 1;
 
   const showPokemon = (p: Pokemon) => {
@@ -243,7 +253,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const askToAdopt = () => {
     if (!detailPokemon) return;
     setAdoptPrompt(true);
-    setNotice(`Adopt ${detailPokemon.name.toUpperCase()}? A: yes   B: no`);
+    say(`Adopt ${detailPokemon.name.toUpperCase()}? A: yes   B: no`);
   };
 
   // Tamagotchi events (adoption, actions, evolution...) speak through the dialog box.
@@ -252,7 +262,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       useTamagotchi.subscribe(({ event }, prev) => {
         if (!event || event === prev.event) return;
         const { list: dexList } = usePokedex.getState();
-        setNotice(describeEvent(event, (id) => (dexList.find((p) => p.id === id)?.name ?? "the egg").toUpperCase()));
+        say(describeEvent(event, (id) => (dexList.find((p) => p.id === id)?.name ?? "the egg").toUpperCase()));
       }),
     [],
   );
@@ -387,6 +397,8 @@ export function DeviceScreen({ onRequestZoom }: Props) {
         // On another tab or a Pokémon page: show the list, focus once it mounts.
         setTab(0);
         setDetailId(null);
+        setNotice(null);
+        setAdoptPrompt(false);
         requestAnimationFrame(focusInput);
       }
     };
@@ -414,7 +426,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
 
   let body;
   if (tab === TAMAGOTCHI_TAB) {
-    body = <TamagotchiScreen active={tamaActive} onNotice={setNotice} />;
+    body = <TamagotchiScreen active={tamaActive} onNotice={say} />;
   } else if (tab !== 0) {
     body = (
       <div className={styles.panel + " " + styles.soon}>

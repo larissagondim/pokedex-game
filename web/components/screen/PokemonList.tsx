@@ -31,7 +31,7 @@ export function PokemonList({ items, cursor, selectedId, favorites, highlight, o
       {!placeholder && items.length === 0 && emptyText && <p className={styles.empty}>{emptyText}</p>}
       <div className={styles.rows}>
         {start > 0 && rows.length > 0 && <span className={styles.scrollUp}>▲</span>}
-        <ul role="listbox" aria-label="Pokémon" aria-activedescendant={`dex-${items[cursor]?.id}`}>
+        <ul role="listbox" aria-label="Pokémon" aria-activedescendant={items[cursor] ? `dex-${items[cursor].id}` : undefined}>
           {rows.map((p, i) => {
             const index = start + i;
             const name = p.name.toUpperCase();

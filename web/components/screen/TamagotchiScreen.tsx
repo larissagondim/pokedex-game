@@ -66,6 +66,12 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
   const species = pet?.dexId != null ? dex.byId.get(pet.dexId) : undefined;
   const nameOf = (p: Pet | undefined) => (p?.dexId != null ? (dex.byId.get(p.dexId)?.name ?? "???") : "Egg");
 
+  // The secondary screen and the region music follow the selected party member.
+  const focusedDexId = pet?.dexId ?? null;
+  useEffect(() => {
+    if (active && focusedDexId !== null) usePokedex.getState().focus(focusedDexId);
+  }, [active, focusedDexId]);
+
   // Decay and egg hatching: on open and every few seconds while visible.
   useEffect(() => {
     if (list.length === 0) return;
