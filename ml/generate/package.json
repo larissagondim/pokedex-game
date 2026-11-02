@@ -1,0 +1,15 @@
+{
+  "name": "pokedex-ml-generate",
+  "private": true,
+  "type": "module",
+  "description": "Generates win-prediction datasets by simulating 1v1 battles.",
+  "scripts": {
+    "dataset": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/cli.ts dataset",
+    "montecarlo": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/cli.ts montecarlo",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@pkmn/randoms": "^0.10.12",
+    "@pkmn/sim": "^0.10.12"
+  }
+}

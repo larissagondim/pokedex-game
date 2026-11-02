@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.pytest_cache/
+generate/node_modules/
+# Generated: re-create with the commands in README.md
+data/
+models/
