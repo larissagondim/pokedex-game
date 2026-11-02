@@ -44,6 +44,10 @@ if (!existsSync(dataFile)) {
     animated: existsSync(join(web, "public", "animated", `${p.id}.gif`))
       ? `/animated/${p.id}.gif`
       : (p.animated_url ?? null),
+    // Same for the back view (player's side in battle).
+    animatedBack: existsSync(join(web, "public", "animated", "back", `${p.id}.gif`))
+      ? `/animated/back/${p.id}.gif`
+      : (p.animated_back_url ?? null),
     cry: p.cry_url ?? null,
     evolvesFromId: p.evolves_from_id ?? null,
     isBaby: Boolean(p.is_baby),

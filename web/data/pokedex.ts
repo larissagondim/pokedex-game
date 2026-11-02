@@ -21,6 +21,8 @@ export interface Pokemon {
   stats: Stats;
   /** GIF to show: local /animated/<id>.gif if synced, else the remote one; null falls back to the static sprite. */
   animated: string | null;
+  /** Same for the back view (player's side in battle). */
+  animatedBack: string | null;
   /** Remote .ogg URL of the cry. */
   cry: string | null;
   /** Dex number of the species it evolves from, or null for a base stage. */

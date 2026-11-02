@@ -149,6 +149,8 @@ def build_pokemon(pid, images):
         "animated": f"animated/{pid}.gif" if animated_url else None,
         "back_sprite": f"sprites/back/{pid}.png" if back_url else None,
         "animated_back": f"animated/back/{pid}.gif" if animated_back_url else None,
+        "back_sprite_url": back_url,
+        "animated_back_url": animated_back_url,
         "sprite_url": sprite_url,
         "artwork_url": artwork_url,
         "animated_url": animated_url,
