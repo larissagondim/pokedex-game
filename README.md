@@ -70,12 +70,12 @@ The scraper, the `web` app and the `ml` service exist today. The battle engine (
 
 ```mermaid
 flowchart LR
-    U[Browser] -->|HTTP| W[web<br/>Next.js + R3F]
-    W -->|API routes| S[@pkmn/sim<br/>battle engine]
-    W -->|REST| M[ml<br/>FastAPI + model]
-    W -->|SQL| D[(db<br/>Postgres)]
+    U["Browser"] -->|HTTP| W["web<br/>Next.js + R3F"]
+    W -->|API routes| S["@pkmn/sim<br/>battle engine"]
+    W -->|REST| M["ml<br/>FastAPI + model"]
+    W -->|SQL| D[("db<br/>Postgres")]
     M -.->|simulated battle dataset| S
-    P[PokéAPI + Showdown] -->|scrape_pokemon.py| J[data/pokemon.json<br/>sprites/ animated/ artwork/]
+    P["PokéAPI + Showdown"] -->|scrape_pokemon.py| J["data/pokemon.json<br/>sprites/ animated/ artwork/"]
     J -->|sync-assets.mjs| W
     J --> M
 ```
