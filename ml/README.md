@@ -64,15 +64,15 @@ The app only needs the chance **before** the battle starts, so the model is trai
 | Model | Log loss ↓ | Brier ↓ | AUC ↑ | Accuracy | Calibration error ↓ |
 | --- | --- | --- | --- | --- | --- |
 | Coin flip | 0.693 | 0.250 | 0.500 | 50.0% | 0.00% |
-| Damage race heuristic | 0.679 | 0.195 | 0.787 | 78.5% | 16.19% |
-| Logistic regression | 0.447 | 0.144 | 0.873 | 79.6% | 0.48% |
-| Gradient boosting (chosen) | 0.428 | 0.137 | 0.885 | 80.5% | 0.25% |
+| Damage race heuristic | 0.508 | 0.142 | 0.845 | 84.3% | 10.39% |
+| Logistic regression | 0.359 | 0.110 | 0.922 | 84.7% | 0.84% |
+| Gradient boosting (chosen) | 0.347 | 0.108 | 0.926 | 85.0% | 0.14% |
 
-- **Species never seen in training:** AUC 0.882 (log loss 0.432).
+- **Species never seen in training:** AUC 0.923 (log loss 0.355).
 - **Calibration:** when it says 70%, side A wins about 70% of the time (table in `reports/metrics.json`).
-- **Against Monte Carlo** (300 matchups × 200 replays): mean absolute error 0.19, correlation 0.77, ~2,415× faster.
+- **Against Monte Carlo** (300 matchups × 200 replays): mean absolute error 0.12, correlation 0.89, ~12,357× faster.
 
-Main limitation: about two thirds of fixed matchups are nearly decided, but the model often says 20%/80% for them. It is calibrated on average but not sharp per matchup, because the features don't see abilities, status moves or special move effects. Next steps: features for those, and training on Monte Carlo win rates ("soft labels").
+Removing moves that only work under special conditions (Last Resort, Focus Punch...) from the learnset-based sets made the data cleaner and the model much sharper (AUC 0.885 → 0.926, Monte Carlo error 0.19 → 0.12). Remaining limitation: on nearly decided matchups the model is still a bit less extreme than the replays. It is calibrated on average but not sharp per matchup, because the features don't see abilities, status moves or special move effects. Next steps: features for those, and training on Monte Carlo win rates ("soft labels").
 
 An all-turns model (for a live bar during the battle) can be trained the same way from a dataset generated without `--pre-battle`.
 
