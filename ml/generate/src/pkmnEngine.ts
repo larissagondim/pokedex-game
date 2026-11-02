@@ -60,6 +60,16 @@ function choice(battle: Battle, side: "p1" | "p2", me: Combatant, foe: Combatant
   return `move ${legal[index].slot}`;
 }
 
+/** A Pokémon as it enters battle (full HP), for the app's pre-battle prediction. */
+export function startingCombatant(set: PokemonSet): Combatant {
+  const battle = new Battle({ formatid: "gen9customgame", seed: "1,2,3,4" });
+  battle.setPlayer("p1", { name: "A", team: Teams.pack([set]) });
+  battle.setPlayer("p2", { name: "B", team: Teams.pack([set]) });
+  battle.choose("p1", "team 1");
+  battle.choose("p2", "team 1");
+  return combatant(battle.p1.active[0]);
+}
+
 /** Adapter: Pokémon Showdown's engine (@pkmn/sim), gen 9 mechanics, 1v1. */
 export const pkmnEngine: BattleEngine<Matchup> = {
   name: "pkmn-sim-gen9",

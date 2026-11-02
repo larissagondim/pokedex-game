@@ -6,6 +6,7 @@
   "scripts": {
     "dataset": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/cli.ts dataset",
     "montecarlo": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/cli.ts montecarlo",
+    "export-sets": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/cli.ts export-sets",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/*.test.ts"
   },
   "dependencies": {

@@ -1,18 +1,18 @@
 {
   "model": {
     "name": "boosting",
-    "version": "20261102182606"
+    "version": "20261102183559"
   },
   "matchups": 300,
   "runs_per_matchup": 200,
-  "mae": 0.19751042238961555,
-  "rmse": 0.28404143530257353,
-  "correlation": 0.7648143827472934,
+  "mae": 0.19079392920592395,
+  "rmse": 0.2792564210059816,
+  "correlation": 0.7744308872269177,
   "mean_mc_sampling_error": 0.011810596699254486,
-  "within_mc_95_interval": 0.05333333333333334,
+  "within_mc_95_interval": 0.056666666666666664,
   "ms_per_prediction": {
-    "model": 0.07099690332931156,
+    "model": 0.16409904999212208,
     "monte_carlo": 396.3
   },
-  "speedup": 5581.933597326136
+  "speedup": 2415.0048401805207
 }

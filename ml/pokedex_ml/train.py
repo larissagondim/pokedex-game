@@ -1,6 +1,6 @@
 """Trains the win-probability model.
 
-    python -m pokedex_ml.train --data data/battles.csv
+    python -m pokedex_ml.train --data data/prebattle.csv
 
 Compares a logistic regression and gradient boosting with grouped
 cross-validation (all rows of a battle stay in the same fold), checks how
@@ -39,8 +39,10 @@ MODELS = {
 
 
 def load_dataset(path: Path) -> tuple[pd.DataFrame, list[str]]:
+    """Rows and the feature columns. Constant columns (e.g. HP and turn in a
+    pre-battle dataset) carry no information and are dropped."""
     df = pd.read_csv(path)
-    features = [c for c in df.columns if c not in ID_COLUMNS + [LABEL]]
+    features = [c for c in df.columns if c not in ID_COLUMNS + [LABEL] and df[c].nunique() > 1]
     return df, features
 
 
@@ -65,7 +67,7 @@ def unseen_species_split(df: pd.DataFrame, share: float = 0.2, seed: int = 0):
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", type=Path, default=ROOT / "data" / "battles.csv")
+    parser.add_argument("--data", type=Path, default=ROOT / "data" / "prebattle.csv")
     parser.add_argument("--model", type=Path, default=model_io.DEFAULT_MODEL_PATH)
     parser.add_argument("--report", type=Path, default=ROOT / "reports" / "metrics.json")
     args = parser.parse_args()
