@@ -2,7 +2,7 @@
 
 An interactive 3D Pokédex with battles, machine-learning win prediction and a Tamagotchi. A non-profit fan project built for portfolio and learning purposes, developed with **agentic programming** using [Claude Code](https://claude.com/claude-code).
 
-> **Status:** early development. Working today: the **data scraper**, a **procedural 3D device** (opens like a book on a spring hinge, pressable buttons, zoom camera, sound, gamepad) and a **Pokédex screen** (list of all 1025 Pokémon and a detail page with an animated sprite and cry). Anything marked _(planned)_ below is not implemented yet.
+> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, and a **win-prediction model** served by FastAPI. Still to come: the **battle engine** (and with it the probability bar), Docker, a database and the trainer profile. Anything marked _(planned)_ below is not implemented yet.
 
 ## Table of contents
 
@@ -29,7 +29,7 @@ This project is developed in pair with an AI coding agent (Claude Code). The wor
 - **Small, reviewable commits:** work is split into focused steps and committed with [Conventional Commits](https://www.conventionalcommits.org/) (`feat(screen): ...`, `fix(screen): ...`, `chore(web): ...`).
 - **Agent guidance lives in the repo:** [`web/AGENTS.md`](web/AGENTS.md) tells coding agents to read the bundled Next.js docs before writing code, since this Next.js version has breaking changes compared to older releases.
 
-The commit history shows how the project grew step by step: scraper, then web scaffold, input system, retro UI prototype, 3D shell, and finally the real Pokédex page.
+The commit history shows how the project grew step by step: scraper, web scaffold, input system, retro UI prototype, 3D shell, the Pokédex (search, regions, filters, fun facts), the Tamagotchi, and the win-prediction pipeline. Conventions for agents are in [`CLAUDE.md`](CLAUDE.md).
 
 ## Features
 
@@ -50,7 +50,7 @@ The commit history shows how the project grew step by step: scraper, then web sc
 | Tamagotchi | Adopt up to 5 Pokémon from the list (A at the end of a Pokémon page, or ♥ ADOPT). Food, joy and energy decay with real time; feed, play, sleep and train them. XP raises the level and they **evolve** (babies also need to be happy). Coins earned by playing and training buy **eggs** that hatch into a random base-stage or baby Pokémon. Hearts when happy, mood bubbles, reactions per action, idle animation by evolution stage, and clicking one plays its cry. Saved in `localStorage` | ✅ Done (v1) |
 | Trainer profile | Create your own trainer profile: pick a name, design your trainer sprite (hair, outfit, colors, etc.) and show it on the device. The profile ties together your Tamagotchi, favorites and battle history | 🕒 Planned |
 
-The BATTLE and TAMAGOTCHI tabs exist on the screen but currently show a "coming soon" placeholder.
+The BATTLE tab exists on the screen but still shows a "coming soon" placeholder.
 
 ## Screenshots
 
@@ -66,7 +66,7 @@ _Placeholders. They will be added as the screens are finished._
 
 ## Architecture
 
-The `web` app and the scraper exist today. The rest is _(planned)_.
+The scraper, the `web` app and the `ml` service exist today. The battle engine (API routes), the database and Docker are _(planned)_; for now the app calls the ML service directly through `predictWin`.
 
 ```mermaid
 flowchart LR
@@ -80,13 +80,14 @@ flowchart LR
     J --> M
 ```
 
-Planned Docker Compose services: **web**, **ml** and **db**. At first the Tamagotchi state will live in `localStorage`; Postgres comes later for persistence and history.
+Planned Docker Compose services: **web**, **ml** and **db**. For now the Tamagotchi and favorites live in `localStorage`; Postgres comes later for persistence and history.
 
 Inside `web`, the app is split into three layers:
 
-- **Stores (zustand):** `deviceInput` (button events, hold-to-repeat and subscriptions), `deviceState` (phase state machine: `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex` (loading, focus, selection and cries) and `audio` (mute and unlock).
+- **Stores (zustand):** `deviceInput` (button events, hold-to-repeat and subscriptions), `deviceState` (phase state machine: `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex` (loading, focus, selection and cries), `favorites` and `tamagotchi` (both persisted in `localStorage`) and `audio` (mute and unlock).
 - **Device (`components/device`):** the procedural 3D shell, hinge, buttons and camera rig. The scene is loaded lazily. Conventions for working on it are in [`CLAUDE.md`](CLAUDE.md).
 - **Screen (`components/screen`):** the 2D UI rendered inside the main screen. It subscribes to device input with higher priority than the device controller, so the UI gets the first say on each button.
+- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing (filters and sorting), fun facts, Tamagotchi rules, sound and music synthesis, and the battle features and type chart shared with the ML pipeline.
 
 ## Stack
 
@@ -94,14 +95,14 @@ Inside `web`, the app is split into three layers:
 | --- | --- |
 | Front end | Next.js 16 (App Router), React 19, TypeScript, React Three Fiber, drei, three.js, camera-controls, zustand |
 | Battle _(planned)_ | `@pkmn/sim` (Pokémon Showdown engine) |
-| ML / backend _(planned)_ | Python, FastAPI, scikit-learn (or similar) |
-| Database _(planned)_ | Postgres (Tamagotchi and history), `localStorage` at first |
+| ML | Python, scikit-learn, pandas, FastAPI; dataset generator in Node with `@pkmn/sim` |
+| Persistence | `localStorage` today; Postgres _(planned)_ for the Tamagotchi and history |
 | Infra _(planned)_ | Docker and Docker Compose |
 | Data scraping | Python 3, standard library only |
 
 ## Project structure
 
-Folders marked _(planned)_ do not exist yet.
+Entries marked _(planned)_ do not exist yet.
 
 ```
 pokedex-game/
@@ -116,15 +117,19 @@ pokedex-game/
 │   ├── components/
 │   │   ├── device/         # 3D shell; all measurements in device.config.ts
 │   │   └── screen/         # Pokédex UI inside the 4:3 screen
-│   ├── hooks/              # keyboard/gamepad input, device controller, sound, screen power
-│   ├── stores/             # zustand stores (deviceInput, deviceState, pokedex, audio)
-│   ├── lib/                # synthesized sound effects
+│   ├── hooks/              # keyboard/gamepad input, device controller and layout, sound, music, screen power
+│   ├── stores/             # zustand stores (deviceInput, deviceState, pokedex, favorites, tamagotchi, audio)
+│   ├── lib/                # search, regions, listing, fun facts, Tamagotchi rules, sound/music, battle features (+ tests)
 │   ├── data/               # Pokémon types and helpers
 │   ├── scripts/
 │   │   └── sync-assets.mjs # copies images and builds public/data/pokedex.json
 │   └── AGENTS.md           # guidance for coding agents
-├── ml/                     # (planned) dataset, training and FastAPI
-├── CLAUDE.md               # conventions for the 3D device (for coding agents)
+├── ml/                     # win prediction (see ml/README.md)
+│   ├── generate/           # Node: simulates battles with @pkmn/sim and writes the datasets
+│   ├── pokedex_ml/         # Python: training, Monte Carlo evaluation, FastAPI
+│   ├── tests/              # pytest
+│   └── reports/            # metrics.json, montecarlo.json
+├── CLAUDE.md               # conventions for coding agents (commits, 3D device)
 ├── docker-compose.yml      # (planned) web, ml, db
 ├── .env.example            # (planned)
 └── README.md
@@ -167,12 +172,16 @@ Then open http://localhost:3000. `npm run dev` and `npm run build` first run `np
 
 ```bash
 npm run lint    # ESLint
-npm test        # unit tests (search)
+npm test        # unit tests (lib/)
 npm run build   # production build
 npm run start   # serve the production build
 ```
 
-### 3. Full application _(planned)_
+### 3. Win-prediction service (optional)
+
+See [`ml/README.md`](ml/README.md) for the full steps (generate data, train, serve). Once the service is running on port 8000, the app can call it (`NEXT_PUBLIC_ML_API_URL`, default `http://localhost:8000`).
+
+### 4. Full application _(planned)_
 
 ```bash
 cp .env.example .env
@@ -230,21 +239,25 @@ The tests cover the lower bound edges, case/accent handling, number lookups and 
 
 ## Roadmap
 
-- [x] Data and image scraper (PokéAPI, 1025 Pokémon, animated sprites)
+Done:
+
+- [x] Data and image scraper (PokéAPI and Showdown, 1025 Pokémon, 1017 animated)
 - [x] Next.js scaffold with R3F, drei and zustand
-- [x] Input system (keyboard and 3D buttons)
-- [x] Procedural 3D device with hinge, buttons and camera rig
+- [x] Input system (keyboard, gamepad and 3D buttons)
+- [x] Procedural 3D device: phase state machine, spring hinge, boot animation, sound, cries, phone layout
 - [x] Pokédex screen: list, preview and detail page for all 1025 Pokémon
-- [x] 3D device v2: phase state machine, spring hinge, boot animation, sound, cries, gamepad
 - [x] Search by name prefix (binary search) or number, with an on-screen keyboard
 - [x] Region bar and per-region background music
 - [x] Type filter, sorting, favorites and a "coming soon" slot for the next generation
 - [x] Fun facts
+- [x] Tamagotchi v1 (party of 5, needs, evolution, eggs)
+- [x] Win-prediction model v1: dataset generator, training, Monte Carlo evaluation, FastAPI
+
+Next:
+
 - [ ] **Phase 1:** Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
-- [x] Tamagotchi v1 (party of 5, needs, evolution, eggs)
 - [ ] **Phase 3:** 1v1 battle (built by hand)
-- [x] Win-prediction model v1: dataset generator, training, Monte Carlo evaluation, FastAPI
 - [ ] **Phase 4:** probability bar on the battle screen (after the battle engine)
 - [ ] **Phase 5:** 6v6 battle
 - [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
@@ -260,11 +273,11 @@ Keyboard and the physical buttons on the device do the same thing. Each key maps
 | `Z` | A | Confirm / open details / advance the dialog / open the keyboard / type a key |
 | `X` | B | Go back (clears the search; deletes a letter on the keyboard); at the root, leave zoom |
 | `Enter` | MENU | Next tab (List, Battle, Tamagotchi); on a Pokémon page, toggle ★ favorite; on the keyboard, done |
-
-On the TAMAGOTCHI tab: ↑ ↓ pick a Pokémon from the party, ← → pick an action, A does it, B goes back to the list.
 | `Space` | ZOOM | Zoom in or out of the screen (opens the device if closed) |
 | `Esc` | n/a | Leave zoom (in the search field: clear it, then leave the field) |
 | `/` | n/a | Focus the search field. While typing, ↑ ↓ move through the results and `Enter` opens one |
+
+On the TAMAGOTCHI tab: ↑ ↓ pick a Pokémon from the party, ← → pick an action, A does it, B goes back to the list.
 
 Gamepads with the standard mapping also work: D-pad or left stick, A/B (bottom/right face buttons), Start = MENU, Select or Y = ZOOM. Opening: click the cover, press A, or use the "Open device" page button. Closing: the ⏻ button on the screen, a click on the hinge, or the page button.
 
