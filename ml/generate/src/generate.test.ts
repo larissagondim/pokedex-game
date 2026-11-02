@@ -33,3 +33,13 @@ test("battles are reproducible and produce snapshots from turn 0", () => {
   assert.equal(r1.snapshots[0].b.dexId, 9);
   assert.ok(r1.aWon === 0 || r1.aWon === 1);
 });
+
+test("many random battles run without errors (recharge, locked moves, struggle...)", () => {
+  let seed = 1;
+  for (let i = 0; i < 300; i++) {
+    const dexA = DEX_NUMBERS[(i * 37) % DEX_NUMBERS.length];
+    const dexB = DEX_NUMBERS[(i * 91 + 13) % DEX_NUMBERS.length];
+    const result = pkmnEngine.play(pkmnEngine.prepare(dexA, dexB, seed++), seed++);
+    assert.ok(result.snapshots.length > 0);
+  }
+});

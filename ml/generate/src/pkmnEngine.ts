@@ -8,8 +8,12 @@ import { buildSet } from "./sets.ts";
 const dex = Dex.forGen(9);
 const MAX_TURNS = 60;
 
+const NO_DAMAGE: MoveInfo = { type: "normal", power: 0, category: "status", accuracy: 1, priority: 0 };
+
 const moveInfo = (id: string): MoveInfo => {
   const m = dex.moves.get(id);
+  // Pseudo-moves offered by the simulator (e.g. "recharge") aren't in the move table.
+  if (!m.exists) return NO_DAMAGE;
   return {
     type: m.type.toLowerCase(),
     power: m.category === "Status" ? 0 : m.basePower,

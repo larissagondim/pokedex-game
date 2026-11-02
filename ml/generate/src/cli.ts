@@ -9,7 +9,7 @@
  * montecarlo: random matchups replayed `runs` times from the start; the win
  *             rate is a reference to evaluate the model against.
  */
-import { createWriteStream, mkdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { battleFeatures, FEATURE_NAMES, swapSides } from "../../../web/lib/battleFeatures.ts";
@@ -33,11 +33,16 @@ const seed = Number(values.seed);
 const rng = makeRng(seed);
 const nextSeed = () => Math.floor(rng() * 2 ** 31);
 
+/**
+ * Synchronous writer: the simulation loop never yields to the event loop, so
+ * a stream would buffer everything in memory and lose it all on a crash.
+ */
 function open(path: string, header: string[]) {
   mkdirSync(dirname(path), { recursive: true });
-  const out = createWriteStream(path);
-  out.write(header.join(",") + "\n");
-  return out;
+  const fd = openSync(path, "w");
+  const write = (line: string) => writeSync(fd, line);
+  write(header.join(",") + "\n");
+  return { write, end: () => closeSync(fd) };
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(6));
