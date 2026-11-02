@@ -312,7 +312,8 @@ function Stage({ pet, species, stage, reaction, now, onPet }: StageProps) {
   const mood = moodOf(pet);
   const size = species?.isBaby ? "baby" : (["basic", "middle", "final"] as const)[Math.min(stage, 2)];
   const hearts = pet.dexId !== null && (mood === "happy" || reaction?.kind === "pet" || reaction?.kind === "play") && !reducedMotion;
-  const useGif = species?.animated && !reducedMotion && mood !== "sleeping";
+  const [failedGif, setFailedGif] = useState<number | null>(null);
+  const useGif = species?.animated && !reducedMotion && mood !== "sleeping" && failedGif !== pet.dexId;
   const hatchSoon = pet.dexId === null && (pet.hatchAt ?? 0) - now < 30_000;
 
   return (
@@ -330,6 +331,7 @@ function Stage({ pet, species, stage, reaction, now, onPet }: StageProps) {
             src={useGif ? `/animated/${pet.dexId}.gif` : `/sprites/${pet.dexId}.png`}
             alt={species?.name ?? ""}
             draggable={false}
+            onError={() => setFailedGif(pet.dexId)}
           />
         </button>
       )}
