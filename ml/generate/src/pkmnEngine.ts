@@ -1,5 +1,6 @@
 import { Battle, Dex, type Pokemon, type PokemonSet, Teams } from "@pkmn/sim";
 import type { BattleSnapshot, Combatant, MoveInfo } from "../../../web/lib/battleFeatures.ts";
+import type { BattleMove, BattlePokemon, Boosts } from "../../../web/lib/battle/types.ts";
 import { chooseMove } from "./agent.ts";
 import type { BattleEngine, BattleResult } from "./engine.ts";
 import { battleSeed, makeRng } from "./rng.ts";
@@ -60,14 +61,41 @@ function choice(battle: Battle, side: "p1" | "p2", me: Combatant, foe: Combatant
   return `move ${legal[index].slot}`;
 }
 
-/** A Pokémon as it enters battle (full HP), for the app's pre-battle prediction. */
-export function startingCombatant(set: PokemonSet): Combatant {
+/** Everything the app's battle engine needs about a move. */
+function battleMove(id: string): BattleMove {
+  const m = dex.moves.get(id);
+  const base = { ...moveInfo(id), id: m.id || id, name: m.name || id, pp: m.pp || 1 };
+  if (!m.exists) return base;
+  const out: BattleMove = base;
+  if (m.boosts) out.boosts = { target: m.target === "self" ? "self" : "foe", stats: m.boosts as Boosts };
+  if (m.self?.boosts) out.selfBoosts = m.self.boosts as Boosts;
+  if (m.status && m.target !== "self") out.status = m.status;
+  if (m.drain) out.drain = m.drain;
+  if (m.recoil) out.recoil = m.recoil;
+  if (m.heal) out.heal = m.heal;
+  if (m.secondaries?.length) {
+    out.secondary = m.secondaries.map((sec) => ({
+      chance: sec.chance ?? 100,
+      ...(sec.status ? { status: sec.status } : {}),
+      ...(sec.boosts ? { boosts: sec.boosts as Boosts } : {}),
+      ...(sec.self?.boosts ? { selfBoosts: sec.self.boosts as Boosts } : {}),
+    }));
+  }
+  if (m.multihit) out.multihit = m.multihit as number | [number, number];
+  if (m.critRatio && m.critRatio > 1) out.critRatio = m.critRatio;
+  if (m.damage === "level" || typeof m.damage === "number") out.fixedDamage = m.damage;
+  return out;
+}
+
+/** A Pokémon as it enters battle (full HP): pre-battle prediction and the app's battle engine. */
+export function startingCombatant(set: PokemonSet): BattlePokemon {
   const battle = new Battle({ formatid: "gen9customgame", seed: "1,2,3,4" });
   battle.setPlayer("p1", { name: "A", team: Teams.pack([set]) });
   battle.setPlayer("p2", { name: "B", team: Teams.pack([set]) });
   battle.choose("p1", "team 1");
   battle.choose("p2", "team 1");
-  return combatant(battle.p1.active[0]);
+  const p = battle.p1.active[0];
+  return { ...combatant(p), name: p.species.name, moves: p.moveSlots.map((slot) => battleMove(slot.id)) };
 }
 
 /** Adapter: Pokémon Showdown's engine (@pkmn/sim), gen 9 mechanics, 1v1. */

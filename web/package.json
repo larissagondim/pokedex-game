@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/*.test.ts"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/*.test.ts lib/battle/*.test.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
