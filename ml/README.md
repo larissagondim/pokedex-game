@@ -23,12 +23,12 @@ cd generate && npm install && cd ..
 
 ```bash
 cd generate
-npm run dataset -- --battles 20000 --seed 1 --out ../data/battles.csv
+npm run dataset -- --battles 80000 --pre-battle --seed 3 --out ../data/prebattle.csv
 npm run montecarlo -- --pairs 300 --runs 300 --seed 2 --out ../data/montecarlo.csv
 cd ..
 ```
 
-- **dataset:** random matchups, level 50, no items, curated random-battle movesets (or learnset-based ones). Both sides are played by a greedy agent (highest expected damage, 10% random moves). One row per turn, plus the same row from the other side (features swapped, label flipped), so the model is symmetric.
+- **dataset:** random matchups (`--pre-battle` keeps only the starting state of each battle), level 50, no items, curated random-battle movesets (or learnset-based ones). Both sides are played by a greedy agent (highest expected damage, 10% random moves). One row per turn, plus the same row from the other side (features swapped, label flipped), so the model is symmetric.
 - **montecarlo:** fixed matchups replayed `runs` times from the start; their win rates are the reference for evaluation.
 
 ## 2. Train and evaluate
@@ -55,26 +55,35 @@ The evaluation compares the model's pre-battle probability with the Monte Carlo 
 | `POST /predict` | `{"features": {...}}` → `{"probability", "model", "version"}` |
 | `POST /predict/batch` | `{"items": [{"features": {...}}, ...]}` |
 
-In the web app, `predictWin(snapshot)` (`web/lib/winPrediction.ts`) computes the features and calls the API (`NEXT_PUBLIC_ML_API_URL`, default `http://localhost:8000`). `CORS_ORIGINS` and `MODEL_PATH` configure the service.
+Optional: in the web app, `predictWin(snapshot)` calls the API instead of the in-browser model when `NEXT_PUBLIC_ML_API_URL` is set. `CORS_ORIGINS` and `MODEL_PATH` configure the service.
 
-## Results (v1)
+## Results: pre-battle model
 
-Dataset: 19,994 simulated battles, 90,170 rows (turns × both sides), 22 features. 5-fold cross-validation grouped by battle:
+The app only needs the chance **before** the battle starts, so the model is trained on the starting state of 79,983 simulated battles (159,966 rows with both sides; HP, status and turn are constant there and get dropped, leaving 15 features). 5-fold cross-validation grouped by battle:
 
 | Model | Log loss ↓ | Brier ↓ | AUC ↑ | Accuracy | Calibration error ↓ |
 | --- | --- | --- | --- | --- | --- |
-| Coin flip | 0.693 | 0.250 | 0.500 | 50.0% | 0.0% |
-| Damage race heuristic | 0.653 | 0.187 | 0.796 | 79.3% | 15.3% |
-| Logistic regression | 0.410 | 0.130 | 0.895 | 82.1% | 0.7% |
-| Gradient boosting (chosen) | 0.395 | 0.125 | 0.903 | 82.6% | 1.1% |
+| Coin flip | 0.693 | 0.250 | 0.500 | 50.0% | 0.00% |
+| Damage race heuristic | 0.679 | 0.195 | 0.787 | 78.5% | 16.19% |
+| Logistic regression | 0.447 | 0.144 | 0.873 | 79.6% | 0.48% |
+| Gradient boosting (chosen) | 0.428 | 0.137 | 0.885 | 80.5% | 0.25% |
 
-- **Before the first move** the chosen model has a log loss of 0.436; it gets sharper as the battle goes on.
-- **Species never seen in training:** AUC 0.894 (log loss 0.414), close to the overall score, so it generalizes to new matchups.
-- **Calibration:** when it says 70%, side A wins about 70% of the time (error 1.1%, table in `reports/metrics.json`).
+- **Species never seen in training:** AUC 0.882 (log loss 0.432).
+- **Calibration:** when it says 70%, side A wins about 70% of the time (table in `reports/metrics.json`).
+- **Against Monte Carlo** (300 matchups × 200 replays): mean absolute error 0.19, correlation 0.77, ~2,415× faster.
 
-**Against Monte Carlo** (300 matchups × 200 replays): mean absolute error 0.20, correlation 0.76, and about **5,582× faster** (0.07 ms vs 396 ms).
+Main limitation: about two thirds of fixed matchups are nearly decided, but the model often says 20%/80% for them. It is calibrated on average but not sharp per matchup, because the features don't see abilities, status moves or special move effects. Next steps: features for those, and training on Monte Carlo win rates ("soft labels").
 
-The gap to Monte Carlo is the main limitation: about two thirds of fixed matchups are nearly decided (one side wins >95% of replays), but the model often says 20%/80% for them. It is calibrated on average but not sharp per matchup, because the features don't see abilities, status moves or special move effects. Next steps: features for those, more data, and training on Monte Carlo win rates ("soft labels") instead of single outcomes.
+An all-turns model (for a live bar during the battle) can be trained the same way from a dataset generated without `--pre-battle`.
+
+## In the browser
+
+```bash
+.venv/bin/python -m pokedex_ml.export   # → web/public/battle/win-model.json + web/lib/winModel.fixture.json
+cd generate && npm run export-sets      # → web/public/battle/battle-sets.json
+```
+
+`export` writes the gradient-boosting trees as JSON (~500 KB, loaded only by the battle screen) and a fixture with sklearn's probabilities; `web/lib/winModel.ts` evaluates the trees and its test checks they match (< 1e-5). `export-sets` writes each species as it enters battle (level-50 stats and moveset, same logic as the training data), which the app uses to build the starting state. `predictWin(snapshot)` uses the browser model unless `NEXT_PUBLIC_ML_API_URL` points at the API.
 
 ## Features
 

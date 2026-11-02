@@ -45,8 +45,9 @@ The commit history shows how the project grew step by step: scraper, web scaffol
 | Regions and music | The list shows the region of the focused Pokémon (Kanto … Paldea, by dex number); ◀ ▶ jump between regions. Each region has its own background music, which crossfades when the cursor crosses a region boundary. The themes are original synthesized chiptune loops (no game music is bundled); your own recordings can be mapped per region in `web/lib/music.ts` | ✅ Done |
 | Filters, sorting and favorites | Options row above the list: filter by type or ★ favorites, sort by number, name or base stat total. Rows show a mini sprite, type dots and the searched prefix highlighted. Favorites (MENU on a Pokémon page) are saved in `localStorage`. Jumping past Paldea shows a "Gen X: coming soon" slot | ✅ Done |
 | Fun facts | Each Pokémon page ends with three "Did you know?" facts computed from the data by comparing it with all 1025 Pokémon: stat total ranking, top-1% stats, rare typings ("the only Bug/Ghost Pokémon"), size extremes or weight in Pikachu, catch rate, branched evolutions… (`web/lib/funFacts.ts`) | ✅ Done |
-| Battles | 1v1 between any two Pokémon and 6v6 by teams, using the `@pkmn/sim` engine in Next.js API routes | 🕒 Planned |
-| Win prediction | Win probability before and during a battle: trained model (gradient boosting, AUC 0.90) served via FastAPI, with a client ready for the battle screen. The probability bar comes with the battle | 🟡 Model and API done |
+| Battle screen | BATTLE tab: your Pokémon (from your Tamagotchi party, or any) seen from the back against a random wild one, on a backdrop picked from the foe's type (field, sea, snow, volcano, rocky, cave, mystic, sky, power), with status boxes, the **pre-battle win chance** and an original battle theme | ✅ Done |
+| Battles | 1v1 with the standard rules (speed order, type chart, official move values), built by hand; then 6v6 by teams | 🕒 Planned |
+| Win prediction | Win chance **before the battle**, shown on the battle screen. Gradient boosting trained on 79,983 simulated battles (AUC 0.88, calibration error 0.2%), exported to JSON and run **in the browser** (no server needed); the FastAPI service is optional | ✅ Done |
 | Tamagotchi | Adopt up to 5 Pokémon from the list (A at the end of a Pokémon page, or ♥ ADOPT). Food, joy and energy decay with real time; feed, play, sleep and train them. XP raises the level and they **evolve** (babies also need to be happy). Coins earned by playing and training buy **eggs** that hatch into a random base-stage or baby Pokémon. Hearts when happy, mood bubbles, reactions per action, idle animation by evolution stage, and clicking one plays its cry. Saved in `localStorage` | ✅ Done (v1) |
 | Trainer profile | Create your own trainer profile: pick a name, design your trainer sprite (hair, outfit, colors, etc.) and show it on the device. The profile ties together your Tamagotchi, favorites and battle history | 🕒 Planned |
 
@@ -202,9 +203,9 @@ Full details, commands and results in [`ml/README.md`](ml/README.md). In short:
 
 1. **Battle state contract:** `BattleSnapshot` in `web/lib/battleFeatures.ts` is the engine-neutral 1v1 state. The features (turns to KO with the damage formula, damage share, turn order, damage race, HP, type advantage, stats, status) are computed there, once, and shared by the dataset generator and the app.
 2. **Dataset:** `ml/generate` simulates thousands of battles through a `BattleEngine` interface. Today the adapter is `@pkmn/sim` (Showdown, gen 9); the project's own battle engine will get its own adapter, so the model learns its rules. Greedy agents play both sides; every turn is a row, mirrored from the other side so the model is symmetric.
-3. **Training:** logistic regression vs. gradient boosting, cross-validated **by battle** (GroupKFold), with log loss, Brier, AUC, calibration and a test on species never seen in training. v1: AUC 0.90, calibration error ~1%, against 0.80 for a "who wins the damage race" heuristic.
+3. **Training:** logistic regression vs. gradient boosting, cross-validated **by battle** (GroupKFold), with log loss, Brier, AUC, calibration and a test on species never seen in training. Pre-battle model: AUC 0.88, calibration error 0.25%, against 0.79 for a "who wins the damage race" heuristic.
 4. **Comparison with Monte Carlo:** replaying fixed matchups hundreds of times; the model is ~5600× faster but less sharp on nearly decided matchups (MAE 0.20), which points at the next features to add.
-5. **Serving:** FastAPI (`/predict`), called from the app with `predictWin(snapshot)`.
+5. **Serving:** the trees are exported to JSON and evaluated in the browser (`web/lib/winModel.ts`, tested to match scikit-learn), so the battle screen works without a server. FastAPI (`/predict`) is used instead when `NEXT_PUBLIC_ML_API_URL` is set.
 
 ## Data structures and algorithms
 
@@ -258,7 +259,7 @@ Next:
 - [ ] **Phase 1:** Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
 - [ ] **Phase 3:** 1v1 battle (built by hand)
-- [ ] **Phase 4:** probability bar on the battle screen (after the battle engine)
+- [x] Battle screen with backdrops, battle music and the pre-battle win chance
 - [ ] **Phase 5:** 6v6 battle
 - [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
 - [ ] **Phase 7:** Trainer profile (name and customizable sprite)
