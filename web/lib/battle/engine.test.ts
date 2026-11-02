@@ -157,3 +157,10 @@ test("the AI prefers a super-effective hit and skips useless status moves", () =
   st.b.status = "brn";
   assert.equal(chooseMove(st.a, st.b, seq([0.9], 0.5)), 1);
 });
+
+test("Focus Punch fails if the user was hit first", () => {
+  const punch = move({ id: "focuspunch", name: "Focus Punch", type: "fighting", power: 150, priority: -3 });
+  const r = runTurn(battle({}, { moves: [punch] }), 0, 0, seq([], 0.99));
+  const after = r.events.slice(r.events.findIndex((e) => e.kind === "move" && e.side === "b"));
+  assert.equal(after[1]?.kind, "fail");
+});

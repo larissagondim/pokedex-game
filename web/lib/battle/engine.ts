@@ -232,6 +232,12 @@ function performMove(st: BattleState, side: Side, move: FighterMove, rng: Rng, e
   if (move !== STRUGGLE) move.ppLeft--;
   events.push({ kind: "move", side, move: move.name });
 
+  // Focus Punch fails if the user was hit earlier this turn.
+  if (move.id === "focuspunch" && events.some((e) => e.kind === "damage" && e.side === side)) {
+    events.push({ kind: "fail", side });
+    return;
+  }
+
   if (move.accuracy < 1 && rng() >= move.accuracy) {
     events.push({ kind: "miss", side });
     return;

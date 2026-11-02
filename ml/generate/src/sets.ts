@@ -22,9 +22,20 @@ for (const s of dex.species.all()) {
 }
 export const DEX_NUMBERS = [...byNum.keys()].sort((a, b) => a - b);
 
+/**
+ * Moves that only work under special conditions (fail unless..., only on the
+ * first turn, need an item...). Fine in curated sets, bad picks by power alone.
+ */
+const CONDITIONAL = new Set([
+  "lastresort", "synchronoise", "focuspunch", "dreameater", "belch", "steelroller", "burnup", "doubleshock",
+  "poltergeist", "fakeout", "firstimpression", "shelltrap", "beakblast", "upperhand", "futuresight",
+  "doomdesire", "snore", "spitup", "lastrespects", "ragefist", "hyperspacefury", "aurawheel",
+]);
+
 const usableAttack = (id: string) => {
   const m = dex.moves.get(id);
   return (
+    !CONDITIONAL.has(m.id) &&
     m.exists &&
     m.category !== "Status" &&
     m.basePower > 0 &&
