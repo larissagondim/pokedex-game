@@ -40,8 +40,10 @@ if (!existsSync(dataFile)) {
       specialDefense: p.stats["special-defense"],
       speed: p.stats.speed,
     },
-    // Only if the GIF is really there: animated/ is git-ignored, so deploys (e.g. Vercel) don't have it.
-    animated: Boolean(p.animated) && existsSync(join(web, "public", "animated", `${p.id}.gif`)),
+    // animated/ is git-ignored, so deploys (e.g. Vercel) don't have the GIFs: use the remote URL there.
+    animated: existsSync(join(web, "public", "animated", `${p.id}.gif`))
+      ? `/animated/${p.id}.gif`
+      : (p.animated_url ?? null),
     cry: p.cry_url ?? null,
     evolvesFromId: p.evolves_from_id ?? null,
     isBaby: Boolean(p.is_baby),

@@ -47,7 +47,7 @@ function AnimatedSprite({ pokemon }: { pokemon: Pokemon }) {
       <img
         key={`${pokemon.id}-${useGif}`}
         className={useGif ? styles.stageGif : styles.stageStatic}
-        src={useGif ? `/animated/${pokemon.id}.gif` : `/sprites/${pokemon.id}.png`}
+        src={useGif && pokemon.animated ? pokemon.animated : `/sprites/${pokemon.id}.png`}
         alt={pokemon.name}
         draggable={false}
         style={useGif && size ? size : undefined}

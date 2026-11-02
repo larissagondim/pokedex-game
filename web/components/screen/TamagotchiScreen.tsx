@@ -328,7 +328,7 @@ function Stage({ pet, species, stage, reaction, now, onPet }: StageProps) {
             className={styles.pet}
             data-size={size}
             data-reaction={reaction?.kind}
-            src={useGif ? `/animated/${pet.dexId}.gif` : `/sprites/${pet.dexId}.png`}
+            src={useGif && species?.animated ? species.animated : `/sprites/${pet.dexId}.png`}
             alt={species?.name ?? ""}
             draggable={false}
             onError={() => setFailedGif(pet.dexId)}
