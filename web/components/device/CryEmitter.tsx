@@ -6,6 +6,9 @@ import { AudioListener, AudioLoader, type Group, PositionalAudio } from "three";
 import { audioEnabled } from "@/stores/audio";
 import { usePokedex } from "@/stores/pokedex";
 
+/** Cries are mastered loud; this keeps them comfortably below the music and UI sounds. */
+const CRY_VOLUME = 0.5;
+
 const loader = new AudioLoader();
 const buffers = new Map<string, Promise<AudioBuffer>>();
 
@@ -34,6 +37,7 @@ export function CryEmitter() {
     camera.add(listener);
     const sound = new PositionalAudio(listener);
     sound.setRefDistance(15);
+    sound.setVolume(CRY_VOLUME);
     group.current?.add(sound);
     anchor.current = sound;
     return () => {
