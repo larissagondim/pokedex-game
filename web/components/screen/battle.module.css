@@ -208,6 +208,18 @@
   color: #b9b9c2;
 }
 
+/* Title above the picker's search field. */
+.pickerTitle {
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--red);
+  color: var(--white);
+  font-family: var(--font-pixel), monospace;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
 @keyframes idle {
   50% {
     transform: translateY(-3px);

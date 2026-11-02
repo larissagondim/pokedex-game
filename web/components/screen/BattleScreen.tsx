@@ -6,9 +6,11 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { preBattleSnapshot, predictWin } from "@/lib/winPrediction";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { usePokedex } from "@/stores/pokedex";
+import { useFavorites } from "@/stores/favorites";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import styles from "./battle.module.css";
 import { terrainFor } from "./battleTerrain";
+import { PokemonPicker } from "./PokemonPicker";
 
 /** Above the main screen handler (10), like the Tamagotchi tab. */
 const INPUT_PRIORITY = 11;
@@ -21,26 +23,22 @@ interface Props {
   onNotice: (text: string) => void;
 }
 
-const wrap = (i: number, n: number) => (n ? (i + n) % n : 0);
+type Step = "player" | "foe" | "scene";
 
 /**
- * BATTLE tab, before the fight: your Pokémon (back view) against a wild one,
- * a backdrop from the opponent's type, and the model's win chance.
- * Starting the fight is where the battle engine will plug in.
+ * BATTLE tab, before the fight: choose your Pokémon, then the opponent
+ * (favorites first, searchable), then see both on a backdrop from the
+ * opponent's type with the model's win chance. Starting the fight is where
+ * the battle engine will plug in.
  */
 export function BattleScreen({ active, onNotice }: Props) {
   const list = usePokedex((s) => s.list);
-  const focusedId = usePokedex((s) => s.focusedId);
+  const favorites = useFavorites((s) => s.ids);
   const pets = useTamagotchi((s) => s.pets);
-
-  // Your side: your Tamagotchi party if you have one, otherwise the whole Pokédex.
   const party = useMemo(() => pets.flatMap((p) => (p.dexId === null ? [] : [p.dexId])), [pets]);
-  const candidates = party.length ? party : list.map((p) => p.id);
-  const [playerIndex, setPlayerIndex] = useState(() => {
-    const i = list.findIndex((p) => p.id === focusedId);
-    return i >= 0 && !party.length ? i : 0;
-  });
-  const playerId = candidates[Math.min(playerIndex, candidates.length - 1)];
+
+  const [step, setStep] = useState<Step>("player");
+  const [playerId, setPlayerId] = useState<number | null>(null);
   const [foeId, setFoeId] = useState<number | null>(null);
   const [chance, setChance] = useState<{ key: string; value: number | null } | null>(null);
 
@@ -48,70 +46,94 @@ export function BattleScreen({ active, onNotice }: Props) {
   const player = playerId ? byId.get(playerId) : undefined;
   const foe = foeId ? byId.get(foeId) : undefined;
 
-  const newFoe = () => {
-    if (!list.length) return;
-    const next = list[Math.floor(Math.random() * list.length)];
-    setFoeId(next.id);
-    onNotice(`A wild ${next.name.toUpperCase()} appeared!`);
-    usePokedex.getState().playCry(next.id);
-  };
-
-  // First opponent once the Pokédex is loaded.
-  const started = useRef(false);
+  // Tell the player what to do at each step.
+  const greeted = useRef<Step | null>(null);
   useEffect(() => {
-    if (started.current || !list.length) return;
-    started.current = true;
-    setFoeId(list[Math.floor(Math.random() * list.length)].id);
-  }, [list]);
+    if (!active || greeted.current === step) return;
+    greeted.current = step;
+    if (step === "player") onNotice("Choose your Pokémon! ★ favorites come first. ▲ on the top row: search.");
+    else if (step === "foe") onNotice("Now choose your opponent! B: change your Pokémon.");
+  }, [active, step, onNotice]);
 
   // Pre-battle win chance from the model (in the browser, or the API if configured).
   const key = `${playerId}-${foeId}`;
   useEffect(() => {
-    if (!playerId || !foeId) return;
+    if (step !== "scene" || !playerId || !foeId) return;
     const controller = new AbortController();
     preBattleSnapshot(playerId, foeId)
       .then((snapshot) => (snapshot ? predictWin(snapshot, controller.signal) : null))
       .then((p) => setChance({ key, value: p?.probability ?? null }))
       .catch(() => setChance({ key, value: null }));
     return () => controller.abort();
-  }, [key, playerId, foeId]);
+  }, [step, key, playerId, foeId]);
   const probability = chance?.key === key ? chance.value : undefined;
 
-  // The secondary screen and the music follow the opponent.
+  // In the scene, the secondary screen and the music follow the opponent.
   useEffect(() => {
-    if (active && foeId) usePokedex.getState().focus(foeId);
-  }, [active, foeId]);
+    if (active && step === "scene" && foeId) usePokedex.getState().focus(foeId);
+  }, [active, step, foeId]);
 
-  const handle = (button: DeviceButton): boolean => {
-    switch (button) {
-      case "LEFT":
-      case "RIGHT":
-        setPlayerIndex((i) => wrap(i + (button === "LEFT" ? -1 : 1), candidates.length));
-        return true;
-      case "UP":
-      case "DOWN":
-        newFoe();
-        return true;
-      case "A":
-        if (player && foe) {
-          onNotice(`${player.name.toUpperCase()} vs ${foe.name.toUpperCase()}! The battle itself is coming soon.`);
-          usePokedex.getState().playCry(player.id);
-        }
-        return true;
+  const handleScene = (button: DeviceButton): boolean => {
+    if (button === "A" && player && foe) {
+      onNotice(`${player.name.toUpperCase()} vs ${foe.name.toUpperCase()}! The battle itself is coming soon.`);
+      usePokedex.getState().playCry(player.id);
+      return true;
     }
-    return false; // B, MENU and ZOOM go to the screen / device
+    if (button === "B") {
+      setStep("foe");
+      return true;
+    }
+    return button !== "MENU" && button !== "ZOOM"; // swallow the D-pad here
   };
 
-  const handler = useRef(handle);
-  const activeRef = useRef(active);
+  const handler = useRef(handleScene);
+  const sceneActive = useRef(false);
   useEffect(() => {
-    handler.current = handle;
-    activeRef.current = active;
+    handler.current = handleScene;
+    sceneActive.current = active && step === "scene";
   });
   useEffect(
-    () => useDeviceInput.getState().subscribe((button) => activeRef.current && handler.current(button), INPUT_PRIORITY),
+    () => useDeviceInput.getState().subscribe((button) => sceneActive.current && handler.current(button), INPUT_PRIORITY),
     [],
   );
+
+  if (step === "player") {
+    return (
+      <PokemonPicker
+        key="player"
+        title="CHOOSE YOUR POKÉMON"
+        active={active}
+        favorites={favorites}
+        pinned={party}
+        onPick={(p) => {
+          setPlayerId(p.id);
+          setStep("foe");
+          usePokedex.getState().playCry(p.id);
+        }}
+        onBack={() => false}
+      />
+    );
+  }
+  if (step === "foe") {
+    return (
+      <PokemonPicker
+        key="foe"
+        title={`${player?.name.toUpperCase() ?? ""} VS ...?`}
+        active={active}
+        favorites={favorites}
+        onPick={(p) => {
+          setFoeId(p.id);
+          setStep("scene");
+          onNotice(`${p.name.toUpperCase()} wants to battle! A: fight   B: change opponent`);
+          usePokedex.getState().playCry(p.id);
+        }}
+        onBack={() => {
+          setStep("player");
+          return true;
+        }}
+      />
+    );
+  }
 
   return (
     <div className={styles.scene} data-terrain={terrainFor(foe?.types)}>
@@ -132,7 +154,7 @@ export function BattleScreen({ active, onNotice }: Props) {
         </>
       )}
 
-      <WinChance probability={probability} hasParty={party.length > 0} />
+      <WinChance probability={probability} />
     </div>
   );
 }
@@ -175,7 +197,7 @@ function StatusBox({ pokemon, side }: { pokemon: Pokemon; side: "player" | "foe"
   );
 }
 
-function WinChance({ probability, hasParty }: { probability: number | null | undefined; hasParty: boolean }) {
+function WinChance({ probability }: { probability: number | null | undefined }) {
   const pct = probability == null ? null : Math.round(probability * 100);
   return (
     <div className={styles.chance} role="meter" aria-label="Win chance" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined}>
@@ -186,7 +208,7 @@ function WinChance({ probability, hasParty }: { probability: number | null | und
       <div className={styles.chanceTrack}>
         <div className={styles.chanceFill} style={{ width: `${pct ?? 50}%` }} data-unknown={pct === null} />
       </div>
-      <div className={styles.chanceHint}>{hasParty ? "◀▶ your party" : "◀▶ your Pokémon"} · ▲▼ new foe · A: fight</div>
+      <div className={styles.chanceHint}>A: fight · B: change opponent</div>
     </div>
   );
 }

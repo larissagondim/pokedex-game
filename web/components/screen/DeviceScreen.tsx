@@ -28,7 +28,7 @@ import { TabBar } from "./TabBar";
 import { TamagotchiScreen } from "./TamagotchiScreen";
 import { describeEvent } from "./tamaMessages";
 
-const BATTLE_HINT = "A wild Pokémon wants to battle! ◀▶ your Pokémon   ▲▼ new foe   A: fight";
+const BATTLE_HINT = "▲▼ choose   ◀▶ jump 10   A: pick   ▲ on the top row: search   B: back";
 const TAMA_HINT = "▲▼ party   ◀▶ action   A: do it   Click your Pokémon to hear it!";
 const LIST_HINT = "▲▼ Pokémon   ◀▶ region   A: open   MENU: tab   ▲ on the first row: filters, then search (A = keyboard)";
 
@@ -392,6 +392,8 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "/" || e.target instanceof HTMLInputElement) return;
+      // The BATTLE tab has its own search field.
+      if (useScreen.getState().tab === BATTLE_TAB) return;
       if (!acceptsInput(useDeviceState.getState().phase) || powerRef.current !== "on") return;
       e.preventDefault();
       const focusInput = () => searchInput.current?.focus({ preventScroll: true });
