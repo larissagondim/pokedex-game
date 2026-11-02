@@ -76,12 +76,24 @@ test("features are antisymmetric under swapping sides", () => {
   const s: BattleSnapshot = { turn: 3, a: charmander, b: { ...bulbasaur, hp: 90 } };
   const f = battleFeatures(s);
   const g = battleFeatures(swapSides(s));
-  for (const name of ["ttk_diff", "hp_diff", "eff_diff", "stat_ratio", "level_diff"] as const) {
+  for (const name of ["ttk_diff", "hp_diff", "eff_diff", "stat_ratio", "level_diff", "dmg_diff", "speed_ratio"] as const) {
     assert.ok(Math.abs(g[name] + f[name]) < 1e-9, name);
   }
   assert.equal(f.race_win, 1);
   assert.equal(g.race_win, 0);
   assert.equal(f.moves_first + g.moves_first, 1);
+  assert.equal(f.dmg_a, g.dmg_b);
+});
+
+test("damage share is continuous where turns-to-KO is not", () => {
+  const strong = { ...charmander, moves: [{ type: "fire", power: 150, category: "special" as const, accuracy: 1, priority: 0 }] };
+  const weak = charmander;
+  const vs = { ...bulbasaur, hp: 300, maxHp: 300 };
+  const f1 = battleFeatures({ turn: 0, a: weak, b: vs });
+  const f2 = battleFeatures({ turn: 0, a: strong, b: vs });
+  assert.ok(f2.dmg_a > f1.dmg_a);
+  assert.equal(f1.ohko_a, 0);
+  assert.equal(battleFeatures({ turn: 0, a: strong, b: { ...bulbasaur, hp: 10 } }).ohko_a, 1);
 });
 
 test("feature vector follows FEATURE_NAMES", () => {

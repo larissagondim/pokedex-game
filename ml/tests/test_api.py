@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 from sklearn.linear_model import LogisticRegression
@@ -12,7 +13,7 @@ FEATURES = ["ttk_diff", "hp_diff"]
 def client():
     # Tiny model: A wins when it needs fewer turns and has more HP.
     rng = np.random.default_rng(0)
-    x = rng.normal(size=(400, 2))
+    x = pd.DataFrame(rng.normal(size=(400, 2)), columns=FEATURES)
     y = (x.sum(axis=1) > 0).astype(int)
     model = model_io.TrainedModel(estimator=LogisticRegression().fit(x, y), features=FEATURES, name="test", version="1")
     api.app.dependency_overrides[api.get_model] = lambda: model

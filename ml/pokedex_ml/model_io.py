@@ -7,6 +7,7 @@ from typing import Any
 
 import joblib
 import numpy as np
+import pandas as pd
 
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "model.joblib"
 
@@ -20,7 +21,7 @@ class TrainedModel:
 
     def predict(self, rows: list[dict[str, float]]) -> np.ndarray:
         """P(side A wins) for feature dicts keyed by `self.features`."""
-        x = np.array([[row[f] for f in self.features] for row in rows], dtype=float)
+        x = pd.DataFrame([[row[f] for f in self.features] for row in rows], columns=self.features, dtype=float)
         return self.estimator.predict_proba(x)[:, 1]
 
 

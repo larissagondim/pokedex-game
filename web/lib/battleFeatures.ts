@@ -40,6 +40,8 @@ export interface BattleSnapshot {
 /** Turns-to-KO is capped so "can't hurt it" stays a finite number. */
 export const MAX_TURNS = 20;
 const STAB = 1.5;
+/** Damage shares above this (several KOs' worth) carry no extra information. */
+const MAX_DAMAGE_SHARE = 3;
 /** Mean of the 0.85..1.00 damage roll. */
 const AVERAGE_ROLL = 0.925;
 
@@ -112,6 +114,12 @@ export const FEATURE_NAMES = [
   "status_a",
   "status_b",
   "turn",
+  "dmg_a",
+  "dmg_b",
+  "dmg_diff",
+  "ohko_a",
+  "ohko_b",
+  "speed_ratio",
 ] as const;
 
 export type FeatureName = (typeof FEATURE_NAMES)[number];
@@ -128,6 +136,10 @@ export function battleFeatures(s: BattleSnapshot): Record<FeatureName, number> {
   const hpB = s.b.hp / s.b.maxHp;
   const effA = log2(bestEffectiveness(s.a, s.b));
   const effB = log2(bestEffectiveness(s.b, s.a));
+  // Continuous version of turns-to-KO: share of the foe's current HP the best
+  // move takes (turns-to-KO rounds 51% and 99% to the same "2 turns").
+  const dmgA = Math.min(MAX_DAMAGE_SHARE, bestMove(s.a, s.b).damage / Math.max(1, s.b.hp));
+  const dmgB = Math.min(MAX_DAMAGE_SHARE, bestMove(s.b, s.a).damage / Math.max(1, s.a.hp));
   // Who wins the damage race if both just use their best move every turn.
   const race = ttkA < ttkB ? 1 : ttkA > ttkB ? 0 : first;
   return {
@@ -147,6 +159,12 @@ export function battleFeatures(s: BattleSnapshot): Record<FeatureName, number> {
     status_a: s.a.status ? 1 : 0,
     status_b: s.b.status ? 1 : 0,
     turn: s.turn,
+    dmg_a: dmgA,
+    dmg_b: dmgB,
+    dmg_diff: dmgA - dmgB,
+    ohko_a: dmgA >= 1 ? 1 : 0,
+    ohko_b: dmgB >= 1 ? 1 : 0,
+    speed_ratio: Math.log(Math.max(1, speedOf(s.a)) / Math.max(1, speedOf(s.b))),
   };
 }
 

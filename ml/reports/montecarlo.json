@@ -1,0 +1,18 @@
+{
+  "model": {
+    "name": "boosting",
+    "version": "20261102182606"
+  },
+  "matchups": 300,
+  "runs_per_matchup": 200,
+  "mae": 0.19751042238961555,
+  "rmse": 0.28404143530257353,
+  "correlation": 0.7648143827472934,
+  "mean_mc_sampling_error": 0.011810596699254486,
+  "within_mc_95_interval": 0.05333333333333334,
+  "ms_per_prediction": {
+    "model": 0.07099690332931156,
+    "monte_carlo": 396.3
+  },
+  "speedup": 5581.933597326136
+}
