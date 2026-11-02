@@ -40,6 +40,8 @@ interface TamagotchiState extends Saved {
   adopt: (dexId: number) => boolean;
   buyEgg: () => void;
   release: (uid: string) => void;
+  /** Adds coins (e.g. for winning a battle). */
+  reward: (coins: number) => void;
   act: (uid: string, action: Action, list: readonly Pokemon[]) => void;
   /** Applies decay, hatches ready eggs. Call on open and periodically. */
   refresh: (list: readonly Pokemon[]) => void;
@@ -94,6 +96,8 @@ export const useTamagotchi = create<TamagotchiState>((set, get) => {
       const egg = newPet(uid(), null, Date.now());
       commit({ pets: [...pets, egg], coins: coins - EGG_PRICE, event: { kind: "egg-bought", uid: egg.uid } });
     },
+
+    reward: (coins) => commit({ coins: get().coins + coins }),
 
     release: (id) => {
       const pet = get().pets.find((p) => p.uid === id);

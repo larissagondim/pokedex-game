@@ -43,6 +43,13 @@ export function chooseMove(me: Fighter, foe: Fighter, rng: Rng = Math.random): n
       score = m.fixedDamage === "level" ? me.level : typeof m.fixedDamage === "number" ? m.fixedDamage : expectedDamage(m, self, target);
     } else if (m.status) {
       score = foe.status ? 0 : bestHit * 0.6;
+    } else if (m.volatile === "confusion") {
+      score = foe.confusion > 0 ? 0 : bestHit * 0.5;
+    } else if (m.volatile === "leechseed") {
+      score = foe.seeded || foe.types.includes("grass") ? 0 : bestHit * 0.5;
+    } else if (m.volatile === "protect") {
+      // Now and then, never twice in a row.
+      score = me.protectStreak > 0 ? 0 : bestHit * 0.3;
     } else if (m.heal) {
       score = me.hp < me.maxHp / 2 ? bestHit * 0.9 : 0;
     } else if (m.boosts) {

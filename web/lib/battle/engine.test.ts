@@ -164,3 +164,67 @@ test("Focus Punch fails if the user was hit first", () => {
   const after = r.events.slice(r.events.findIndex((e) => e.kind === "move" && e.side === "b"));
   assert.equal(after[1]?.kind, "fail");
 });
+
+const splash = move({ id: "splash", name: "Splash", power: 0, category: "status" });
+
+test("flinch only works if the target hasn't moved yet", () => {
+  const bite = move({ id: "bite", name: "Bite", type: "dark", power: 60, secondary: [{ chance: 100, volatile: "flinch" }] });
+  // A is faster: B flinches.
+  const fast = battle({ moves: [bite], stats: { atk: 100, def: 100, spa: 100, spd: 100, spe: 200 } }, {});
+  assert.ok(runTurn(fast, 0, 0, seq([], 0.99)).events.some((e) => e.kind === "cant-move" && e.reason === "flinch"));
+  // A is slower: B already moved, no flinch.
+  const slow = battle({ moves: [bite], stats: { atk: 100, def: 100, spa: 100, spd: 100, spe: 10 } }, {});
+  assert.ok(!runTurn(slow, 0, 0, seq([], 0.99)).events.some((e) => e.kind === "cant-move"));
+});
+
+test("confusion can make the Pokémon hit itself, then wears off", () => {
+  const ray = move({ id: "confuseray", name: "Confuse Ray", type: "ghost", power: 0, category: "status", volatile: "confusion" });
+  const st = battle({ moves: [ray], stats: { atk: 100, def: 100, spa: 100, spd: 100, spe: 200 } }, {});
+  // confuse roll 0 → 2 turns; B's first move: counter 2→1, self-hit roll 0.1 < 1/3
+  const t1 = runTurn(st, 0, 0, seq([0, 0.1, 0.5], 0.99));
+  assert.ok(t1.events.some((e) => e.kind === "confused" && e.side === "b"));
+  assert.ok(t1.events.some((e) => e.kind === "self-hit" && e.side === "b"));
+  const t2 = runTurn(t1.state, 0, 0, seq([], 0.99));
+  assert.ok(t2.events.some((e) => e.kind === "confusion-end" && e.side === "b"));
+});
+
+test("Protect blocks the foe's move and gets less likely in a row", () => {
+  const protect = move({ id: "protect", name: "Protect", power: 0, category: "status", priority: 4, volatile: "protect" });
+  const t1 = runTurn(battle({ moves: [protect] }, {}), 0, 0, seq([], 0.5));
+  assert.ok(t1.events.some((e) => e.kind === "protect" && e.side === "a"));
+  assert.ok(t1.events.some((e) => e.kind === "protected" && e.side === "a"));
+  assert.equal(t1.state.a.hp, t1.state.a.maxHp);
+  // Second in a row needs a roll < 1/3: 0.5 fails.
+  const t2 = runTurn(t1.state, 0, 0, seq([], 0.5));
+  assert.ok(t2.events.some((e) => e.kind === "fail" && e.side === "a"));
+});
+
+test("Leech Seed drains 1/8 each turn and doesn't affect Grass types", () => {
+  const seed = move({ id: "leechseed", name: "Leech Seed", type: "grass", power: 0, category: "status", volatile: "leechseed" });
+  const t1 = runTurn(battle({ moves: [seed] }, { moves: [splash] }), 0, 0, seq([], 0.99));
+  const leech = t1.events.find((e) => e.kind === "leech");
+  assert.ok(leech?.kind === "leech" && leech.side === "b" && leech.amount === Math.floor(150 / 8));
+  const grass = runTurn(battle({ moves: [seed] }, { types: ["grass"], moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.ok(grass.events.some((e) => e.kind === "no-effect"));
+});
+
+test("Outrage locks the user for 2-3 turns, then confuses it", () => {
+  const outrage = move({ id: "outrage", name: "Outrage", type: "dragon", power: 120, locked: true });
+  let st = battle({ moves: [outrage, move({ id: "tackle2" })], hp: 999, maxHp: 999 }, { hp: 999, maxHp: 999, moves: [splash] });
+  // lock length roll 0 → 1 more turn; second turn picks move 1 but is forced to Outrage
+  const t1 = runTurn(st, 0, 0, seq([0.1, 0.99, 0.99, 0], 0.99));
+  st = t1.state;
+  assert.ok(st.a.locked);
+  const t2 = runTurn(st, 1, 0, seq([0.1], 0.99));
+  assert.ok(t2.events.some((e) => e.kind === "move" && e.side === "a" && e.move === "Outrage"));
+  assert.ok(t2.events.some((e) => e.kind === "confused" && e.side === "a" && e.fatigue));
+  assert.equal(t2.state.a.moves[0].ppLeft, 34, "PP spent once");
+});
+
+test("Hyper Beam needs a recharge turn", () => {
+  const beam = move({ id: "hyperbeam", name: "Hyper Beam", power: 150, category: "special", recharge: true });
+  const st = battle({ moves: [beam], hp: 999, maxHp: 999 }, { hp: 999, maxHp: 999, moves: [splash] });
+  const t1 = runTurn(st, 0, 0, seq([], 0.99));
+  const t2 = runTurn(t1.state, 0, 0, seq([], 0.99));
+  assert.ok(t2.events.some((e) => e.kind === "cant-move" && e.side === "a" && e.reason === "recharge"));
+});

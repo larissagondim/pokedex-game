@@ -1,4 +1,5 @@
-import { type BattleSnapshot, battleFeatures, type Combatant } from "./battleFeatures.ts";
+import type { BattlePokemon } from "./battle/types.ts";
+import { type BattleSnapshot, battleFeatures } from "./battleFeatures.ts";
 import { loadWinModel, predictFeatures } from "./winModel.ts";
 
 /**
@@ -49,12 +50,12 @@ export async function predictWin(snapshot: BattleSnapshot, signal?: AbortSignal)
 /** Each species as it enters battle (level 50 stats, moveset), exported by ml/generate. */
 export const BATTLE_SETS_URL = "/battle/battle-sets.json";
 
-let sets: Promise<Record<string, Combatant>> | null = null;
+let sets: Promise<Record<string, BattlePokemon>> | null = null;
 
-export function loadBattleSets(): Promise<Record<string, Combatant>> {
+export function loadBattleSets(): Promise<Record<string, BattlePokemon>> {
   sets ??= fetch(BATTLE_SETS_URL).then((res) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json() as Promise<Record<string, Combatant>>;
+    return res.json() as Promise<Record<string, BattlePokemon>>;
   });
   sets.catch(() => (sets = null));
   return sets;

@@ -1,7 +1,7 @@
 import { AudioContext as ThreeAudioContext } from "three";
 import { audioEnabled } from "@/stores/audio";
 
-export type Sfx = "dpad" | "a" | "b" | "click" | "open" | "close" | "boot";
+export type Sfx = "dpad" | "a" | "b" | "click" | "open" | "close" | "boot" | "hit" | "superHit" | "weakHit" | "faint" | "win" | "lose";
 
 /** Shared with three.js so PositionalAudio and the UI blips use one context. */
 export const getAudioContext = () => ThreeAudioContext.getContext() as unknown as globalThis.AudioContext;
@@ -29,6 +29,26 @@ const SOUNDS: Record<Sfx, Note[]> = {
   click: [{ freq: 520, at: 0, dur: 0.035, type: "triangle", gain: 0.08 }],
   open: [{ freq: 220, to: 880, at: 0, dur: 0.35, type: "triangle", gain: 0.08 }],
   close: [{ freq: 880, to: 180, at: 0, dur: 0.3, type: "triangle", gain: 0.08 }],
+  hit: [{ freq: 300, to: 90, at: 0, dur: 0.12, type: "square", gain: 0.09 }],
+  superHit: [
+    { freq: 420, to: 110, at: 0, dur: 0.1, type: "square", gain: 0.1 },
+    { freq: 300, to: 70, at: 0.09, dur: 0.14, type: "square", gain: 0.1 },
+  ],
+  weakHit: [{ freq: 220, to: 120, at: 0, dur: 0.09, type: "triangle", gain: 0.08 }],
+  faint: [{ freq: 600, to: 60, at: 0, dur: 0.6, type: "triangle", gain: 0.09 }],
+  win: [
+    { freq: 523, at: 0, dur: 0.12, type: "square", gain: 0.06 },
+    { freq: 659, at: 0.12, dur: 0.12, type: "square", gain: 0.06 },
+    { freq: 784, at: 0.24, dur: 0.12, type: "square", gain: 0.06 },
+    { freq: 1047, at: 0.36, dur: 0.12, type: "square", gain: 0.06 },
+    { freq: 784, at: 0.48, dur: 0.1, type: "square", gain: 0.06 },
+    { freq: 1047, at: 0.6, dur: 0.4, type: "square", gain: 0.06 },
+  ],
+  lose: [
+    { freq: 392, at: 0, dur: 0.25, type: "triangle", gain: 0.07 },
+    { freq: 349, at: 0.25, dur: 0.25, type: "triangle", gain: 0.07 },
+    { freq: 294, at: 0.5, dur: 0.6, type: "triangle", gain: 0.07 },
+  ],
   boot: [
     { freq: 523, at: 0, dur: 0.09, type: "square", gain: 0.05 },
     { freq: 659, at: 0.1, dur: 0.09, type: "square", gain: 0.05 },

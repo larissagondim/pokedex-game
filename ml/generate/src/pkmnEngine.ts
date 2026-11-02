@@ -77,6 +77,7 @@ function battleMove(id: string): BattleMove {
     out.secondary = m.secondaries.map((sec) => ({
       chance: sec.chance ?? 100,
       ...(sec.status ? { status: sec.status } : {}),
+      ...(sec.volatileStatus === "flinch" || sec.volatileStatus === "confusion" ? { volatile: sec.volatileStatus } : {}),
       ...(sec.boosts ? { boosts: sec.boosts as Boosts } : {}),
       ...(sec.self?.boosts ? { selfBoosts: sec.self.boosts as Boosts } : {}),
     }));
@@ -84,6 +85,9 @@ function battleMove(id: string): BattleMove {
   if (m.multihit) out.multihit = m.multihit as number | [number, number];
   if (m.critRatio && m.critRatio > 1) out.critRatio = m.critRatio;
   if (m.damage === "level" || typeof m.damage === "number") out.fixedDamage = m.damage;
+  if (m.volatileStatus === "confusion" || m.volatileStatus === "protect" || m.volatileStatus === "leechseed") out.volatile = m.volatileStatus;
+  if (m.self?.volatileStatus === "lockedmove") out.locked = true;
+  if (m.flags.recharge) out.recharge = true;
   return out;
 }
 

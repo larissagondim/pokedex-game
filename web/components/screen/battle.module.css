@@ -149,9 +149,116 @@
 }
 
 .hpFill {
-  width: 100%;
   height: 100%;
-  background: #3ddc84;
+  transition: width 0.6s steps(12), background-color 0.3s;
+}
+
+.hpFill[data-tone="high"] { background: #3ddc84; }
+.hpFill[data-tone="mid"] { background: #ffd23f; }
+.hpFill[data-tone="low"] { background: #ff4d5e; }
+
+.statusTag {
+  margin-right: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: var(--white);
+  font-size: 10px;
+  font-weight: normal;
+  background: #8a3f9e;
+}
+
+.statusTag[data-status="brn"] { background: #d9582b; }
+.statusTag[data-status="par"] { background: #c9a800; }
+.statusTag[data-status="slp"] { background: #6b6b76; }
+
+/* Hit: blink. Faint: drop out of view. */
+.sprite[data-hit="true"] {
+  animation: blink 0.12s steps(1) 4;
+}
+
+.sprite[data-fainted="true"] {
+  animation: none;
+  transform: translateY(40px);
+  opacity: 0;
+  transition: transform 0.5s steps(5), opacity 0.5s steps(5);
+}
+
+/* Move menu (2×2) in place of the win-chance strip. */
+.moves {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 5px 8px;
+  border-top: 3px solid var(--graphite);
+  background: var(--graphite);
+}
+
+.moves[data-disabled="true"] .move {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.move {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: 2px solid #4a4a55;
+  border-radius: 5px;
+  background: #2c2c35;
+  color: var(--gray-light);
+  font: inherit;
+  font-size: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.move[data-focused="true"] {
+  border-color: var(--red);
+  background: #3a2a30;
+}
+
+.moveType {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #9a9a78;
+}
+
+.moveType[data-type="fire"] { background: #d9582b; }
+.moveType[data-type="water"] { background: #3a74d1; }
+.moveType[data-type="electric"] { background: #d6a800; }
+.moveType[data-type="grass"] { background: #4e9a3a; }
+.moveType[data-type="ice"] { background: #4fb3b3; }
+.moveType[data-type="fighting"] { background: #b23a2e; }
+.moveType[data-type="poison"] { background: #8a3f9e; }
+.moveType[data-type="ground"] { background: #b8913d; }
+.moveType[data-type="flying"] { background: #6f86d6; }
+.moveType[data-type="psychic"] { background: #e0457b; }
+.moveType[data-type="bug"] { background: #7f9b1d; }
+.moveType[data-type="rock"] { background: #9c8a3a; }
+.moveType[data-type="ghost"] { background: #634f8f; }
+.moveType[data-type="dragon"] { background: #5b3fd6; }
+.moveType[data-type="dark"] { background: #5a4a3f; }
+.moveType[data-type="steel"] { background: #8a8aa6; }
+.moveType[data-type="fairy"] { background: #d46aa6; }
+
+.moveName {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.movePp {
+  color: #9a9aa6;
+  font-size: 15px;
 }
 
 .dexNo {
@@ -220,6 +327,12 @@
   letter-spacing: 1px;
 }
 
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 @keyframes idle {
   50% {
     transform: translateY(-3px);
@@ -231,7 +344,9 @@
     animation: none;
   }
 
-  .chanceFill {
+  .chanceFill,
+  .hpFill,
+  .sprite[data-fainted="true"] {
     transition: none;
   }
 }

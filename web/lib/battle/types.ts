@@ -9,6 +9,8 @@ export interface Secondary {
   /** Percent. */
   chance: number;
   status?: string;
+  /** "flinch" or "confusion". */
+  volatile?: string;
   boosts?: Boosts;
   selfBoosts?: Boosts;
 }
@@ -33,6 +35,12 @@ export interface BattleMove extends MoveInfo {
   critRatio?: number;
   /** "level" (Seismic Toss) or a fixed amount (Dragon Rage). */
   fixedDamage?: "level" | number;
+  /** Status moves with a volatile effect: "confusion" (on the foe), "protect", "leechseed". */
+  volatile?: string;
+  /** Repeats for 2-3 turns, then confuses the user (Outrage, Thrash...). */
+  locked?: boolean;
+  /** The user must rest next turn (Hyper Beam, Giga Impact...). */
+  recharge?: boolean;
 }
 
 /** A species as it enters battle: Combatant data plus full move details. */
