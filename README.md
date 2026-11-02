@@ -2,7 +2,7 @@
 
 An interactive 3D Pokédex with battles, machine-learning win prediction and a Tamagotchi. A non-profit fan project built for portfolio and learning purposes, developed with **agentic programming** using [Claude Code](https://claude.com/claude-code).
 
-> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, a **battle screen** with the pre-battle win chance (a model that runs in the browser). A hand-built **1v1 battle engine** is done and tested; the screen to actually fight is in progress. Still to come: 6v6 teams, Docker, a database and the trainer profile. Anything marked _(planned)_ below is not implemented yet.
+> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, a **battle screen** with the pre-battle win chance (a model that runs in the browser). You can already **fight 1v1** on a hand-built, tested battle engine. Still to come: 6v6 teams, Docker, a database and the trainer profile. Anything marked _(planned)_ below is not implemented yet.
 
 ## Table of contents
 
@@ -42,17 +42,16 @@ The commit history shows how the project grew step by step: scraper, web scaffol
 | Sound | Synthesized UI blips (WebAudio) and Pokémon cries played from the speaker grill (positional audio). Mute button; audio starts after the first interaction | ✅ Done |
 | Pokédex screen | 4:3 retro handheld UI inside the device. Scrollable list of all 1025 Pokémon with a preview panel, and a detail page with animated sprite, types, base stats, height, weight, abilities and a typewriter-style dialog box with the dex entry. Respects `prefers-reduced-motion` | ✅ Done |
 | Search | Search by name prefix (binary search, results A→Z) or by number (`25`, `#25`). Type with the real keyboard (`/` focuses the field) or with the device buttons on an on-screen keyboard | ✅ Done |
-| Regions and music | The list shows the region of the focused Pokémon (Kanto … Paldea, by dex number); ◀ ▶ jump between regions. Each region has its own background music, which crossfades when the cursor crosses a region boundary. The themes are original synthesized chiptune loops (no game music is bundled); your own recordings can be mapped per region in `web/lib/music.ts` | ✅ Done |
+| Regions and music | The list shows the region of the focused Pokémon (Kanto … Paldea, by dex number); ◀ ▶ jump between regions. Each region has its own background music, which crossfades when the cursor crosses a region boundary. The themes are original synthesized chiptune loops (no game music is bundled); your own recordings can be mapped per region in `web/lib/music.ts`. Battles have three driving themes with drums and arpeggios: two picked at random per battle and a heavier one for legendary and mythical foes | ✅ Done |
 | Filters, sorting and favorites | Options row above the list: filter by type or ★ favorites, sort by number, name or base stat total. Rows show a mini sprite, type dots and the searched prefix highlighted. Favorites (MENU on a Pokémon page) are saved in `localStorage`. Jumping past Paldea shows a "Gen X: coming soon" slot | ✅ Done |
 | Fun facts | Each Pokémon page ends with three "Did you know?" facts computed from the data by comparing it with all 1025 Pokémon: stat total ranking, top-1% stats, rare typings ("the only Bug/Ghost Pokémon"), size extremes or weight in Pikachu, catch rate, branched evolutions… (`web/lib/funFacts.ts`) | ✅ Done |
-| Battle screen | BATTLE tab: first choose your Pokémon and then the opponent (★ favorites first, then your Tamagotchi party; searchable with the on-screen keyboard or `/`), then see yours from the back against the opponent, on a backdrop picked from the foe's type (field, sea, snow, volcano, rocky, cave, mystic, sky, power), with status boxes, the **pre-battle win chance** and an original battle theme | ✅ Done |
-| 1v1 battle engine | Pure TypeScript engine built by hand (`web/lib/battle`), no `@pkmn/sim` at runtime. Standard gen 5+ rules: priority then speed (paralysis halves it), damage formula with the 85–100% roll, STAB, type chart, critical hits, accuracy, stat stages, PP; burn, paralysis, poison, bad poison and sleep with type immunities; drain, recoil, healing, multi-hit, fixed-damage moves and chance effects. Abilities and items are not modeled, and moves with other effects (Protect, Substitute...) just fail. `runTurn` returns the new state plus the events for the screen to play back. A greedy AI picks the foe's moves. Unit-tested | ✅ Engine done; 🟡 fight screen in progress |
+| Battle screen | BATTLE tab: first choose your Pokémon and then the opponent (★ favorites first, then your Tamagotchi party; searchable with the on-screen keyboard or `/`), then see yours from the back against the opponent, on a backdrop picked from the foe's type (field, sea, snow, volcano, rocky, cave, mystic, sky, power), with status boxes, the **pre-battle win chance** and an original battle theme. Then you fight: pick a move from a 2×2 menu (type, PP and power shown), the foe answers, and the turn plays back event by event (messages, HP bars, hits, sounds; A skips ahead). Winning pays 15 coins for the Tamagotchi shop. 16-bit look with flat sky bands, dithered ground, segmented HP bars and scanlines | ✅ Done |
+| 1v1 battle engine | Pure TypeScript engine built by hand (`web/lib/battle`), no `@pkmn/sim` at runtime. Standard gen 5+ rules: priority then speed (paralysis halves it), damage formula with the 85–100% roll, STAB, type chart, critical hits, accuracy, stat stages, PP; burn, paralysis, poison, bad poison and sleep with type immunities; drain, recoil, healing, multi-hit, fixed-damage moves and chance effects; flinch, confusion, Protect, Leech Seed, locked moves (Outrage) and recharge turns (Hyper Beam). Abilities and items are not modeled, and moves with other effects (Substitute...) just fail. `runTurn` returns the new state plus the events for the screen to play back. A greedy AI picks the foe's moves. Unit-tested | ✅ Done |
 | 6v6 battles | Team battles on top of the 1v1 engine | 🕒 Planned |
 | Win prediction | Win chance **before the battle**, shown on the battle screen. Gradient boosting trained on 79,985 simulated battles (AUC 0.93, calibration error 0.1%), exported to JSON and run **in the browser** (no server needed); the FastAPI service is optional | ✅ Done |
 | Tamagotchi | Adopt up to 5 Pokémon from the list (A at the end of a Pokémon page, or ♥ ADOPT). Food, joy and energy decay with real time; feed, play, sleep and train them. XP raises the level and they **evolve** (babies also need to be happy). Coins earned by playing and training buy **eggs** that hatch into a random base-stage or baby Pokémon. Hearts when happy, mood bubbles, reactions per action, idle animation by evolution stage, and clicking one plays its cry. Saved in `localStorage` | ✅ Done (v1) |
 | Trainer profile | Create your own trainer profile: pick a name, design your trainer sprite (hair, outfit, colors, etc.) and show it on the device. The profile ties together your Tamagotchi, favorites and battle history | 🕒 Planned |
 
-On the BATTLE tab you pick both Pokémon and see the win chance. The engine is ready, but the fight screen that plays the turns is still being built.
 
 ## Screenshots
 
@@ -254,13 +253,12 @@ Done:
 - [x] Tamagotchi v1 (party of 5, needs, evolution, eggs)
 - [x] Win-prediction model v1: dataset generator, training, Monte Carlo evaluation, FastAPI
 - [x] Battle screen with backdrops, battle music and the pre-battle win chance
-- [x] 1v1 battle engine with the standard rules and a greedy foe AI
+- [x] 1v1 battle: engine with the standard rules and a greedy foe AI (`web/lib/battle`), and the fight screen
 
 Next:
 
 - [ ] **Phase 1:** Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
-- [ ] **Phase 3:** fight screen for the 1v1 battle (the engine is done: `web/lib/battle`)
 - [ ] **Phase 5:** 6v6 battle
 - [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
 - [ ] **Phase 7:** Trainer profile (name and customizable sprite)
@@ -279,7 +277,7 @@ Keyboard and the physical buttons on the device do the same thing. Each key maps
 | `Esc` | n/a | Leave zoom (in the search field: clear it, then leave the field) |
 | `/` | n/a | Focus the search field. While typing, ↑ ↓ move through the results and `Enter` opens one |
 
-On the BATTLE tab: ← → pick your Pokémon, ↑ ↓ draw a new opponent.
+On the BATTLE tab: pick your Pokémon and then the opponent from the lists (A confirms, B goes back). In the arena, A starts the battle, the D-pad moves through the 2×2 move menu, A uses the move and B runs away; A skips the messages while a turn plays. When it ends, A fights again and B returns to the lists.
 
 On the TAMAGOTCHI tab: ↑ ↓ pick a Pokémon from the party, ← → pick an action, A does it, B goes back to the list.
 
