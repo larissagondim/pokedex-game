@@ -143,7 +143,7 @@ python3 scrape_pokemon.py --no-images  # JSON only, no images
 python3 scrape_pokemon.py --workers 4  # fewer parallel requests
 ```
 
-The script is resumable: API responses are cached in `data/cache/` and images already downloaded are skipped. Alternate forms (mega, regional, etc.) are not included, only the default forms. Animated GIFs are not available for every Pokémon; the UI falls back to the static sprite when one is missing.
+The script is resumable: API responses are cached in `data/cache/` and images already downloaded are skipped. Alternate forms (mega, regional, etc.) are not included, only the default forms. Animated GIFs come from PokéAPI's Showdown sprites; for Pokémon it lacks, the scraper tries Showdown's Gen 5 style GIFs (`sprites/gen5ani/`). That leaves 1017 of 1025 animated; the other 8 (#990, #991, #993, #1010, #1017, #1022, #1023, #1025) use the static sprite.
 
 Fields of each Pokémon in `data/pokemon.json`:
 
@@ -161,7 +161,9 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:3000. `npm run dev` and `npm run build` first run `npm run sync-assets`, which copies `sprites/` and `animated/` into `web/public/` and builds a trimmed `web/public/data/pokedex.json` from `data/pokemon.json`. If the scraper has not been run, the script warns and the Pokédex will fail to load.
+Then open http://localhost:3000. `npm run dev` and `npm run build` first run `npm run sync-assets`, which copies `sprites/` and `animated/` into `web/public/` and builds a trimmed `web/public/data/pokedex.json` from `data/pokemon.json`. In that file, `animated` is the local `/animated/<id>.gif` when it exists, otherwise the remote `animated_url`, or `null` (static sprite). If the scraper has not been run, the script warns and the Pokédex will fail to load.
+
+> **Deploying (e.g. Vercel):** `animated/` is git-ignored (~72 MB), so a deploy does not have the GIFs and the app loads them from the remote URLs (PokéAPI sprites on GitHub and Showdown). If they go offline, the UI falls back to the static PNGs. The build also needs `sprites/` and `data/` from outside `web/`, so keep Vercel's "Include source files outside of the Root Directory" enabled when the Root Directory is `web`.
 
 ```bash
 npm run lint    # ESLint
