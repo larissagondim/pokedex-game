@@ -6,6 +6,8 @@ Writes:
   sprites/<id>.png         small sprite (front_default)
   artwork/<id>.png         high-resolution official artwork
   animated/<id>.gif        animated sprite (Showdown style), when available
+  sprites/back/<id>.png    back sprite (player's side in battle)
+  animated/back/<id>.gif   animated back sprite, when available
 
 Resumable: images already downloaded are skipped and API responses are cached
 in data/cache/, so it can be re-run without redoing everything.
@@ -91,6 +93,9 @@ def build_pokemon(pid, images):
     artwork_url = other["official-artwork"]["front_default"]
     animated_url = (other.get("showdown") or {}).get("front_default")
     sprite_url = p["sprites"]["front_default"]
+    # Back views, for the player's side of the battle screen.
+    back_url = p["sprites"]["back_default"]
+    animated_back_url = (other.get("showdown") or {}).get("back_default")
 
     if images:
         download(sprite_url, SPRITES_DIR / f"{pid}.png")
@@ -99,6 +104,12 @@ def build_pokemon(pid, images):
             # PokeAPI has no Showdown GIF for some Gen 9 Pokémon; Showdown's Gen 5 style one covers a few of them
             fallback_url = GEN5_ANIMATED_URL.format(name=p["name"].replace("-", ""))
             animated_url = fallback_url if download(fallback_url, ANIMATED_DIR / f"{pid}.gif") else None
+        (SPRITES_DIR / "back").mkdir(exist_ok=True)
+        (ANIMATED_DIR / "back").mkdir(exist_ok=True)
+        if not download(back_url, SPRITES_DIR / "back" / f"{pid}.png"):
+            back_url = None
+        if not download(animated_back_url, ANIMATED_DIR / "back" / f"{pid}.gif"):
+            animated_back_url = None
 
     display_name = pick_text(s["names"], "name", "en")
     genus = pick_text(s["genera"], "genus", "en")
@@ -136,6 +147,8 @@ def build_pokemon(pid, images):
         "sprite": f"sprites/{pid}.png" if sprite_url else None,
         "artwork": f"artwork/{pid}.png" if artwork_url else None,
         "animated": f"animated/{pid}.gif" if animated_url else None,
+        "back_sprite": f"sprites/back/{pid}.png" if back_url else None,
+        "animated_back": f"animated/back/{pid}.gif" if animated_back_url else None,
         "sprite_url": sprite_url,
         "artwork_url": artwork_url,
         "animated_url": animated_url,
