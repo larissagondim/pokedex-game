@@ -1,63 +1,90 @@
-/* BATTLE tab: original retro battle scene. Sizes are CSS px of the 640x480 screen. */
+/*
+ * BATTLE tab, 16-bit look: flat color bands instead of smooth gradients,
+ * dithered ground, hard pixel outlines, chunky double-bordered boxes,
+ * segmented HP bars and faint scanlines. Sizes are CSS px of the 640x480 screen.
+ */
 
 .scene {
-  --sky-top: #bfe6ff;
-  --sky-bottom: #eaf7ff;
-  --ground-top: #8fd16a;
-  --ground-bottom: #5ea83f;
-  --platform: #a8e07f;
-  --platform-rim: #6bb34a;
+  /* Sky bands (top to horizon), ground dither pair, platform top/rim, outline. */
+  --sky1: #78c8f8;
+  --sky2: #a0d8f8;
+  --sky3: #c8e8f8;
+  --ground1: #88d070;
+  --ground2: #68b050;
+  --plat1: #a8e090;
+  --plat2: #589840;
+  --line: #203818;
+  --px: 2px;
 
   position: relative;
   min-height: 0;
   overflow: hidden;
   border: 3px solid var(--graphite);
-  border-radius: 8px;
   color: var(--graphite);
+  image-rendering: pixelated;
 }
 
 .scene[data-terrain="sea"] {
-  --sky-top: #8fd0ff; --sky-bottom: #d4efff; --ground-top: #3a8fd6; --ground-bottom: #24609e; --platform: #7fc3f0; --platform-rim: #3f86c4;
+  --sky1: #58a8f0; --sky2: #80c0f8; --sky3: #b0d8f8; --ground1: #3878d0; --ground2: #2858a8; --plat1: #88c8f0; --plat2: #3870b8; --line: #102850;
 }
 .scene[data-terrain="snow"] {
-  --sky-top: #cfe4f5; --sky-bottom: #f1f8ff; --ground-top: #f6fbff; --ground-bottom: #d3e6f5; --platform: #ffffff; --platform-rim: #a9c8e0;
+  --sky1: #a8c8e8; --sky2: #c8dcf0; --sky3: #e0ecf8; --ground1: #f8f8f8; --ground2: #d0e0f0; --plat1: #ffffff; --plat2: #a0c0d8; --line: #405870;
 }
 .scene[data-terrain="volcano"] {
-  --sky-top: #ff9a6a; --sky-bottom: #ffd2a8; --ground-top: #9a4528; --ground-bottom: #5e2716; --platform: #c2603a; --platform-rim: #7e3520;
+  --sky1: #e85830; --sky2: #f88848; --sky3: #f8b870; --ground1: #984020; --ground2: #702818; --plat1: #c86038; --plat2: #803018; --line: #381008;
 }
 .scene[data-terrain="rocky"] {
-  --sky-top: #f0d49c; --sky-bottom: #fbebc8; --ground-top: #b58f5c; --ground-bottom: #81623a; --platform: #cfab78; --platform-rim: #8e6c40;
+  --sky1: #e8b868; --sky2: #f0d090; --sky3: #f8e8b8; --ground1: #b89060; --ground2: #907040; --plat1: #d0a870; --plat2: #886038; --line: #402810;
 }
 .scene[data-terrain="cave"] {
-  --sky-top: #231c36; --sky-bottom: #4a3b66; --ground-top: #3a3348; --ground-bottom: #241f30; --platform: #5b4f73; --platform-rim: #3a3150;
+  --sky1: #180f28; --sky2: #281c40; --sky3: #3c2c58; --ground1: #3c3450; --ground2: #2a2438; --plat1: #5c5078; --plat2: #362c4c; --line: #0c0814;
   color: var(--gray-light);
 }
 .scene[data-terrain="mystic"] {
-  --sky-top: #f4bfe2; --sky-bottom: #e3d7ff; --ground-top: #cdb4f2; --ground-bottom: #a58ad8; --platform: #eadbff; --platform-rim: #b49ae0;
+  --sky1: #e8a0d8; --sky2: #e8c0f0; --sky3: #e8d8f8; --ground1: #c0a8f0; --ground2: #9880d0; --plat1: #e8d8ff; --plat2: #a088d8; --line: #402868;
 }
 .scene[data-terrain="sky"] {
-  --sky-top: #7fc2ff; --sky-bottom: #d3ebff; --ground-top: #eef7ff; --ground-bottom: #c6e1f7; --platform: #ffffff; --platform-rim: #b7d6ee;
+  --sky1: #5098f0; --sky2: #78b8f8; --sky3: #a8d0f8; --ground1: #e8f0f8; --ground2: #c0d8f0; --plat1: #ffffff; --plat2: #a8c8e8; --line: #285080;
 }
 .scene[data-terrain="power"] {
-  --sky-top: #ffe97a; --sky-bottom: #fff7cc; --ground-top: #d9c24a; --ground-bottom: #a8922a; --platform: #f2e07a; --platform-rim: #b9a43a;
+  --sky1: #f8d838; --sky2: #f8e878; --sky3: #f8f0b8; --ground1: #d0b840; --ground2: #a89028; --plat1: #f0e070; --plat2: #a89028; --line: #484008;
 }
 
-/* Sky above, ground below, a stepped horizon line. */
+/* Hard color bands, a pixel horizon and a 2px checker dither on the ground. */
 .backdrop {
   position: absolute;
   inset: 0;
   background:
-    repeating-linear-gradient(90deg, transparent 0 22px, rgba(255, 255, 255, 0.12) 22px 24px) 0 54% / 100% 6px no-repeat,
-    linear-gradient(var(--sky-top), var(--sky-bottom) 54%, var(--ground-top) 54%, var(--ground-bottom));
-  image-rendering: pixelated;
+    repeating-conic-gradient(var(--ground1) 0 25%, var(--ground2) 0 50%) 0 0 / 4px 4px,
+    var(--ground1);
 }
 
-/* Platforms the Pokémon stand on. */
+.backdrop::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 46% 0;
+  background: linear-gradient(var(--sky1) 0 30%, var(--sky2) 30% 62%, var(--sky3) 62% 100%);
+  border-bottom: var(--px) solid var(--line);
+}
+
+/* Scanlines over the whole scene. */
+.scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: repeating-linear-gradient(rgba(0, 0, 0, 0.07) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+}
+
+/* Platforms: flat top, darker rim, hard outline. */
 .platform {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(ellipse at 50% 40%, var(--platform) 0 55%, var(--platform-rim) 56% 100%);
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.15);
+  background: var(--plat1);
+  box-shadow:
+    inset 0 -6px 0 var(--plat2),
+    0 0 0 var(--px) var(--line);
 }
 
 .platform[data-side="foe"] {
@@ -88,7 +115,7 @@
   right: 70px;
   height: 116px;
   max-width: 130px;
-  animation: idle 1.6s steps(2) infinite;
+  animation: idle 1.6s steps(1) infinite;
 }
 
 .sprite[data-side="player"] {
@@ -96,82 +123,10 @@
   left: 64px;
   height: 140px;
   max-width: 150px;
-  animation: idle 2s steps(2) infinite;
+  animation: idle 2s steps(1) infinite;
 }
 
-/* Name / level / HP boxes. */
-.status {
-  position: absolute;
-  z-index: 2;
-  width: 230px;
-  padding: 4px 10px 6px;
-  border: 3px solid var(--graphite);
-  border-radius: 8px 2px 8px 2px;
-  background: var(--gray-light);
-  color: var(--graphite);
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
-}
-
-.status[data-side="foe"] {
-  top: 10px;
-  left: 12px;
-}
-
-.status[data-side="player"] {
-  right: 12px;
-  bottom: 58px;
-}
-
-.statusName {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-pixel), monospace;
-  font-size: 14px;
-}
-
-.hp {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-family: var(--font-pixel), monospace;
-  font-size: 11px;
-  color: var(--red);
-}
-
-.hpTrack {
-  height: 9px;
-  border: 2px solid var(--graphite);
-  border-radius: 5px;
-  background: var(--graphite);
-  overflow: hidden;
-}
-
-.hpFill {
-  height: 100%;
-  transition: width 0.6s steps(12), background-color 0.3s;
-}
-
-.hpFill[data-tone="high"] { background: #3ddc84; }
-.hpFill[data-tone="mid"] { background: #ffd23f; }
-.hpFill[data-tone="low"] { background: #ff4d5e; }
-
-.statusTag {
-  margin-right: 6px;
-  padding: 0 4px;
-  border-radius: 3px;
-  color: var(--white);
-  font-size: 10px;
-  font-weight: normal;
-  background: #8a3f9e;
-}
-
-.statusTag[data-status="brn"] { background: #d9582b; }
-.statusTag[data-status="par"] { background: #c9a800; }
-.statusTag[data-status="slp"] { background: #6b6b76; }
-
-/* Hit: blink. Faint: drop out of view. */
+/* Hit: blink. Faint: drop out of view in steps. */
 .sprite[data-hit="true"] {
   animation: blink 0.12s steps(1) 4;
 }
@@ -183,102 +138,112 @@
   transition: transform 0.5s steps(5), opacity 0.5s steps(5);
 }
 
-/* Move menu (2×2) in place of the win-chance strip. */
-.moves {
+/* Name / level / HP boxes: double pixel border, no rounded corners. */
+.status {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 3;
+  z-index: 2;
+  width: 236px;
+  padding: 4px 10px 6px;
+  background: #f8f8e8;
+  color: var(--graphite);
+  box-shadow:
+    0 0 0 2px var(--graphite),
+    0 0 0 4px #f8f8e8,
+    0 0 0 6px var(--graphite),
+    6px 6px 0 2px rgba(0, 0, 0, 0.25);
+}
+
+.status[data-side="foe"] {
+  top: 12px;
+  left: 14px;
+}
+
+.status[data-side="player"] {
+  right: 14px;
+  bottom: 60px;
+}
+
+.statusName {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-pixel), monospace;
+  font-size: 14px;
+}
+
+.statusTag {
+  margin-right: 6px;
+  padding: 0 4px;
+  color: var(--white);
+  font-size: 10px;
+  font-weight: normal;
+  background: #8a3f9e;
+  box-shadow: 0 0 0 1px var(--graphite);
+}
+
+.statusTag[data-status="brn"] { background: #d9582b; }
+.statusTag[data-status="par"] { background: #c9a800; }
+.statusTag[data-status="slp"] { background: #6b6b76; }
+
+.hp {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: auto 1fr;
+  align-items: center;
   gap: 4px;
-  padding: 5px 8px;
-  border-top: 3px solid var(--graphite);
+  margin-top: 4px;
+  font-family: var(--font-pixel), monospace;
+  font-size: 11px;
+  color: #f8b800;
+}
+
+.hp > span {
+  padding: 0 3px;
   background: var(--graphite);
 }
 
-.moves[data-disabled="true"] .move {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.move {
-  display: grid;
-  grid-template-columns: 12px 1fr auto;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 8px;
-  border: 2px solid #4a4a55;
-  border-radius: 5px;
-  background: #2c2c35;
-  color: var(--gray-light);
-  font: inherit;
-  font-size: 18px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.move[data-focused="true"] {
-  border-color: var(--red);
-  background: #3a2a30;
-}
-
-.moveType {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #9a9a78;
-}
-
-.moveType[data-type="fire"] { background: #d9582b; }
-.moveType[data-type="water"] { background: #3a74d1; }
-.moveType[data-type="electric"] { background: #d6a800; }
-.moveType[data-type="grass"] { background: #4e9a3a; }
-.moveType[data-type="ice"] { background: #4fb3b3; }
-.moveType[data-type="fighting"] { background: #b23a2e; }
-.moveType[data-type="poison"] { background: #8a3f9e; }
-.moveType[data-type="ground"] { background: #b8913d; }
-.moveType[data-type="flying"] { background: #6f86d6; }
-.moveType[data-type="psychic"] { background: #e0457b; }
-.moveType[data-type="bug"] { background: #7f9b1d; }
-.moveType[data-type="rock"] { background: #9c8a3a; }
-.moveType[data-type="ghost"] { background: #634f8f; }
-.moveType[data-type="dragon"] { background: #5b3fd6; }
-.moveType[data-type="dark"] { background: #5a4a3f; }
-.moveType[data-type="steel"] { background: #8a8aa6; }
-.moveType[data-type="fairy"] { background: #d46aa6; }
-
-.moveName {
+.hpTrack {
+  height: 8px;
+  background: var(--graphite);
+  box-shadow: 0 0 0 2px var(--graphite);
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
-.movePp {
-  color: #9a9aa6;
-  font-size: 15px;
+/* Segmented bar: 4px blocks. */
+.hpFill {
+  height: 100%;
+  background-image: linear-gradient(90deg, transparent 0 3px, rgba(0, 0, 0, 0.25) 3px 4px);
+  background-size: 4px 100%;
+  transition: width 0.6s steps(12), background-color 0.3s steps(1);
 }
+
+.hpFill[data-tone="high"] { background-color: #38d860; }
+.hpFill[data-tone="mid"] { background-color: #f8c800; }
+.hpFill[data-tone="low"] { background-color: #f83818; }
 
 .dexNo {
   margin-top: 2px;
-  font-size: 16px;
+  font-family: var(--font-pixel), monospace;
+  font-size: 13px;
   text-align: right;
-  color: #6b6b76;
 }
 
-/* Win chance strip at the bottom. */
-.chance {
+/* Bottom box (win chance before the fight, moves during it). */
+.chance,
+.moves {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  right: 6px;
+  bottom: 6px;
+  left: 6px;
   z-index: 3;
-  padding: 4px 10px 5px;
-  border-top: 3px solid var(--graphite);
-  background: var(--graphite);
-  color: var(--gray-light);
+  background: #f8f8e8;
+  color: var(--graphite);
+  box-shadow:
+    0 0 0 2px var(--graphite),
+    0 0 0 4px #f8f8e8,
+    0 0 0 6px var(--graphite);
+}
+
+.chance {
+  padding: 3px 10px 4px;
 }
 
 .chanceLabel {
@@ -289,42 +254,121 @@
 }
 
 .chanceLabel span:last-child {
-  color: #ffd23f;
+  color: var(--red);
 }
 
 .chanceTrack {
   height: 8px;
   margin: 3px 0 2px;
-  border-radius: 4px;
-  background: #4a4a55;
+  background: var(--graphite);
+  box-shadow: 0 0 0 2px var(--graphite);
   overflow: hidden;
 }
 
 .chanceFill {
   height: 100%;
-  background: linear-gradient(90deg, var(--red), #ff6b6b);
+  background-color: var(--red);
+  background-image: linear-gradient(90deg, transparent 0 3px, rgba(0, 0, 0, 0.25) 3px 4px);
+  background-size: 4px 100%;
   transition: width 0.5s steps(10);
 }
 
 .chanceFill[data-unknown="true"] {
-  background: #6b6b76;
+  background-color: #6b6b76;
 }
 
 .chanceHint {
   font-size: 15px;
-  color: #b9b9c2;
+  color: #6b6b76;
 }
+
+/* Moves: 2×2 list with a ▶ cursor, plus a TYPE / PP panel. */
+.moves {
+  display: grid;
+  grid-template-columns: 1fr 1fr 118px;
+  gap: 0 4px;
+  padding: 3px 6px;
+}
+
+.moves[data-disabled="true"] .move {
+  color: #8a8a96;
+  cursor: default;
+}
+
+.move {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: center;
+  height: 21px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--graphite);
+  font: inherit;
+  font-size: 19px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.moveCursor {
+  color: var(--red);
+  font-size: 12px;
+}
+
+.moveName {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.moveInfo {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 2px solid var(--graphite);
+  font-family: var(--font-pixel), monospace;
+  font-size: 11px;
+}
+
+.moveType {
+  justify-self: start;
+  padding: 0 6px;
+  color: var(--white);
+  background: #9a9a78;
+  box-shadow: 0 0 0 1px var(--graphite);
+}
+
+.moveType[data-type="fire"] { background: #d9582b; }
+.moveType[data-type="water"] { background: #3a74d1; }
+.moveType[data-type="electric"] { background: #c9a000; }
+.moveType[data-type="grass"] { background: #4e9a3a; }
+.moveType[data-type="ice"] { background: #3fa3a3; }
+.moveType[data-type="fighting"] { background: #b23a2e; }
+.moveType[data-type="poison"] { background: #8a3f9e; }
+.moveType[data-type="ground"] { background: #a8812d; }
+.moveType[data-type="flying"] { background: #6f86d6; }
+.moveType[data-type="psychic"] { background: #e0457b; }
+.moveType[data-type="bug"] { background: #7f9b1d; }
+.moveType[data-type="rock"] { background: #9c8a3a; }
+.moveType[data-type="ghost"] { background: #634f8f; }
+.moveType[data-type="dragon"] { background: #5b3fd6; }
+.moveType[data-type="dark"] { background: #5a4a3f; }
+.moveType[data-type="steel"] { background: #8a8aa6; }
+.moveType[data-type="fairy"] { background: #d46aa6; }
 
 /* Title above the picker's search field. */
 .pickerTitle {
   margin-bottom: 4px;
   padding: 2px 8px;
-  border-radius: 5px;
   background: var(--red);
   color: var(--white);
   font-family: var(--font-pixel), monospace;
   font-size: 13px;
   letter-spacing: 1px;
+  box-shadow: 0 0 0 2px var(--graphite);
 }
 
 @keyframes blink {
@@ -333,6 +377,7 @@
   }
 }
 
+/* Two-frame idle bob, like old sprite animations. */
 @keyframes idle {
   50% {
     transform: translateY(-3px);

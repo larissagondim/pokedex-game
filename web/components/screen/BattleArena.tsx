@@ -328,17 +328,28 @@ function WinChance({ probability }: { probability: number | null | undefined }) 
 
 function MoveMenu({ battle, selected, disabled, onPick }: { battle: BattleState | null; selected: number; disabled: boolean; onPick: (i: number) => void }) {
   const moves = battle?.a.moves ?? [];
+  const current = moves[selected];
   return (
     <div className={styles.moves} data-disabled={disabled}>
       {moves.map((m, i) => (
-        <button key={m.id + i} type="button" className={styles.move} data-focused={i === selected} onClick={() => onPick(i)}>
-          <span className={styles.moveType} data-type={m.type} aria-hidden />
-          <span className={styles.moveName}>{m.name.toUpperCase()}</span>
-          <span className={styles.movePp}>
-            {m.ppLeft}/{m.pp}
+        <button key={m.id + i} type="button" className={styles.move} onClick={() => onPick(i)}>
+          <span className={styles.moveCursor} aria-hidden>
+            {i === selected && !disabled ? "▶" : ""}
           </span>
+          <span className={styles.moveName}>{m.name.toUpperCase()}</span>
         </button>
       ))}
+      {current && (
+        <div className={styles.moveInfo}>
+          <span className={styles.moveType} data-type={current.type}>
+            {current.type.toUpperCase()}
+          </span>
+          <span>
+            PP {current.ppLeft}/{current.pp}
+          </span>
+          <span>{current.category === "status" ? "STATUS" : `POW ${current.power || "—"}`}</span>
+        </div>
+      )}
     </div>
   );
 }

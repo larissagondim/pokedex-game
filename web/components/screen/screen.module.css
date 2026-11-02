@@ -29,9 +29,19 @@
   image-rendering: pixelated;
 }
 
+/* Faint CRT scanlines over the whole interface (below the power overlay). */
+.screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  background: repeating-linear-gradient(rgba(0, 0, 0, 0.06) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+}
+
 .panel {
   border: 3px solid var(--graphite);
-  border-radius: 8px;
+  border-radius: 2px;
   background: var(--gray-light);
 }
 
@@ -47,7 +57,7 @@
 .tab {
   font: inherit;
   border: 3px solid var(--graphite);
-  border-radius: 8px;
+  border-radius: 2px;
   cursor: pointer;
 }
 
@@ -108,7 +118,7 @@
   height: 32px;
   padding: 0 4px;
   border: 4px solid transparent;
-  border-radius: 6px;
+  border-radius: 2px;
   cursor: pointer;
 }
 
@@ -182,7 +192,7 @@
   margin-bottom: 4px;
   padding: 0 8px;
   border: 3px solid var(--graphite);
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--white);
   color: var(--red);
   font-size: 24px;
@@ -219,7 +229,7 @@
   height: 32px;
   padding: 0;
   border: 2px solid var(--graphite);
-  border-radius: 5px;
+  border-radius: 2px;
   background: var(--white);
   color: var(--graphite);
   font: inherit;
@@ -261,7 +271,7 @@
   margin-bottom: 4px;
   padding: 0 6px;
   border: 2px solid var(--graphite);
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--gray-light);
   font-size: 19px;
 }
@@ -286,7 +296,7 @@
   min-width: 74px;
   padding: 0 6px;
   border: 2px solid var(--graphite);
-  border-radius: 5px;
+  border-radius: 2px;
   background: var(--white);
   font-size: 18px;
   text-align: center;
@@ -307,7 +317,7 @@
   height: 160px;
   text-align: center;
   background: repeating-linear-gradient(45deg, #ececf1 0 8px, #f6f6f8 8px 16px);
-  border-radius: 6px;
+  border-radius: 2px;
 }
 
 .teaser h3 {
@@ -334,7 +344,7 @@
   height: 28px;
   margin-bottom: 4px;
   padding: 0 4px;
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--graphite);
   color: var(--gray-light);
 }
@@ -399,7 +409,7 @@
   place-items: end center;
   overflow: hidden;
   border: 3px solid var(--graphite);
-  border-radius: 8px;
+  border-radius: 2px;
   background: var(--white);
 }
 
@@ -431,7 +441,7 @@
 .type {
   padding: 2px 8px;
   border: 2px solid var(--graphite);
-  border-radius: 6px;
+  border-radius: 2px;
   color: var(--white);
   font-size: 18px;
   background: #777;
@@ -512,7 +522,7 @@
 .hpTrack {
   height: 12px;
   border: 3px solid var(--graphite);
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--graphite);
   overflow: hidden;
 }
@@ -600,7 +610,7 @@
   padding-bottom: 14px;
   overflow: hidden;
   border: 3px solid var(--graphite);
-  border-radius: 8px;
+  border-radius: 2px;
   background:
     radial-gradient(ellipse at 50% 85%, rgba(255, 255, 255, 0.9) 0 30%, transparent 31%),
     linear-gradient(var(--stage), var(--white));
@@ -667,7 +677,7 @@
   font-size: 18px;
   padding: 0 6px;
   border: 2px solid var(--graphite);
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--white);
   color: var(--graphite);
   cursor: pointer;
@@ -724,7 +734,7 @@
 .statTrack {
   height: 10px;
   border: 2px solid var(--graphite);
-  border-radius: 5px;
+  border-radius: 2px;
   background: var(--graphite);
   overflow: hidden;
 }
