@@ -27,7 +27,8 @@ export function useRegionMusic() {
       const { unlocked, muted, musicOn } = useAudio.getState();
       const playing = lit(phase) && performance.now() >= bootedAt && unlocked && !muted && musicOn;
       const battle = useScreen.getState().tab === BATTLE_TAB;
-      setMusic(!playing ? null : battle ? "battle" : focusedId ? (regionOf(focusedId)?.id ?? null) : null);
+      const track = battle ? useScreen.getState().battleTrack : focusedId ? (regionOf(focusedId)?.id ?? null) : null;
+      setMusic(playing ? track : null);
     };
 
     const offDevice = useDeviceState.subscribe(({ phase }, prev) => {

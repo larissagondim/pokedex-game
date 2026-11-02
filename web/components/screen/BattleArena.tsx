@@ -10,6 +10,7 @@ import { playSfx } from "@/lib/sfx";
 import { loadBattleSets, preBattleSnapshot, predictWin } from "@/lib/winPrediction";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { usePokedex } from "@/stores/pokedex";
+import { useScreen } from "@/stores/screen";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import styles from "./battle.module.css";
 import { describeBattleEvent } from "./battleMessages";
@@ -62,6 +63,13 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   const [fainted, setFainted] = useState<Side | null>(null);
   const playback = useRef<{ events: BattleEvent[]; final: BattleState; index: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Legendary and mythical foes get their own theme; otherwise one of the two battle themes.
+  useEffect(() => {
+    const track = foe.isLegendary || foe.isMythical ? "battleLegend" : Math.random() < 0.5 ? "battle" : "battle2";
+    useScreen.getState().setBattleTrack(track);
+    return () => useScreen.getState().setBattleTrack("battle");
+  }, [foe]);
 
   const name = (side: Side) => (side === "a" ? player.name.toUpperCase() : `Foe ${foe.name.toUpperCase()}`);
 

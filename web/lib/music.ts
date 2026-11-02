@@ -1,8 +1,12 @@
 import type { RegionId } from "./regions";
 import { getAudioContext } from "./sfx";
 
-/** A region's theme, or the battle theme. */
-export type Track = RegionId | "battle";
+/** Battle themes: two for regular battles, one for legendary/mythical foes. */
+export const BATTLE_TRACKS = ["battle", "battle2", "battleLegend"] as const;
+export type BattleTrack = (typeof BATTLE_TRACKS)[number];
+
+/** A region's theme, or a battle theme. */
+export type Track = RegionId | BattleTrack;
 
 /**
  * Background music per region, plus a battle theme. Each one is an original chiptune loop
@@ -26,6 +30,9 @@ const MINOR = [0, 2, 3, 5, 7, 8, 10];
 const DORIAN = [0, 2, 3, 5, 7, 9, 10];
 const MIXOLYDIAN = [0, 2, 4, 5, 7, 9, 10];
 const PHRYGIAN_DOMINANT = [0, 1, 4, 5, 7, 8, 10];
+/** Minor with a raised 7th: the major V chord gives battle themes their tension. */
+const HARMONIC_MINOR = [0, 2, 3, 5, 7, 8, 11];
+const PHRYGIAN = [0, 1, 3, 5, 7, 8, 10];
 
 interface Theme {
   /** MIDI note of the tonic (60 = middle C). */
@@ -41,12 +48,18 @@ interface Theme {
   rests: number;
   /** Bass on every eighth (driving, for battles) instead of every beat. */
   drive?: boolean;
+  /** Drum kit: "rock" (kick 1 & 3 with a syncopated kick, snare 2 & 4, 8th hats) or "half" (half-time, heavy). */
+  drums?: "rock" | "half";
+  /** Sixteenth-note arpeggio of the chord, an octave up. */
+  arp?: boolean;
   seed: number;
 }
 
 const THEMES: Record<Track, Theme> = {
-  // Minor, fast, with a galloping bass: i – VI – VII – v.
-  battle: { root: 57, scale: MINOR, chords: [0, 5, 6, 4], bpm: 156, beatsPerBar: 4, lead: "square", bass: "square", rests: 0.08, seed: 151, drive: true },
+  // Battles: fast harmonic minor, galloping bass, drums and a 16th-note arpeggio.
+  battle: { root: 57, scale: HARMONIC_MINOR, chords: [0, 5, 6, 4], bpm: 172, beatsPerBar: 4, lead: "square", bass: "square", rests: 0.05, seed: 151, drive: true, drums: "rock", arp: true },
+  battle2: { root: 64, scale: PHRYGIAN, chords: [0, 1, 0, 6], bpm: 184, beatsPerBar: 4, lead: "sawtooth", bass: "square", rests: 0.04, seed: 252, drive: true, drums: "rock", arp: true },
+  battleLegend: { root: 62, scale: HARMONIC_MINOR, chords: [0, 5, 3, 4], bpm: 148, beatsPerBar: 4, lead: "sawtooth", bass: "square", rests: 0.12, seed: 386, drive: true, drums: "half", arp: true },
   kanto: { root: 60, scale: MAJOR, chords: [0, 4, 5, 3], bpm: 120, beatsPerBar: 4, lead: "square", bass: "triangle", rests: 0.2, seed: 11 },
   johto: { root: 62, scale: MAJOR, chords: [0, 5, 3, 4], bpm: 100, beatsPerBar: 4, lead: "triangle", bass: "triangle", rests: 0.3, seed: 23 },
   hoenn: { root: 63, scale: MIXOLYDIAN, chords: [0, 6, 3, 0], bpm: 128, beatsPerBar: 4, lead: "square", bass: "triangle", rests: 0.15, seed: 37 },
@@ -121,12 +134,42 @@ interface Voice {
   stop: (at: number) => void;
 }
 
-/** Plays a synthesized theme by scheduling notes slightly ahead of time. */
+let noise: AudioBuffer | null = null;
+
+/** One second of white noise, shared by the drum sounds. */
+function noiseBuffer(ctx: AudioContext) {
+  if (!noise || noise.sampleRate !== ctx.sampleRate) {
+    noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const data = noise.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return noise;
+}
+
+type Drum = "kick" | "snare" | "hat";
+
+/** Which drums hit on each 16th of a 4/4 bar. */
+const DRUM_PATTERNS: Record<NonNullable<Theme["drums"]>, Drum[][]> = {
+  rock: Array.from({ length: 16 }, (_, i) => [
+    ...(i === 0 || i === 8 || i === 10 ? (["kick"] as Drum[]) : []),
+    ...(i === 4 || i === 12 ? (["snare"] as Drum[]) : []),
+    ...(i % 2 === 0 ? (["hat"] as Drum[]) : []),
+  ]),
+  half: Array.from({ length: 16 }, (_, i) => [
+    ...(i === 0 || i === 3 || i === 6 ? (["kick"] as Drum[]) : []),
+    ...(i === 8 ? (["snare"] as Drum[]) : []),
+    ...(i % 4 === 2 ? (["hat"] as Drum[]) : []),
+  ]),
+};
+
+/** Plays a synthesized theme by scheduling notes slightly ahead of time (16th-note grid). */
 function startSynth(ctx: AudioContext, out: GainNode, theme: Theme): Voice {
   const steps = compose(theme);
-  const stepS = 60 / theme.bpm / 2;
+  const sixteenth = 60 / theme.bpm / 4;
+  const stepS = sixteenth * 2;
+  const stepsPerBar = theme.beatsPerBar * 2;
   let next = ctx.currentTime + 0.05;
-  let index = 0;
+  let tick = 0; // 16th counter
 
   const note = (midi: number, at: number, dur: number, type: OscillatorType, gain: number) => {
     const osc = ctx.createOscillator();
@@ -141,13 +184,51 @@ function startSynth(ctx: AudioContext, out: GainNode, theme: Theme): Voice {
     osc.stop(at + dur + 0.02);
   };
 
+  const drum = (kind: Drum, at: number) => {
+    if (kind === "kick") {
+      const osc = ctx.createOscillator();
+      const amp = ctx.createGain();
+      osc.frequency.setValueAtTime(150, at);
+      osc.frequency.exponentialRampToValueAtTime(40, at + 0.12);
+      amp.gain.setValueAtTime(0.9, at);
+      amp.gain.exponentialRampToValueAtTime(0.0001, at + 0.15);
+      osc.connect(amp).connect(out);
+      osc.start(at);
+      osc.stop(at + 0.16);
+      return;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(ctx);
+    const filter = ctx.createBiquadFilter();
+    filter.type = kind === "snare" ? "bandpass" : "highpass";
+    filter.frequency.value = kind === "snare" ? 1800 : 7000;
+    const amp = ctx.createGain();
+    const dur = kind === "snare" ? 0.13 : 0.035;
+    amp.gain.setValueAtTime(kind === "snare" ? 0.5 : 0.18, at);
+    amp.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    src.connect(filter).connect(amp).connect(out);
+    src.start(at, Math.random() * 0.5);
+    src.stop(at + dur + 0.01);
+  };
+
   const timer = setInterval(() => {
     while (next < ctx.currentTime + LOOKAHEAD_S) {
-      const { lead, bass } = steps[index];
-      if (lead !== null) note(lead, next, stepS * 0.9, theme.lead, theme.lead === "square" ? 0.18 : 0.32);
-      if (bass !== null) note(bass, next, stepS * 1.8, theme.bass, theme.bass === "square" ? 0.12 : 0.3);
-      next += stepS;
-      index = (index + 1) % steps.length;
+      const index = Math.floor(tick / 2) % steps.length;
+      if (tick % 2 === 0) {
+        const { lead, bass } = steps[index];
+        if (lead !== null) note(lead, next, stepS * 0.9, theme.lead, theme.lead === "sine" || theme.lead === "triangle" ? 0.32 : 0.15);
+        if (bass !== null) note(bass, next, stepS * (theme.drive ? 0.9 : 1.8), theme.bass, theme.bass === "square" ? 0.12 : 0.3);
+      }
+      if (theme.arp) {
+        // Chord of the current bar, up an octave, cycling root-third-fifth-third.
+        const bar = Math.floor(index / stepsPerBar) % theme.chords.length;
+        const chord = theme.chords[bar];
+        const degree = chord + 14 + [0, 2, 4, 2][tick % 4];
+        note(degreeToMidi(theme, degree), next, sixteenth * 0.8, "square", 0.05);
+      }
+      if (theme.drums) for (const kind of DRUM_PATTERNS[theme.drums][tick % 16]) drum(kind, next);
+      next += sixteenth;
+      tick++;
     }
   }, TICK_MS);
 

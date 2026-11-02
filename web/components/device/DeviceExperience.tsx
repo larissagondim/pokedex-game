@@ -51,7 +51,7 @@ export function DeviceExperience() {
   const muted = useAudio((s) => s.muted);
   const unlocked = useAudio((s) => s.unlocked);
   const musicOn = useAudio((s) => s.musicOn);
-  const battle = useScreen((s) => s.tab === BATTLE_TAB);
+  const battle = useScreen((s) => (s.tab === BATTLE_TAB ? (s.battleTrack === "battleLegend" ? "Legend" : "Battle") : null));
   const focused = usePokedex((s) => s.list.find((p) => p.id === s.focusedId));
 
   return (
@@ -73,7 +73,7 @@ export function DeviceExperience() {
           {muted || !unlocked ? "Sound: off" : "Sound: on"}
         </button>
         <button type="button" onMouseUp={releaseFocus} onClick={useAudio.getState().toggleMusic} aria-pressed={musicOn}>
-          {musicOn ? `♪ Music: ${battle ? "Battle" : ((focused && regionOf(focused.id)?.name) ?? "on")}` : "♪ Music: off"}
+          {musicOn ? `♪ Music: ${battle ?? ((focused && regionOf(focused.id)?.name) ?? "on")}` : "♪ Music: off"}
         </button>
       </div>
 
