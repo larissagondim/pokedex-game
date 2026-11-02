@@ -1,15 +1,18 @@
 import type { RegionId } from "./regions";
 import { getAudioContext } from "./sfx";
 
+/** A region's theme, or the battle theme. */
+export type Track = RegionId | "battle";
+
 /**
- * Background music per region. Each region has an original chiptune loop
+ * Background music per region, plus a battle theme. Each one is an original chiptune loop
  * generated from a small "theme" (key, mode, chord progression, tempo, timbre)
  * and a seed, so it always plays the same tune. No game music is bundled.
  *
  * To use your own recordings, put files in web/public/music/ (git-ignored)
  * and map them here; a mapped region plays its file instead of the synth loop.
  */
-export const CUSTOM_TRACKS: Partial<Record<RegionId, string>> = {
+export const CUSTOM_TRACKS: Partial<Record<Track, string>> = {
   // kanto: "/music/kanto.ogg",
 };
 
@@ -36,10 +39,14 @@ interface Theme {
   bass: OscillatorType;
   /** 0..1: chance of a rest on weak eighths (sparser = calmer). */
   rests: number;
+  /** Bass on every eighth (driving, for battles) instead of every beat. */
+  drive?: boolean;
   seed: number;
 }
 
-const THEMES: Record<RegionId, Theme> = {
+const THEMES: Record<Track, Theme> = {
+  // Minor, fast, with a galloping bass: i – VI – VII – v.
+  battle: { root: 57, scale: MINOR, chords: [0, 5, 6, 4], bpm: 156, beatsPerBar: 4, lead: "square", bass: "square", rests: 0.08, seed: 151, drive: true },
   kanto: { root: 60, scale: MAJOR, chords: [0, 4, 5, 3], bpm: 120, beatsPerBar: 4, lead: "square", bass: "triangle", rests: 0.2, seed: 11 },
   johto: { root: 62, scale: MAJOR, chords: [0, 5, 3, 4], bpm: 100, beatsPerBar: 4, lead: "triangle", bass: "triangle", rests: 0.3, seed: 23 },
   hoenn: { root: 63, scale: MIXOLYDIAN, chords: [0, 6, 3, 0], bpm: 128, beatsPerBar: 4, lead: "square", bass: "triangle", rests: 0.15, seed: 37 },
@@ -101,7 +108,9 @@ function compose(theme: Theme): Step[] {
       if (bar === bars.length - 1 && s === stepsPerBar - 2) lead = theme.chords[0] + 7;
       if (lead !== null) last = Math.max(5, Math.min(14, lead));
       const beat = s / 2;
-      const bass = strong ? (beat % 2 === 0 ? chord - 7 : chord - 3) : null;
+      const bass = theme.drive
+        ? s % 2 === 0 ? chord - 7 : chord // root and octave on every eighth
+        : strong ? (beat % 2 === 0 ? chord - 7 : chord - 3) : null;
       steps.push({ lead: lead === null ? null : degreeToMidi(theme, last), bass: bass === null ? null : degreeToMidi(theme, bass) });
     }
   });
@@ -177,7 +186,7 @@ function startFile(ctx: AudioContext, out: GainNode, url: string): Voice {
 }
 
 let master: GainNode | null = null;
-let current: { region: RegionId; gain: GainNode; voice: Voice } | null = null;
+let current: { track: Track; gain: GainNode; voice: Voice } | null = null;
 
 const getMaster = () => {
   if (!master) {
@@ -189,9 +198,9 @@ const getMaster = () => {
   return master;
 };
 
-/** Crossfades to the given region's music; null fades out to silence. */
-export function setRegionMusic(region: RegionId | null) {
-  if ((current?.region ?? null) === region) return;
+/** Crossfades to the given track; null fades out to silence. */
+export function setMusic(track: Track | null) {
+  if ((current?.track ?? null) === track) return;
   const ctx = getAudioContext();
   const now = ctx.currentTime;
 
@@ -206,15 +215,15 @@ export function setRegionMusic(region: RegionId | null) {
     }, FADE_S * 1000 + 50);
     current = null;
   }
-  if (!region) return;
+  if (!track) return;
 
   const gain = ctx.createGain();
   gain.gain.setValueAtTime(0, now);
   gain.gain.linearRampToValueAtTime(1, now + FADE_S);
   gain.connect(getMaster());
-  const file = CUSTOM_TRACKS[region];
-  const voice = file ? startFile(ctx, gain, file) : startSynth(ctx, gain, THEMES[region]);
-  current = { region, gain, voice };
+  const file = CUSTOM_TRACKS[track];
+  const voice = file ? startFile(ctx, gain, file) : startSynth(ctx, gain, THEMES[track]);
+  current = { track, gain, voice };
 }
 
 /** Briefly lowers the music (e.g. while a cry plays). */

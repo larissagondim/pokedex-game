@@ -10,9 +10,11 @@ import { normalize, searchPokemon } from "@/lib/search";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { acceptsInput, useDeviceState } from "@/stores/deviceState";
 import { useFavorites } from "@/stores/favorites";
+import { BATTLE_TAB, TABS, TAMAGOTCHI_TAB, useScreen } from "@/stores/screen";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import { usePokedex } from "@/stores/pokedex";
 import type { Pokemon } from "@/data/pokedex";
+import { BattleScreen } from "./BattleScreen";
 import { DialogBox } from "./DialogBox";
 import { ListOptions } from "./ListOptions";
 import { PokemonDetail } from "./PokemonDetail";
@@ -26,8 +28,7 @@ import { TabBar } from "./TabBar";
 import { TamagotchiScreen } from "./TamagotchiScreen";
 import { describeEvent } from "./tamaMessages";
 
-const TABS = ["LIST", "BATTLE", "TAMAGOTCHI"] as const;
-const TAMAGOTCHI_TAB = 2;
+const BATTLE_HINT = "A wild Pokémon wants to battle! ◀▶ your Pokémon   ▲▼ new foe   A: fight";
 const TAMA_HINT = "▲▼ party   ◀▶ action   A: do it   Click your Pokémon to hear it!";
 const LIST_HINT = "▲▼ Pokémon   ◀▶ region   A: open   MENU: tab   ▲ on the first row: filters, then search (A = keyboard)";
 
@@ -127,12 +128,17 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   // whatever is under the cursor.
   // (On the Tamagotchi tab, the selected party member drives them instead.)
   useEffect(() => {
-    if (tab === TAMAGOTCHI_TAB) return;
+    if (tab === TAMAGOTCHI_TAB || tab === BATTLE_TAB) return;
     usePokedex.getState().focus(detailPokemon?.id ?? items[cursor]?.id ?? null);
   }, [tab, detailPokemon, items, cursor]);
 
 
 
+
+  // The music follows the tab (battle theme on BATTLE).
+  useEffect(() => {
+    useScreen.getState().setTab(tab);
+  }, [tab]);
 
   // Zoomed in: the interface takes keyboard focus.
   useEffect(() => {
@@ -406,14 +412,15 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   }, []);
 
   const tamaActive = tab === TAMAGOTCHI_TAB && power === "on" && phaseAcceptsInput;
+  const battleActive = tab === BATTLE_TAB && power === "on" && phaseAcceptsInput;
 
   const dialogText = notice || detailPokemon
     ? typing.visible
     : tab === TAMAGOTCHI_TAB
       ? TAMA_HINT
-      : tab !== 0
-      ? "Coming soon!"
-      : keyPos
+      : tab === BATTLE_TAB
+        ? BATTLE_HINT
+        : keyPos
         ? "◀▲▼▶ move   A: type   B: delete   MENU: done"
         : searchSelected
           ? "A: open the keyboard   ▼: filters"
@@ -426,13 +433,8 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   let body;
   if (tab === TAMAGOTCHI_TAB) {
     body = <TamagotchiScreen active={tamaActive} onNotice={say} />;
-  } else if (tab !== 0) {
-    body = (
-      <div className={styles.panel + " " + styles.soon}>
-        <h2>{TABS[tab]}</h2>
-        <p>Coming soon</p>
-      </div>
-    );
+  } else if (tab === BATTLE_TAB) {
+    body = <BattleScreen active={battleActive} onNotice={say} />;
   } else if (status !== "ready") {
     body = (
       <div className={styles.panel + " " + styles.soon}>

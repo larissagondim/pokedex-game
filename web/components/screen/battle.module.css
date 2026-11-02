@@ -1,0 +1,225 @@
+/* BATTLE tab: original retro battle scene. Sizes are CSS px of the 640x480 screen. */
+
+.scene {
+  --sky-top: #bfe6ff;
+  --sky-bottom: #eaf7ff;
+  --ground-top: #8fd16a;
+  --ground-bottom: #5ea83f;
+  --platform: #a8e07f;
+  --platform-rim: #6bb34a;
+
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 3px solid var(--graphite);
+  border-radius: 8px;
+  color: var(--graphite);
+}
+
+.scene[data-terrain="sea"] {
+  --sky-top: #8fd0ff; --sky-bottom: #d4efff; --ground-top: #3a8fd6; --ground-bottom: #24609e; --platform: #7fc3f0; --platform-rim: #3f86c4;
+}
+.scene[data-terrain="snow"] {
+  --sky-top: #cfe4f5; --sky-bottom: #f1f8ff; --ground-top: #f6fbff; --ground-bottom: #d3e6f5; --platform: #ffffff; --platform-rim: #a9c8e0;
+}
+.scene[data-terrain="volcano"] {
+  --sky-top: #ff9a6a; --sky-bottom: #ffd2a8; --ground-top: #9a4528; --ground-bottom: #5e2716; --platform: #c2603a; --platform-rim: #7e3520;
+}
+.scene[data-terrain="rocky"] {
+  --sky-top: #f0d49c; --sky-bottom: #fbebc8; --ground-top: #b58f5c; --ground-bottom: #81623a; --platform: #cfab78; --platform-rim: #8e6c40;
+}
+.scene[data-terrain="cave"] {
+  --sky-top: #231c36; --sky-bottom: #4a3b66; --ground-top: #3a3348; --ground-bottom: #241f30; --platform: #5b4f73; --platform-rim: #3a3150;
+  color: var(--gray-light);
+}
+.scene[data-terrain="mystic"] {
+  --sky-top: #f4bfe2; --sky-bottom: #e3d7ff; --ground-top: #cdb4f2; --ground-bottom: #a58ad8; --platform: #eadbff; --platform-rim: #b49ae0;
+}
+.scene[data-terrain="sky"] {
+  --sky-top: #7fc2ff; --sky-bottom: #d3ebff; --ground-top: #eef7ff; --ground-bottom: #c6e1f7; --platform: #ffffff; --platform-rim: #b7d6ee;
+}
+.scene[data-terrain="power"] {
+  --sky-top: #ffe97a; --sky-bottom: #fff7cc; --ground-top: #d9c24a; --ground-bottom: #a8922a; --platform: #f2e07a; --platform-rim: #b9a43a;
+}
+
+/* Sky above, ground below, a stepped horizon line. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 22px, rgba(255, 255, 255, 0.12) 22px 24px) 0 54% / 100% 6px no-repeat,
+    linear-gradient(var(--sky-top), var(--sky-bottom) 54%, var(--ground-top) 54%, var(--ground-bottom));
+  image-rendering: pixelated;
+}
+
+/* Platforms the Pokémon stand on. */
+.platform {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 40%, var(--platform) 0 55%, var(--platform-rim) 56% 100%);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.15);
+}
+
+.platform[data-side="foe"] {
+  top: 108px;
+  right: 34px;
+  width: 196px;
+  height: 40px;
+}
+
+.platform[data-side="player"] {
+  bottom: 52px;
+  left: 18px;
+  width: 236px;
+  height: 46px;
+}
+
+.sprite {
+  position: absolute;
+  z-index: 1;
+  width: auto;
+  object-fit: contain;
+  image-rendering: pixelated;
+  transform-origin: 50% 100%;
+}
+
+.sprite[data-side="foe"] {
+  top: 14px;
+  right: 70px;
+  height: 116px;
+  max-width: 130px;
+  animation: idle 1.6s steps(2) infinite;
+}
+
+.sprite[data-side="player"] {
+  bottom: 66px;
+  left: 64px;
+  height: 140px;
+  max-width: 150px;
+  animation: idle 2s steps(2) infinite;
+}
+
+/* Name / level / HP boxes. */
+.status {
+  position: absolute;
+  z-index: 2;
+  width: 230px;
+  padding: 4px 10px 6px;
+  border: 3px solid var(--graphite);
+  border-radius: 8px 2px 8px 2px;
+  background: var(--gray-light);
+  color: var(--graphite);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
+}
+
+.status[data-side="foe"] {
+  top: 10px;
+  left: 12px;
+}
+
+.status[data-side="player"] {
+  right: 12px;
+  bottom: 58px;
+}
+
+.statusName {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-pixel), monospace;
+  font-size: 14px;
+}
+
+.hp {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-family: var(--font-pixel), monospace;
+  font-size: 11px;
+  color: var(--red);
+}
+
+.hpTrack {
+  height: 9px;
+  border: 2px solid var(--graphite);
+  border-radius: 5px;
+  background: var(--graphite);
+  overflow: hidden;
+}
+
+.hpFill {
+  width: 100%;
+  height: 100%;
+  background: #3ddc84;
+}
+
+.dexNo {
+  margin-top: 2px;
+  font-size: 16px;
+  text-align: right;
+  color: #6b6b76;
+}
+
+/* Win chance strip at the bottom. */
+.chance {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  padding: 4px 10px 5px;
+  border-top: 3px solid var(--graphite);
+  background: var(--graphite);
+  color: var(--gray-light);
+}
+
+.chanceLabel {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-pixel), monospace;
+  font-size: 13px;
+}
+
+.chanceLabel span:last-child {
+  color: #ffd23f;
+}
+
+.chanceTrack {
+  height: 8px;
+  margin: 3px 0 2px;
+  border-radius: 4px;
+  background: #4a4a55;
+  overflow: hidden;
+}
+
+.chanceFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), #ff6b6b);
+  transition: width 0.5s steps(10);
+}
+
+.chanceFill[data-unknown="true"] {
+  background: #6b6b76;
+}
+
+.chanceHint {
+  font-size: 15px;
+  color: #b9b9c2;
+}
+
+@keyframes idle {
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sprite {
+    animation: none;
+  }
+
+  .chanceFill {
+    transition: none;
+  }
+}
