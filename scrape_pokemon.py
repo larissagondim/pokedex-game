@@ -31,6 +31,7 @@ CACHE_DIR = DATA_DIR / "cache"
 SPRITES_DIR = ROOT / "sprites"
 ARTWORK_DIR = ROOT / "artwork"
 ANIMATED_DIR = ROOT / "animated"
+GEN5_ANIMATED_URL = "https://play.pokemonshowdown.com/sprites/gen5ani/{name}.gif"
 USER_AGENT = "pokedex-game-scraper/1.0"
 
 # PokéAPI ids >= 10000 are alternate forms (mega, regional, etc.)
@@ -94,7 +95,10 @@ def build_pokemon(pid, images):
     if images:
         download(sprite_url, SPRITES_DIR / f"{pid}.png")
         download(artwork_url, ARTWORK_DIR / f"{pid}.png")
-        download(animated_url, ANIMATED_DIR / f"{pid}.gif")
+        if not download(animated_url, ANIMATED_DIR / f"{pid}.gif"):
+            # PokeAPI has no Showdown GIF for some Gen 9 Pokémon; Showdown's Gen 5 style one covers a few of them
+            fallback_url = GEN5_ANIMATED_URL.format(name=p["name"].replace("-", ""))
+            animated_url = fallback_url if download(fallback_url, ANIMATED_DIR / f"{pid}.gif") else None
 
     display_name = pick_text(s["names"], "name", "en")
     genus = pick_text(s["genera"], "genus", "en")

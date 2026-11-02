@@ -49625,10 +49625,10 @@
     "evolution_chain_id": 523,
     "sprite": "sprites/992.png",
     "artwork": "artwork/992.png",
-    "animated": null,
+    "animated": "animated/992.gif",
     "sprite_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/992.png",
     "artwork_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/992.png",
-    "animated_url": null,
+    "animated_url": "https://play.pokemonshowdown.com/sprites/gen5ani/ironhands.gif",
     "cry_url": "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/992.ogg"
   },
   {
@@ -49715,10 +49715,10 @@
     "evolution_chain_id": 525,
     "sprite": "sprites/994.png",
     "artwork": "artwork/994.png",
-    "animated": null,
+    "animated": "animated/994.gif",
     "sprite_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/994.png",
     "artwork_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/994.png",
-    "animated_url": null,
+    "animated_url": "https://play.pokemonshowdown.com/sprites/gen5ani/ironmoth.gif",
     "cry_url": "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/994.ogg"
   },
   {
@@ -49760,10 +49760,10 @@
     "evolution_chain_id": 526,
     "sprite": "sprites/995.png",
     "artwork": "artwork/995.png",
-    "animated": null,
+    "animated": "animated/995.gif",
     "sprite_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/995.png",
     "artwork_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/995.png",
-    "animated_url": null,
+    "animated_url": "https://play.pokemonshowdown.com/sprites/gen5ani/ironthorns.gif",
     "cry_url": "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/995.ogg"
   },
   {
@@ -50266,10 +50266,10 @@
     "evolution_chain_id": 534,
     "sprite": "sprites/1006.png",
     "artwork": "artwork/1006.png",
-    "animated": null,
+    "animated": "animated/1006.gif",
     "sprite_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1006.png",
     "artwork_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1006.png",
-    "animated_url": null,
+    "animated_url": "https://play.pokemonshowdown.com/sprites/gen5ani/ironvaliant.gif",
     "cry_url": "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/1006.ogg"
   },
   {
@@ -50356,10 +50356,10 @@
     "evolution_chain_id": 536,
     "sprite": "sprites/1008.png",
     "artwork": "artwork/1008.png",
-    "animated": null,
+    "animated": "animated/1008.gif",
     "sprite_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1008.png",
     "artwork_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1008.png",
-    "animated_url": null,
+    "animated_url": "https://play.pokemonshowdown.com/sprites/gen5ani/miraidon.gif",
     "cry_url": "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/1008.ogg"
   },
   {
@@ -51118,10 +51118,10 @@
     "evolution_chain_id": 548,
     "sprite": "sprites/1024.png",
     "artwork": "artwork/1024.png",
-    "animated": null,
+    "animated": "animated/1024.gif",
     "sprite_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1024.png",
     "artwork_url": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1024.png",
-    "animated_url": null,
+    "animated_url": "https://play.pokemonshowdown.com/sprites/gen5ani/terapagos.gif",
     "cry_url": "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/1024.ogg"
   },
   {
