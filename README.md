@@ -2,7 +2,7 @@
 
 An interactive 3D Pokédex with battles, machine-learning win prediction and a Tamagotchi. A non-profit fan project built for portfolio and learning purposes, developed with **agentic programming** using [Claude Code](https://claude.com/claude-code).
 
-> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, and a **win-prediction model** served by FastAPI. Still to come: the **battle engine** (and with it the probability bar), Docker, a database and the trainer profile. Anything marked _(planned)_ below is not implemented yet.
+> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, a **battle screen** with the pre-battle win chance (a model that runs in the browser). Still to come: the **battle engine** itself (turns, moves, teams), Docker, a database and the trainer profile. Anything marked _(planned)_ below is not implemented yet.
 
 ## Table of contents
 
@@ -51,7 +51,7 @@ The commit history shows how the project grew step by step: scraper, web scaffol
 | Tamagotchi | Adopt up to 5 Pokémon from the list (A at the end of a Pokémon page, or ♥ ADOPT). Food, joy and energy decay with real time; feed, play, sleep and train them. XP raises the level and they **evolve** (babies also need to be happy). Coins earned by playing and training buy **eggs** that hatch into a random base-stage or baby Pokémon. Hearts when happy, mood bubbles, reactions per action, idle animation by evolution stage, and clicking one plays its cry. Saved in `localStorage` | ✅ Done (v1) |
 | Trainer profile | Create your own trainer profile: pick a name, design your trainer sprite (hair, outfit, colors, etc.) and show it on the device. The profile ties together your Tamagotchi, favorites and battle history | 🕒 Planned |
 
-The BATTLE tab exists on the screen but still shows a "coming soon" placeholder.
+On the BATTLE tab you can pick the opponent and see the win chance, but you can't fight yet: the battle engine comes next.
 
 ## Screenshots
 
@@ -67,7 +67,7 @@ _Placeholders. They will be added as the screens are finished._
 
 ## Architecture
 
-The scraper, the `web` app and the `ml` service exist today. The battle engine (API routes), the database and Docker are _(planned)_; for now the app calls the ML service directly through `predictWin`.
+The scraper, the `web` app and the `ml` service exist today. The battle engine (API routes), the database and Docker are _(planned)_. The pre-battle win chance runs in the browser from an exported model (`web/public/battle/win-model.json`); the FastAPI service is optional.
 
 ```mermaid
 flowchart LR
@@ -110,9 +110,9 @@ pokedex-game/
 ├── scrape_pokemon.py       # scrapes data and images from PokéAPI / Showdown
 ├── data/
 │   └── pokemon.json        # 1025 Pokémon (raw cache in data/cache/, git-ignored)
-├── sprites/                # <id>.png, small sprite
+├── sprites/                # <id>.png, small sprite (back/ has the back views)
 ├── artwork/                # <id>.png, high-resolution official artwork
-├── animated/               # <id>.gif, animated sprite (~72 MB, git-ignored)
+├── animated/               # <id>.gif, animated sprite (back/ has the back views; git-ignored)
 ├── web/                    # Next.js app
 │   ├── app/                # App Router entry
 │   ├── components/
@@ -153,7 +153,7 @@ The script is resumable: API responses are cached in `data/cache/` and images al
 
 Fields of each Pokémon in `data/pokemon.json`:
 
-`id`, `name`, `display_name`, `genus`, `description`, `types`, `height_m`, `weight_kg`, `base_experience`, `stats`, `abilities`, `color`, `habitat`, `generation`, `is_legendary`, `is_mythical`, `capture_rate`, `evolves_from`, `evolution_chain_id`, `sprite`, `artwork`, `animated`, `sprite_url`, `artwork_url`, `animated_url`, `cry_url`, `evolves_from_id`, `is_baby`.
+`id`, `name`, `display_name`, `genus`, `description`, `types`, `height_m`, `weight_kg`, `base_experience`, `stats`, `abilities`, `color`, `habitat`, `generation`, `is_legendary`, `is_mythical`, `capture_rate`, `evolves_from`, `evolution_chain_id`, `sprite`, `artwork`, `animated`, `back_sprite`, `animated_back`, `sprite_url`, `artwork_url`, `animated_url`, `back_sprite_url`, `animated_back_url`, `cry_url`, `evolves_from_id`, `is_baby`.
 
 > Cries are not downloaded: the app streams them from `cry_url` (PokéAPI cries repository). Fun facts are computed in the app from these fields, not scraped.
 
@@ -167,7 +167,7 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:3000. `npm run dev` and `npm run build` first run `npm run sync-assets`, which copies `sprites/` and `animated/` into `web/public/` and builds a trimmed `web/public/data/pokedex.json` from `data/pokemon.json`. In that file, `animated` is the local `/animated/<id>.gif` when it exists, otherwise the remote `animated_url`, or `null` (static sprite). If the scraper has not been run, the script warns and the Pokédex will fail to load.
+Then open http://localhost:3000. `npm run dev` and `npm run build` first run `npm run sync-assets`, which copies `sprites/` and `animated/` into `web/public/` and builds a trimmed `web/public/data/pokedex.json` from `data/pokemon.json`. In that file, `animated` is the local `/animated/<id>.gif` when it exists, otherwise the remote `animated_url`, or `null` (static sprite); `animatedBack` works the same way for the back view used on the battle screen. If the scraper has not been run, the script warns and the Pokédex will fail to load.
 
 > **Deploying (e.g. Vercel):** `animated/` is git-ignored (~72 MB), so a deploy does not have the GIFs and the app loads them from the remote URLs (PokéAPI sprites on GitHub and Showdown). If they go offline, the UI falls back to the static PNGs. The build also needs `sprites/` and `data/` from outside `web/`, so keep Vercel's "Include source files outside of the Root Directory" enabled when the Root Directory is `web`.
 
@@ -253,13 +253,13 @@ Done:
 - [x] Fun facts
 - [x] Tamagotchi v1 (party of 5, needs, evolution, eggs)
 - [x] Win-prediction model v1: dataset generator, training, Monte Carlo evaluation, FastAPI
+- [x] Battle screen with backdrops, battle music and the pre-battle win chance
 
 Next:
 
 - [ ] **Phase 1:** Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
 - [ ] **Phase 3:** 1v1 battle (built by hand)
-- [x] Battle screen with backdrops, battle music and the pre-battle win chance
 - [ ] **Phase 5:** 6v6 battle
 - [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
 - [ ] **Phase 7:** Trainer profile (name and customizable sprite)
@@ -277,6 +277,8 @@ Keyboard and the physical buttons on the device do the same thing. Each key maps
 | `Space` | ZOOM | Zoom in or out of the screen (opens the device if closed) |
 | `Esc` | n/a | Leave zoom (in the search field: clear it, then leave the field) |
 | `/` | n/a | Focus the search field. While typing, ↑ ↓ move through the results and `Enter` opens one |
+
+On the BATTLE tab: ← → pick your Pokémon, ↑ ↓ draw a new opponent.
 
 On the TAMAGOTCHI tab: ↑ ↓ pick a Pokémon from the party, ← → pick an action, A does it, B goes back to the list.
 
