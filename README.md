@@ -2,7 +2,7 @@
 
 An interactive 3D Pokédex with battles, machine-learning win prediction and a Tamagotchi. A non-profit fan project built for portfolio and learning purposes, developed with **agentic programming** using [Claude Code](https://claude.com/claude-code).
 
-> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, a **battle screen** with the pre-battle win chance (a model that runs in the browser). Still to come: the **battle engine** itself (turns, moves, teams), Docker, a database and the trainer profile. Anything marked _(planned)_ below is not implemented yet.
+> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, a **battle screen** with the pre-battle win chance (a model that runs in the browser). A hand-built **1v1 battle engine** is done and tested; the screen to actually fight is in progress. Still to come: 6v6 teams, Docker, a database and the trainer profile. Anything marked _(planned)_ below is not implemented yet.
 
 ## Table of contents
 
@@ -46,12 +46,13 @@ The commit history shows how the project grew step by step: scraper, web scaffol
 | Filters, sorting and favorites | Options row above the list: filter by type or ★ favorites, sort by number, name or base stat total. Rows show a mini sprite, type dots and the searched prefix highlighted. Favorites (MENU on a Pokémon page) are saved in `localStorage`. Jumping past Paldea shows a "Gen X: coming soon" slot | ✅ Done |
 | Fun facts | Each Pokémon page ends with three "Did you know?" facts computed from the data by comparing it with all 1025 Pokémon: stat total ranking, top-1% stats, rare typings ("the only Bug/Ghost Pokémon"), size extremes or weight in Pikachu, catch rate, branched evolutions… (`web/lib/funFacts.ts`) | ✅ Done |
 | Battle screen | BATTLE tab: first choose your Pokémon and then the opponent (★ favorites first, then your Tamagotchi party; searchable with the on-screen keyboard or `/`), then see yours from the back against the opponent, on a backdrop picked from the foe's type (field, sea, snow, volcano, rocky, cave, mystic, sky, power), with status boxes, the **pre-battle win chance** and an original battle theme | ✅ Done |
-| Battles | 1v1 with the standard rules (speed order, type chart, official move values), built by hand; then 6v6 by teams | 🕒 Planned |
+| 1v1 battle engine | Pure TypeScript engine built by hand (`web/lib/battle`), no `@pkmn/sim` at runtime. Standard gen 5+ rules: priority then speed (paralysis halves it), damage formula with the 85–100% roll, STAB, type chart, critical hits, accuracy, stat stages, PP; burn, paralysis, poison, bad poison and sleep with type immunities; drain, recoil, healing, multi-hit, fixed-damage moves and chance effects. Abilities and items are not modeled, and moves with other effects (Protect, Substitute...) just fail. `runTurn` returns the new state plus the events for the screen to play back. A greedy AI picks the foe's moves. Unit-tested | ✅ Engine done; 🟡 fight screen in progress |
+| 6v6 battles | Team battles on top of the 1v1 engine | 🕒 Planned |
 | Win prediction | Win chance **before the battle**, shown on the battle screen. Gradient boosting trained on 79,983 simulated battles (AUC 0.88, calibration error 0.2%), exported to JSON and run **in the browser** (no server needed); the FastAPI service is optional | ✅ Done |
 | Tamagotchi | Adopt up to 5 Pokémon from the list (A at the end of a Pokémon page, or ♥ ADOPT). Food, joy and energy decay with real time; feed, play, sleep and train them. XP raises the level and they **evolve** (babies also need to be happy). Coins earned by playing and training buy **eggs** that hatch into a random base-stage or baby Pokémon. Hearts when happy, mood bubbles, reactions per action, idle animation by evolution stage, and clicking one plays its cry. Saved in `localStorage` | ✅ Done (v1) |
 | Trainer profile | Create your own trainer profile: pick a name, design your trainer sprite (hair, outfit, colors, etc.) and show it on the device. The profile ties together your Tamagotchi, favorites and battle history | 🕒 Planned |
 
-On the BATTLE tab you can pick the opponent and see the win chance, but you can't fight yet: the battle engine comes next.
+On the BATTLE tab you pick both Pokémon and see the win chance. The engine is ready, but the fight screen that plays the turns is still being built.
 
 ## Screenshots
 
@@ -67,15 +68,14 @@ _Placeholders. They will be added as the screens are finished._
 
 ## Architecture
 
-The scraper, the `web` app and the `ml` service exist today. The battle engine (API routes), the database and Docker are _(planned)_. The pre-battle win chance runs in the browser from an exported model (`web/public/battle/win-model.json`); the FastAPI service is optional.
+The scraper, the `web` app and the `ml` service exist today. The battle engine runs in the browser (`web/lib/battle`, pure TypeScript, so no API routes are needed). The database and Docker are _(planned)_. The pre-battle win chance runs in the browser from an exported model (`web/public/battle/win-model.json`); the FastAPI service is optional.
 
 ```mermaid
 flowchart LR
-    U["Browser"] -->|HTTP| W["web<br/>Next.js + R3F"]
-    W -->|API routes| S["@pkmn/sim<br/>battle engine"]
+    U["Browser"] -->|HTTP| W["web<br/>Next.js + R3F<br/>battle engine in TS"]
     W -->|REST| M["ml<br/>FastAPI + model"]
     W -->|SQL| D[("db<br/>Postgres")]
-    M -.->|simulated battle dataset| S
+    M -.->|simulated battle dataset| S["@pkmn/sim<br/>dataset generator only"]
     P["PokéAPI + Showdown"] -->|scrape_pokemon.py| J["data/pokemon.json<br/>sprites/ animated/ artwork/"]
     J -->|sync-assets.mjs| W
     J --> M
@@ -88,14 +88,14 @@ Inside `web`, the app is split into three layers:
 - **Stores (zustand):** `deviceInput` (button events, hold-to-repeat and subscriptions), `deviceState` (phase state machine: `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex` (loading, focus, selection and cries), `favorites` and `tamagotchi` (both persisted in `localStorage`) and `audio` (mute and unlock).
 - **Device (`components/device`):** the procedural 3D shell, hinge, buttons and camera rig. The scene is loaded lazily. Conventions for working on it are in [`CLAUDE.md`](CLAUDE.md).
 - **Screen (`components/screen`):** the 2D UI rendered inside the main screen. It subscribes to device input with higher priority than the device controller, so the UI gets the first say on each button.
-- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing (filters and sorting), fun facts, Tamagotchi rules, sound and music synthesis, and the battle features and type chart shared with the ML pipeline.
+- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing (filters and sorting), fun facts, Tamagotchi rules, sound and music synthesis, the 1v1 battle engine (`lib/battle`), and the battle features and type chart shared with the ML pipeline.
 
 ## Stack
 
 | Layer | Technologies |
 | --- | --- |
 | Front end | Next.js 16 (App Router), React 19, TypeScript, React Three Fiber, drei, three.js, camera-controls, zustand |
-| Battle _(planned)_ | `@pkmn/sim` (Pokémon Showdown engine) |
+| Battle | Own TypeScript engine (`web/lib/battle`); `@pkmn/sim` only to generate the ML dataset |
 | ML | Python, scikit-learn, pandas, FastAPI; dataset generator in Node with `@pkmn/sim` |
 | Persistence | `localStorage` today; Postgres _(planned)_ for the Tamagotchi and history |
 | Infra _(planned)_ | Docker and Docker Compose |
@@ -120,7 +120,7 @@ pokedex-game/
 │   │   └── screen/         # Pokédex UI inside the 4:3 screen
 │   ├── hooks/              # keyboard/gamepad input, device controller and layout, sound, music, screen power
 │   ├── stores/             # zustand stores (deviceInput, deviceState, pokedex, favorites, tamagotchi, audio)
-│   ├── lib/                # search, regions, listing, fun facts, Tamagotchi rules, sound/music, battle features (+ tests)
+│   ├── lib/                # search, regions, listing, fun facts, Tamagotchi rules, sound/music, battle features, battle/ (the 1v1 engine) (+ tests)
 │   ├── data/               # Pokémon types and helpers
 │   ├── scripts/
 │   │   └── sync-assets.mjs # copies images and builds public/data/pokedex.json
@@ -202,7 +202,7 @@ Planned environment variables for `.env.example` (names may change):
 Full details, commands and results in [`ml/README.md`](ml/README.md). In short:
 
 1. **Battle state contract:** `BattleSnapshot` in `web/lib/battleFeatures.ts` is the engine-neutral 1v1 state. The features (turns to KO with the damage formula, damage share, turn order, damage race, HP, type advantage, stats, status) are computed there, once, and shared by the dataset generator and the app.
-2. **Dataset:** `ml/generate` simulates thousands of battles through a `BattleEngine` interface. Today the adapter is `@pkmn/sim` (Showdown, gen 9); the project's own battle engine will get its own adapter, so the model learns its rules. Greedy agents play both sides; every turn is a row, mirrored from the other side so the model is symmetric.
+2. **Dataset:** `ml/generate` simulates thousands of battles through a `BattleEngine` interface. Today the adapter is `@pkmn/sim` (Showdown, gen 9); the project's own engine (`web/lib/battle`) will get its own adapter, so the model learns its rules. Greedy agents play both sides; every turn is a row, mirrored from the other side so the model is symmetric.
 3. **Training:** logistic regression vs. gradient boosting, cross-validated **by battle** (GroupKFold), with log loss, Brier, AUC, calibration and a test on species never seen in training. Pre-battle model: AUC 0.88, calibration error 0.25%, against 0.79 for a "who wins the damage race" heuristic.
 4. **Comparison with Monte Carlo:** replaying fixed matchups hundreds of times; the model is ~5600× faster but less sharp on nearly decided matchups (MAE 0.20), which points at the next features to add.
 5. **Serving:** the trees are exported to JSON and evaluated in the browser (`web/lib/winModel.ts`, tested to match scikit-learn), so the battle screen works without a server. FastAPI (`/predict`) is used instead when `NEXT_PUBLIC_ML_API_URL` is set.
@@ -254,12 +254,13 @@ Done:
 - [x] Tamagotchi v1 (party of 5, needs, evolution, eggs)
 - [x] Win-prediction model v1: dataset generator, training, Monte Carlo evaluation, FastAPI
 - [x] Battle screen with backdrops, battle music and the pre-battle win chance
+- [x] 1v1 battle engine with the standard rules and a greedy foe AI
 
 Next:
 
 - [ ] **Phase 1:** Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
-- [ ] **Phase 3:** 1v1 battle (built by hand)
+- [ ] **Phase 3:** fight screen for the 1v1 battle (the engine is done: `web/lib/battle`)
 - [ ] **Phase 5:** 6v6 battle
 - [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
 - [ ] **Phase 7:** Trainer profile (name and customizable sprite)
