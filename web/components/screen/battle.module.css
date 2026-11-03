@@ -310,6 +310,10 @@
   cursor: pointer;
 }
 
+.move[data-empty="true"] {
+  color: #a8a8b0;
+}
+
 .moveCursor {
   color: var(--red);
   font-size: 12px;

@@ -9,8 +9,10 @@ import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./type
  * immunities; flinching, confusion, Protect, Leech Seed, moves that lock the
  * user in (Outrage) or need a recharge turn (Hyper Beam); drain, recoil,
  * healing, multi-hit, fixed-damage moves, chance effects and PP. Abilities and
- * items are not modeled; other effects (Substitute, hazards, weather, Taunt...)
- * just fail. Switching doesn't exist in 1v1.
+ * items are not modeled. Special moves handled: Fake Out / First Impression
+ * (first turn only), Sucker Punch, Focus Punch, Rest, Super Fang / Ruination,
+ * Pain Split, Belly Drum, Haze. Other effects (Substitute, hazards, weather,
+ * Taunt...) just fail. Switching doesn't exist in 1v1.
  *
  * Pure: `runTurn` returns a new state plus the events that happened, in
  * order, for the screen to play back.
@@ -45,6 +47,8 @@ export interface Fighter {
   seeded: boolean;
   /** Successful Protects in a row (each one halves... thirds the next chance). */
   protectStreak: number;
+  /** Turns this Pokémon has been in battle (Fake Out only works on the first). */
+  turnsActive: number;
   /** Per-turn flags. */
   protected: boolean;
   flinched: boolean;
@@ -76,6 +80,9 @@ export type BattleEvent =
   | { kind: "protect"; side: Side }
   | { kind: "protected"; side: Side }
   | { kind: "seeded"; side: Side }
+  | { kind: "haze"; side: Side }
+  | { kind: "pain-split"; side: Side; hp: { a: number; b: number } }
+  | { kind: "hp-cost"; side: Side; amount: number; hp: number }
   | { kind: "leech"; side: Side; amount: number; hp: number; healerHp: number }
   | { kind: "wake"; side: Side }
   | { kind: "residual"; side: Side; status: Status; amount: number; hp: number }
@@ -125,6 +132,7 @@ export function createFighter(p: BattlePokemon): Fighter {
     mustRecharge: false,
     seeded: false,
     protectStreak: 0,
+    turnsActive: 0,
     protected: false,
     flinched: false,
     moves: p.moves.map((m) => ({ ...m, ppLeft: m.pp })),
@@ -199,6 +207,11 @@ const IMMUNE: Record<Status, string[]> = {
   slp: [],
 };
 
+/** Moves that only work on the user's first turn out. */
+export const FIRST_TURN_ONLY = new Set(["fakeout", "firstimpression"]);
+/** Damage = half the target's current HP. */
+const HALF_HP = new Set(["superfang", "ruination", "naturesmadness"]);
+
 /** Powder and spore moves don't affect Grass types (gen 6+). */
 const POWDER = new Set(["sleeppowder", "stunspore", "poisonpowder", "spore", "cottonspore", "ragepowder", "magicpowder", "powder"]);
 
@@ -267,7 +280,15 @@ function canMove(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]): 
   return true;
 }
 
-function performMove(st: BattleState, side: Side, move: FighterMove, rng: Rng, events: BattleEvent[], foeMovesLater: boolean) {
+function performMove(
+  st: BattleState,
+  side: Side,
+  move: FighterMove,
+  rng: Rng,
+  events: BattleEvent[],
+  foeMovesLater: boolean,
+  foeMove: FighterMove,
+) {
   const user = st[side];
   const foeSide = other(side);
   const foe = st[foeSide];
@@ -308,11 +329,18 @@ function performMove(st: BattleState, side: Side, move: FighterMove, rng: Rng, e
   if (move.volatile !== "protect") user.protectStreak = 0;
   events.push({ kind: "move", side, move: move.name });
 
-  // Focus Punch fails if the user was hit earlier this turn.
-  if (move.id === "focuspunch" && events.some((e) => e.kind === "damage" && e.side === side)) {
+  const failed =
+    // Focus Punch fails if the user was hit earlier this turn.
+    (move.id === "focuspunch" && events.some((e) => e.kind === "damage" && e.side === side)) ||
+    (FIRST_TURN_ONLY.has(move.id) && user.turnsActive > 0) ||
+    // Sucker Punch only works if the target is about to attack.
+    (move.id === "suckerpunch" && (!foeMovesLater || foeMove.category === "status"));
+  if (failed) {
     events.push({ kind: "fail", side });
+    user.locked = null;
     return;
   }
+  if (performSpecial(st, side, move, events)) return;
 
   const targetsFoe = move.category !== "status" || move.fixedDamage !== undefined || move.status || move.volatile === "confusion" ||
     move.volatile === "leechseed" || move.boosts?.target === "foe";
@@ -380,7 +408,9 @@ function performMove(st: BattleState, side: Side, move: FighterMove, rng: Rng, e
   let landed = 0;
   for (let i = 0; i < hits && foe.hp > 0; i++) {
     let damage: number;
-    if (move.fixedDamage !== undefined) {
+    if (HALF_HP.has(move.id)) {
+      damage = Math.max(1, Math.floor(foe.hp / 2));
+    } else if (move.fixedDamage !== undefined) {
       damage = move.fixedDamage === "level" ? user.level : move.fixedDamage;
     } else {
       const isCrit = rng() < critChance(move.critRatio);
@@ -397,7 +427,7 @@ function performMove(st: BattleState, side: Side, move: FighterMove, rng: Rng, e
     side: foeSide,
     amount: total,
     hp: foe.hp,
-    effectiveness: move.fixedDamage !== undefined ? 1 : eff,
+    effectiveness: move.fixedDamage !== undefined || HALF_HP.has(move.id) ? 1 : eff,
     crit,
     hits: landed,
   });
@@ -437,6 +467,52 @@ function confuse(f: Fighter, side: Side, rng: Rng, events: BattleEvent[], fatigu
   // Lasts 1-4 turns after this one (the counter ticks before each move).
   f.confusion = 2 + Math.floor(rng() * 4);
   events.push({ kind: "confused", side, fatigue });
+}
+
+/**
+ * Status moves with their own rules. Returns true if the move was handled.
+ */
+function performSpecial(st: BattleState, side: Side, move: FighterMove, events: BattleEvent[]): boolean {
+  const user = st[side];
+  const foeSide = other(side);
+  const foe = st[foeSide];
+  switch (move.id) {
+    case "rest":
+      // Full heal, cures status, sleeps for 2 turns.
+      if (user.hp >= user.maxHp) {
+        events.push({ kind: "fail", side });
+      } else {
+        heal(st, side, user.maxHp, events);
+        user.status = "slp";
+        user.sleepTurns = 2;
+        user.toxicTurns = 0;
+        events.push({ kind: "status", side, status: "slp" });
+      }
+      return true;
+    case "painsplit": {
+      const shared = Math.floor((user.hp + foe.hp) / 2);
+      user.hp = Math.min(user.maxHp, shared);
+      foe.hp = Math.min(foe.maxHp, shared);
+      events.push({ kind: "pain-split", side, hp: { a: st.a.hp, b: st.b.hp } });
+      return true;
+    }
+    case "bellydrum": {
+      const cost = Math.floor(user.maxHp / 2);
+      if (user.hp <= cost || user.boosts.atk >= 6) {
+        events.push({ kind: "fail", side });
+      } else {
+        user.hp -= cost;
+        events.push({ kind: "hp-cost", side, amount: cost, hp: user.hp });
+        applyBoosts(st, side, { atk: 12 }, events);
+      }
+      return true;
+    }
+    case "haze":
+      for (const f of [user, foe]) f.boosts = { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
+      events.push({ kind: "haze", side });
+      return true;
+  }
+  return false;
 }
 
 /** Burn 1/16, poison 1/8, bad poison n/16, Leech Seed 1/8 at the end of the turn. */
@@ -491,11 +567,13 @@ export function runTurn(state: BattleState, choiceA: number, choiceB: number, rn
   const order = turnOrder(st, moves.a, moves.b, rng);
   for (const [i, side] of order.entries()) {
     if (st[side].hp <= 0) continue;
-    performMove(st, side, moves[side], rng, events, i === 0);
+    performMove(st, side, moves[side], rng, events, i === 0, moves[other(side)]);
     if (checkFaints(st, events, [other(side), side])) return { state: st, events };
   }
   for (const side of order) residual(st, side, events);
   checkFaints(st, events, order);
+  st.a.turnsActive++;
+  st.b.turnsActive++;
   st.turn++;
   return { state: st, events };
 }

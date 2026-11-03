@@ -71,6 +71,12 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
       return `${name(event.side)} protected itself!`;
     case "protected":
       return `${name(event.side)} protected itself!`;
+    case "pain-split":
+      return "The battlers shared their pain!";
+    case "hp-cost":
+      return `${name(event.side)} cut its own HP!`;
+    case "haze":
+      return "All stat changes were eliminated!";
     case "seeded":
       return `${name(event.side)} was seeded!`;
     case "leech":

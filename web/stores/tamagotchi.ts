@@ -17,6 +17,8 @@ import {
 } from "@/lib/tamagotchi";
 
 const STORAGE_KEY = "pokedex-game:tamagotchi";
+/** XP a party member earns for winning a battle. */
+export const BATTLE_WIN_XP = 20;
 
 interface Saved {
   pets: Pet[];
@@ -42,6 +44,11 @@ interface TamagotchiState extends Saved {
   release: (uid: string) => void;
   /** Adds coins (e.g. for winning a battle). */
   reward: (coins: number) => void;
+  /**
+   * A party member of this species battled: XP and joy on a win (it may
+   * evolve), a little less joy on a loss. Null if it isn't in the party.
+   */
+  battled: (dexId: number, won: boolean, list: readonly Pokemon[]) => { xp: number; evolvedTo: number | null } | null;
   act: (uid: string, action: Action, list: readonly Pokemon[]) => void;
   /** Applies decay, hatches ready eggs. Call on open and periodically. */
   refresh: (list: readonly Pokemon[]) => void;
@@ -98,6 +105,23 @@ export const useTamagotchi = create<TamagotchiState>((set, get) => {
     },
 
     reward: (coins) => commit({ coins: get().coins + coins }),
+
+    battled: (dexId, won, list) => {
+      const pet = get().pets.find((p) => p.dexId === dexId);
+      if (!pet) return null;
+      const now = Date.now();
+      const ticked = tick(pet, now);
+      const xp = won ? BATTLE_WIN_XP : 0;
+      let next: Pet = {
+        ...ticked,
+        xp: ticked.xp + xp,
+        happiness: Math.max(0, Math.min(100, ticked.happiness + (won ? 10 : -5))),
+      };
+      const evolved = evolve(next, dexOf(list));
+      if (evolved) next = evolved;
+      commit({ pets: get().pets.map((p) => (p.uid === pet.uid ? next : p)) });
+      return { xp, evolvedTo: evolved?.dexId ?? null };
+    },
 
     release: (id) => {
       const pet = get().pets.find((p) => p.uid === id);

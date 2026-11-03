@@ -1,6 +1,6 @@
 import { type Combatant, expectedDamage, type MoveInfo } from "../battleFeatures.ts";
 import { effectiveness } from "../typeChart.ts";
-import { canInflict, effectiveSpeed, type Fighter, type FighterMove, moveImmune, type Rng, stageMultiplier } from "./engine.ts";
+import { canInflict, effectiveSpeed, type Fighter, FIRST_TURN_ONLY, type FighterMove, moveImmune, type Rng, stageMultiplier } from "./engine.ts";
 
 /** Chance of a random move instead of the best one, so the foe isn't predictable. */
 const RANDOMNESS = 0.15;
@@ -29,6 +29,10 @@ const isAttack = (m: FighterMove) => m.category !== "status" || m.fixedDamage !=
 
 /** Average damage if it hits (accuracy not included). */
 function damageIfHits(m: FighterMove, me: Fighter, foe: Fighter): number {
+  if (FIRST_TURN_ONLY.has(m.id) && me.turnsActive > 0) return 0;
+  if (m.id === "superfang" || m.id === "ruination" || m.id === "naturesmadness") {
+    return effectiveness(m.type, foe.types) === 0 ? 0 : Math.floor(foe.hp / 2);
+  }
   if (m.fixedDamage !== undefined) {
     if (effectiveness(m.type, foe.types) === 0) return 0;
     return m.fixedDamage === "level" ? me.level : m.fixedDamage;
@@ -40,6 +44,18 @@ function damageIfHits(m: FighterMove, me: Fighter, foe: Fighter): number {
 /** Would this status move do anything to the foe right now? */
 function statusUseful(m: FighterMove, me: Fighter, foe: Fighter): boolean {
   if (moveImmune(m, foe)) return false;
+  switch (m.id) {
+    case "rest":
+      return me.hp < me.maxHp / 2 || (me.status !== null && me.status !== "slp");
+    case "painsplit":
+      return me.hp < foe.hp;
+    case "bellydrum":
+      return me.hp > me.maxHp * 0.6 && me.boosts.atk < 6;
+    case "haze": {
+      const sum = (f: Fighter) => Object.values(f.boosts).reduce((a, b) => a + b, 0);
+      return sum(foe) > 0 || sum(me) < 0;
+    }
+  }
   if (m.status) return canInflict(m.status, foe);
   if (m.volatile === "confusion") return foe.confusion === 0;
   if (m.volatile === "leechseed") return !foe.seeded && !foe.types.includes("grass");
@@ -54,7 +70,7 @@ function statusUseful(m: FighterMove, me: Fighter, foe: Fighter): boolean {
 
 /** Status moves are worth this share of the best hit when useful. */
 const STATUS_VALUE = (m: FighterMove) =>
-  m.heal ? 0.9 : m.status ? 0.6 : m.volatile === "protect" ? 0.3 : 0.5;
+  m.heal || m.id === "rest" || m.id === "painsplit" ? 0.9 : m.status ? 0.6 : m.volatile === "protect" ? 0.3 : 0.5;
 
 /**
  * Foe AI. If an attack would knock you out, it takes the surest one (most

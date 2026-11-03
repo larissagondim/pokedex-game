@@ -11,6 +11,7 @@ import { loadBattleSets, preBattleSnapshot, predictWin } from "@/lib/winPredicti
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { usePokedex } from "@/stores/pokedex";
 import { useScreen } from "@/stores/screen";
+import { useBattleRecord } from "@/stores/battleRecord";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import styles from "./battle.module.css";
 import { describeBattleEvent } from "./battleMessages";
@@ -124,6 +125,13 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
         setHit({ side: event.side, key: Date.now() });
         if (event.kind === "self-hit") playSfx("hit");
         break;
+      case "hp-cost":
+        setHp(event.side, event.hp);
+        break;
+      case "pain-split":
+        setHp("a", event.hp.a);
+        setHp("b", event.hp.b);
+        break;
       case "leech":
         setHp(event.side, event.hp);
         setHp(event.side === "a" ? "b" : "a", event.healerHp);
@@ -150,19 +158,28 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     playback.current = null;
     setBattle(final);
     setView(viewOf(final));
+    const me = player.name.toUpperCase();
     if (!final.winner) {
       setPhase("choose");
-      onNotice(`What will ${player.name.toUpperCase()} do?`);
+      if (final.a.mustRecharge) onNotice(`${me} must recharge! Press A.`);
+      else if (final.a.locked) onNotice(`${me} keeps using ${final.a.moves[final.a.locked.index].name}! Press A.`);
+      else onNotice(`What will ${me} do?`);
       return;
     }
     setPhase("over");
-    if (final.winner === "a") {
+    const won = final.winner === "a";
+    useBattleRecord.getState().record(player.id, won);
+    // A party member of this species gets XP (and may evolve).
+    const party = useTamagotchi.getState().battled(player.id, won, usePokedex.getState().list);
+    if (won) {
       playSfx("win");
       useTamagotchi.getState().reward(WIN_REWARD);
-      onNotice(`You won! +${WIN_REWARD}₽   A: rematch   B: new opponent`);
+      const xp = party ? ` ${me} gained ${party.xp} XP!` : "";
+      const evolved = party?.evolvedTo ? usePokedex.getState().list.find((p) => p.id === party.evolvedTo)?.name.toUpperCase() : null;
+      onNotice(`You won! +${WIN_REWARD}₽${xp}${evolved ? ` It evolved into ${evolved}!` : ""}   A: rematch   B: new opponent`);
     } else {
       playSfx("lose");
-      onNotice(`${player.name.toUpperCase()} lost... A: rematch   B: new opponent`);
+      onNotice(`${me} lost... A: rematch   B: new opponent`);
     }
   };
 
@@ -176,6 +193,11 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
 
   const choose = (index: number) => {
     if (!battle) return;
+    const me = battle.a;
+    if (!me.locked && !me.mustRecharge && me.moves[index]?.ppLeft === 0 && me.moves.some((m) => m.ppLeft > 0)) {
+      onNotice("There's no PP left for this move!");
+      return;
+    }
     const result = runTurn(battle, index, chooseMove(battle.b, battle.a));
     playback.current = { events: result.events, final: result.state, index: 0 };
     setPhase("playing");
@@ -183,7 +205,9 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   };
 
   const handle = (button: DeviceButton): boolean => {
-    if (button === "MENU" || button === "ZOOM") return false;
+    if (button === "ZOOM") return false;
+    // No switching tabs in the middle of a fight (it would end it).
+    if (button === "MENU") return phase === "choose" || phase === "playing";
     switch (phase) {
       case "ready":
         if (button === "A") start();
@@ -227,6 +251,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     [],
   );
 
+  const record = useBattleRecord((s) => s.records[player.id]);
   const side = (s: Side): SideView => view?.[s] ?? { hp: 1, maxHp: 1, status: null };
 
   return (
@@ -242,7 +267,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
       <Sprite pokemon={player} side="player" hitKey={hit?.side === "a" ? hit.key : null} fainted={fainted === "a"} />
 
       {phase === "ready" ? (
-        <WinChance probability={chance} />
+        <WinChance probability={chance} record={record} />
       ) : (
         <MoveMenu
           battle={battle}
@@ -310,7 +335,7 @@ function StatusBox({ pokemon, side, view }: { pokemon: Pokemon; side: "player" |
   );
 }
 
-function WinChance({ probability }: { probability: number | null | undefined }) {
+function WinChance({ probability, record }: { probability: number | null | undefined; record?: { wins: number; losses: number } }) {
   const pct = probability == null ? null : Math.round(probability * 100);
   return (
     <div className={styles.chance} role="meter" aria-label="Win chance" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined}>
@@ -321,7 +346,9 @@ function WinChance({ probability }: { probability: number | null | undefined }) 
       <div className={styles.chanceTrack}>
         <div className={styles.chanceFill} style={{ width: `${pct ?? 50}%` }} data-unknown={pct === null} />
       </div>
-      <div className={styles.chanceHint}>A: fight · B: change opponent</div>
+      <div className={styles.chanceHint}>
+        A: fight · B: change opponent{record ? ` · record ${record.wins}W ${record.losses}L` : ""}
+      </div>
     </div>
   );
 }
@@ -332,7 +359,7 @@ function MoveMenu({ battle, selected, disabled, onPick }: { battle: BattleState 
   return (
     <div className={styles.moves} data-disabled={disabled}>
       {moves.map((m, i) => (
-        <button key={m.id + i} type="button" className={styles.move} onClick={() => onPick(i)}>
+        <button key={m.id + i} type="button" className={styles.move} data-empty={m.ppLeft === 0} onClick={() => onPick(i)}>
           <span className={styles.moveCursor} aria-hidden>
             {i === selected && !disabled ? "▶" : ""}
           </span>

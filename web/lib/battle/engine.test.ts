@@ -255,3 +255,46 @@ test("the AI takes a sure KO and skips status moves the target is immune to", ()
   // Thunder Wave never beats an attack against a Ground type.
   for (let i = 0; i < 20; i++) assert.notEqual(chooseMove(st.a, st.b, seq([0.9], i / 20)), 2);
 });
+
+test("Fake Out only works on the first turn; Sucker Punch needs an incoming attack", () => {
+  const fake = move({ id: "fakeout", name: "Fake Out", power: 40, priority: 3, secondary: [{ chance: 100, volatile: "flinch" }] });
+  const t1 = runTurn(battle({ moves: [fake] }, { hp: 999, maxHp: 999 }), 0, 0, seq([], 0.99));
+  assert.ok(t1.events.some((e) => e.kind === "cant-move" && e.side === "b" && e.reason === "flinch"));
+  const t2 = runTurn(t1.state, 0, 0, seq([], 0.99));
+  assert.ok(t2.events.some((e) => e.kind === "fail" && e.side === "a"));
+  const sucker = move({ id: "suckerpunch", name: "Sucker Punch", type: "dark", power: 70, priority: 1 });
+  assert.ok(runTurn(battle({ moves: [sucker] }, { moves: [splash] }), 0, 0, seq([], 0.99)).events.some((e) => e.kind === "fail"));
+  assert.ok(runTurn(battle({ moves: [sucker] }, {}), 0, 0, seq([], 0.99)).events.some((e) => e.kind === "damage" && e.side === "b"));
+});
+
+test("Rest, Super Fang, Pain Split, Belly Drum and Haze", () => {
+  const rest = move({ id: "rest", name: "Rest", type: "psychic", power: 0, category: "status" });
+  const tired = battle({ moves: [rest] }, { moves: [splash] });
+  tired.a.hp = 10;
+  tired.a.status = "brn";
+  const r = runTurn(tired, 0, 0, seq([0.1], 0.99));
+  assert.equal(r.state.a.hp, r.state.a.maxHp);
+  assert.equal(r.state.a.status, "slp");
+
+  const fang = move({ id: "superfang", name: "Super Fang", power: 0 });
+  const fanged = battle({ moves: [fang] }, { moves: [splash] });
+  fanged.b.hp = 100;
+  assert.equal(runTurn(fanged, 0, 0, seq([0.1], 0.99)).state.b.hp, 50);
+
+  const split = move({ id: "painsplit", name: "Pain Split", power: 0, category: "status" });
+  const ps = battle({ moves: [split] }, { moves: [splash] });
+  ps.a.hp = 20;
+  const p = runTurn(ps, 0, 0, seq([0.1], 0.99));
+  assert.equal(p.state.a.hp, 85);
+  assert.equal(p.state.b.hp, 85);
+
+  const drum = move({ id: "bellydrum", name: "Belly Drum", power: 0, category: "status" });
+  const d = runTurn(battle({ moves: [drum] }, { moves: [splash] }), 0, 0, seq([0.1], 0.99));
+  assert.equal(d.state.a.boosts.atk, 6);
+  assert.equal(d.state.a.hp, 75);
+
+  const haze = move({ id: "haze", name: "Haze", type: "ice", power: 0, category: "status" });
+  const hz = battle({ moves: [haze] }, { moves: [splash] });
+  hz.b.boosts.atk = 4;
+  assert.equal(runTurn(hz, 0, 0, seq([0.1], 0.99)).state.b.boosts.atk, 0);
+});
