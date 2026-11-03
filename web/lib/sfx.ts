@@ -1,7 +1,7 @@
 import { AudioContext as ThreeAudioContext } from "three";
 import { audioEnabled } from "@/stores/audio";
 
-export type Sfx = "dpad" | "a" | "b" | "click" | "open" | "close" | "boot" | "hit" | "superHit" | "weakHit" | "faint" | "win" | "lose";
+export type Sfx = "dpad" | "a" | "b" | "click" | "open" | "close" | "boot" | "hit" | "superHit" | "weakHit" | "faint" | "win" | "lose" | "lowHp";
 
 /** Shared with three.js so PositionalAudio and the UI blips use one context. */
 export const getAudioContext = () => ThreeAudioContext.getContext() as unknown as globalThis.AudioContext;
@@ -35,6 +35,11 @@ const SOUNDS: Record<Sfx, Note[]> = {
     { freq: 300, to: 70, at: 0.09, dur: 0.14, type: "square", gain: 0.1 },
   ],
   weakHit: [{ freq: 220, to: 120, at: 0, dur: 0.09, type: "triangle", gain: 0.08 }],
+  lowHp: [
+    { freq: 1760, at: 0, dur: 0.06, type: "square", gain: 0.04 },
+    { freq: 1760, at: 0.12, dur: 0.06, type: "square", gain: 0.04 },
+    { freq: 1760, at: 0.24, dur: 0.06, type: "square", gain: 0.04 },
+  ],
   faint: [{ freq: 600, to: 60, at: 0, dur: 0.6, type: "triangle", gain: 0.09 }],
   win: [
     { freq: 523, at: 0, dur: 0.12, type: "square", gain: 0.06 },

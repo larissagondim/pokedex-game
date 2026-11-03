@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { formatDexNumber, type Pokemon } from "@/data/pokedex";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { chooseMove } from "@/lib/battle/ai";
+import { winChance } from "@/lib/battle/montecarlo";
+import { effectiveness } from "@/lib/typeChart";
 import { type BattleEvent, type BattleState, createBattle, runTurn, type Side } from "@/lib/battle/engine";
 import type { BattlePokemon, Status } from "@/lib/battle/types";
 import { playSfx } from "@/lib/sfx";
@@ -23,6 +25,10 @@ const WIN_REWARD = 15;
 /** How long each event stays on screen (A skips ahead). */
 const EVENT_MS = 1100;
 const SILENT_EVENT_MS = 450;
+/** Below this share of HP the low-HP beep plays (once per drop). */
+const LOW_HP = 0.2;
+/** Simulations per live win-chance update. */
+const LIVE_RUNS = 200;
 /** D-pad in the 2×2 move menu. */
 const MENU_STEPS = { UP: -2, DOWN: 2, LEFT: -1, RIGHT: 1 };
 
@@ -62,6 +68,9 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   const [menu, setMenu] = useState(0);
   const [hit, setHit] = useState<{ side: Side; key: number } | null>(null);
   const [fainted, setFainted] = useState<Side | null>(null);
+  /** Win chance during the fight, from simulating the rest of it (Monte Carlo). */
+  const [live, setLive] = useState<number | null>(null);
+  const shownHp = useRef<Record<Side, number>>({ a: 0, b: 0 });
   const playback = useRef<{ events: BattleEvent[]; final: BattleState; index: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -94,9 +103,18 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     };
   }, [player.id, foe.id]);
 
+  /** Recomputes the live win chance off the input path (≈50–150 ms). */
+  const updateLive = (st: BattleState) => {
+    if (st.winner) return setLive(st.winner === "a" ? 1 : 0);
+    setTimeout(() => setLive(winChance(st, LIVE_RUNS)), 0);
+  };
+
   const start = () => {
     if (!sets) return onNotice("Loading the battle data...");
     const st = createBattle(sets.a, sets.b);
+    shownHp.current = { a: st.a.hp, b: st.b.hp };
+    setLive(null);
+    updateLive(st);
     setBattle(st);
     setView(viewOf(st));
     setFainted(null);
@@ -108,7 +126,13 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
 
   /** Applies one event to the screen; returns how long to show it. */
   const show = (event: BattleEvent): number => {
-    const setHp = (side: Side, hp: number) => setView((v) => v && { ...v, [side]: { ...v[side], hp } });
+    const setHp = (side: Side, hp: number) => {
+      // Classic warning beeps when your Pokémon drops into the red.
+      const max = battle?.[side].maxHp ?? 1;
+      if (side === "a" && hp > 0 && hp <= max * LOW_HP && shownHp.current.a > max * LOW_HP) playSfx("lowHp");
+      shownHp.current[side] = hp;
+      setView((v) => v && { ...v, [side]: { ...v[side], hp } });
+    };
     switch (event.kind) {
       case "damage":
         setHp(event.side, event.hp);
@@ -158,6 +182,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     playback.current = null;
     setBattle(final);
     setView(viewOf(final));
+    updateLive(final);
     const me = player.name.toUpperCase();
     if (!final.winner) {
       setPhase("choose");
@@ -266,11 +291,14 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
       <span className={styles.platform} data-side="player" aria-hidden />
       <Sprite pokemon={player} side="player" hitKey={hit?.side === "a" ? hit.key : null} fainted={fainted === "a"} />
 
+      {phase !== "ready" && <LiveChance value={live} />}
+
       {phase === "ready" ? (
         <WinChance probability={chance} record={record} />
       ) : (
         <MoveMenu
           battle={battle}
+          foeTypes={foe.types}
           selected={menu}
           disabled={phase !== "choose"}
           onPick={(i) => {
@@ -353,9 +381,39 @@ function WinChance({ probability, record }: { probability: number | null | undef
   );
 }
 
-function MoveMenu({ battle, selected, disabled, onPick }: { battle: BattleState | null; selected: number; disabled: boolean; onPick: (i: number) => void }) {
+/** Win chance during the fight (Monte Carlo over the rest of the battle). */
+function LiveChance({ value }: { value: number | null }) {
+  const pct = value === null ? null : Math.round(value * 100);
+  return (
+    <div className={styles.live} title="Simulated from the current state">
+      <span>WIN</span>
+      <b>{pct === null ? "…" : `${pct}%`}</b>
+      <div className={styles.liveTrack}>
+        <div className={styles.chanceFill} style={{ width: `${pct ?? 50}%` }} />
+      </div>
+    </div>
+  );
+}
+
+const EFFECT_LABEL = (multiplier: number) =>
+  multiplier === 0 ? "NO EFFECT" : multiplier > 1 ? "SUPER EFFECTIVE" : multiplier < 1 ? "NOT VERY EFFECTIVE" : null;
+
+function MoveMenu({
+  battle,
+  foeTypes,
+  selected,
+  disabled,
+  onPick,
+}: {
+  battle: BattleState | null;
+  foeTypes: string[];
+  selected: number;
+  disabled: boolean;
+  onPick: (i: number) => void;
+}) {
   const moves = battle?.a.moves ?? [];
   const current = moves[selected];
+  const hint = current && current.category !== "status" ? EFFECT_LABEL(effectiveness(current.type, foeTypes)) : null;
   return (
     <div className={styles.moves} data-disabled={disabled}>
       {moves.map((m, i) => (
@@ -375,6 +433,11 @@ function MoveMenu({ battle, selected, disabled, onPick }: { battle: BattleState 
             PP {current.ppLeft}/{current.pp}
           </span>
           <span>{current.category === "status" ? "STATUS" : `POW ${current.power || "—"}`}</span>
+          {hint && (
+            <span className={styles.effect} data-effect={hint}>
+              {hint}
+            </span>
+          )}
         </div>
       )}
     </div>
