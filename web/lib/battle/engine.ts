@@ -199,13 +199,26 @@ const IMMUNE: Record<Status, string[]> = {
   slp: [],
 };
 
+/** Powder and spore moves don't affect Grass types (gen 6+). */
+const POWDER = new Set(["sleeppowder", "stunspore", "poisonpowder", "spore", "cottonspore", "ragepowder", "magicpowder", "powder"]);
+
+/** Status moves that a type is immune to by the move itself (not the status). */
+export function moveImmune(move: Pick<FighterMove, "id">, target: Pick<Fighter, "types">): boolean {
+  if (POWDER.has(move.id) && target.types.includes("grass")) return true;
+  return move.id === "thunderwave" && target.types.includes("ground");
+}
+
+/** Whether `status` could be inflicted on the target right now. */
+export function canInflict(status: string, target: Pick<Fighter, "types" | "status" | "hp">): boolean {
+  return isStatus(status) && target.status === null && target.hp > 0 && !IMMUNE[status].some((t) => target.types.includes(t));
+}
+
 const isStatus = (s: string | undefined): s is Status => s === "brn" || s === "par" || s === "psn" || s === "tox" || s === "slp";
 
 /** Inflicts a status if possible. `announceFailure` for status moves (not chance effects). */
 function tryStatus(st: BattleState, side: Side, status: string, rng: Rng, events: BattleEvent[], announceFailure: boolean) {
   const target = st[side];
-  const blocked = !isStatus(status) || target.status !== null || target.hp <= 0 || IMMUNE[status].some((t) => target.types.includes(t));
-  if (blocked) {
+  if (!isStatus(status) || !canInflict(status, target)) {
     if (announceFailure) events.push({ kind: "fail", side: other(side) });
     return;
   }
@@ -316,6 +329,10 @@ function performMove(st: BattleState, side: Side, move: FighterMove, rng: Rng, e
   }
 
   const damaging = move.category !== "status" || move.fixedDamage !== undefined;
+  if (!damaging && targetsFoe && moveImmune(move, foe)) {
+    events.push({ kind: "no-effect", side: foeSide });
+    return;
+  }
   if (!damaging) {
     if (move.heal) {
       if (user.hp >= user.maxHp) events.push({ kind: "fail", side });

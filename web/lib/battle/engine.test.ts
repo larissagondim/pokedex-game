@@ -228,3 +228,30 @@ test("Hyper Beam needs a recharge turn", () => {
   const t2 = runTurn(t1.state, 0, 0, seq([], 0.99));
   assert.ok(t2.events.some((e) => e.kind === "cant-move" && e.side === "a" && e.reason === "recharge"));
 });
+
+test("Thunder Wave doesn't affect Ground types, powders don't affect Grass types", () => {
+  const wave = move({ id: "thunderwave", name: "Thunder Wave", type: "electric", power: 0, category: "status", status: "par" });
+  const r = runTurn(battle({ moves: [wave] }, { types: ["ground"], moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.ok(r.events.some((e) => e.kind === "no-effect" && e.side === "b"));
+  assert.equal(r.state.b.status, null);
+  const spore = move({ id: "spore", name: "Spore", type: "grass", power: 0, category: "status", status: "slp" });
+  assert.equal(runTurn(battle({ moves: [spore] }, { types: ["grass"], moves: [splash] }), 0, 0, seq([], 0.99)).state.b.status, null);
+});
+
+test("the AI takes a sure KO and skips status moves the target is immune to", () => {
+  const st = battle(
+    {
+      moves: [
+        move({ id: "stoneedge", name: "Stone Edge", type: "rock", power: 100, accuracy: 0.8 }),
+        move({ id: "rockslide", name: "Rock Slide", type: "rock", power: 75, accuracy: 0.9 }),
+        move({ id: "thunderwave", name: "Thunder Wave", type: "electric", power: 0, category: "status", status: "par" }),
+      ],
+    },
+    { types: ["ground"] },
+  );
+  st.b.hp = 5; // either rock move knocks it out: the more accurate one wins
+  assert.equal(chooseMove(st.a, st.b, seq([0.9], 0.5)), 1);
+  st.b.hp = st.b.maxHp;
+  // Thunder Wave never beats an attack against a Ground type.
+  for (let i = 0; i < 20; i++) assert.notEqual(chooseMove(st.a, st.b, seq([0.9], i / 20)), 2);
+});
