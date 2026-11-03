@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useScreenPower } from "@/hooks/useScreenPower";
+import { useTamagotchiAlert } from "@/hooks/useTamagotchiAlert";
 import { useTypewriter } from "@/hooks/useTypewriter";
 import { funFacts } from "@/lib/funFacts";
 import { applyListing, FILTERS, SORTS, type Sort } from "@/lib/listing";
@@ -111,6 +112,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const onHeader = searchSelected || optionsSelected || keyPos !== null;
   const status = usePokedex((s) => s.status);
   const power = useScreenPower();
+  const tamaAlert = useTamagotchiAlert();
   const zoomed = useDeviceState((s) => s.phase === "ZOOMED");
   const phaseAcceptsInput = useDeviceState((s) => acceptsInput(s.phase));
   const root = useRef<HTMLDivElement>(null);
@@ -524,7 +526,13 @@ export function DeviceScreen({ onRequestZoom }: Props) {
         onRequestZoom();
       }}
     >
-      <TabBar tabs={TABS} active={tab} onChange={switchTab} onClose={() => useDeviceState.getState().close()} />
+      <TabBar
+        tabs={TABS}
+        active={tab}
+        onChange={switchTab}
+        onClose={() => useDeviceState.getState().close()}
+        alerts={TABS.map((_, i) => i === TAMAGOTCHI_TAB && tamaAlert)}
+      />
       {body}
       <DialogBox text={dialogText} waiting={typing.done && hasNextPage && !notice} />
 

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { MouseEvent } from "react";
+import { type MouseEvent, useEffect } from "react";
 import { formatDexNumber } from "@/data/pokedex";
 import { regionOf } from "@/lib/regions";
 import { useDeviceController } from "@/hooks/useDeviceController";
@@ -45,6 +45,14 @@ export function DeviceExperience() {
 
   const phase = useDeviceState((s) => s.phase);
   const compact = useCompactLayout();
+
+  // On phones the screen is small: zoom in as soon as the device opens.
+  useEffect(() => {
+    if (!compact) return;
+    return useDeviceState.subscribe((s, prev) => {
+      if (s.phase === "OPEN" && prev.phase === "OPENING") s.zoomIn();
+    });
+  }, [compact]);
   const open = isLidOpen(phase);
   const zoomed = isZoomedIn(phase);
   const { toggle, toggleZoom, resetView } = useDeviceState.getState();

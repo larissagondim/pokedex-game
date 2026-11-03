@@ -5,9 +5,11 @@ interface Props {
   active: number;
   onChange: (index: number) => void;
   onClose: () => void;
+  /** Tabs that want attention get a blinking "!". */
+  alerts?: readonly boolean[];
 }
 
-export function TabBar({ tabs, active, onChange, onClose }: Props) {
+export function TabBar({ tabs, active, onChange, onClose, alerts = [] }: Props) {
   const step = (delta: number) => onChange((active + delta + tabs.length) % tabs.length);
   return (
     <nav className={styles.tabBar}>
@@ -26,6 +28,11 @@ export function TabBar({ tabs, active, onChange, onClose }: Props) {
             onClick={() => onChange(i)}
           >
             {tab}
+            {alerts[i] && (
+              <span className={styles.tabAlert} aria-label="needs attention">
+                !
+              </span>
+            )}
           </button>
         ))}
       </div>

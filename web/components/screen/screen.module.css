@@ -83,6 +83,16 @@
   letter-spacing: 1px;
 }
 
+.tabAlert {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  background: #ffd23f;
+  color: var(--graphite);
+  box-shadow: 0 0 0 2px var(--graphite);
+  animation: blink 0.8s steps(1) infinite;
+}
+
 .tab[data-active="true"] {
   background: var(--white);
   color: var(--red);
@@ -937,6 +947,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .more,
+  .tabAlert,
   .stageGif,
   .stageStatic,
   .row[data-focused="true"] .cursor {
