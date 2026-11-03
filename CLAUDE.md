@@ -51,3 +51,9 @@ Guidance for coding agents working in this repo. The Next.js app lives in `web/`
 - The main screen is a drei `<Html transform occlude="blending">`. Keep any mesh behind it well separated in z (the blending "hole" must win the depth test) and don't add a scene background (the canvas is transparent; the page provides the light/dark background).
 - Sounds go through `lib/sfx.ts` / `audioEnabled()`; audio unlocks on the first user gesture.
 - After changes: `npx tsc --noEmit` and `npx eslint .` in `web/` must be clean.
+
+## Battle (`web/lib/battle/`)
+
+- `engine.ts` is pure: `runTurn(state, choiceA, choiceB, rng)` returns a new state and the list of events (move, damage, miss, status, faint...). The screen (`components/screen/BattleArena.tsx`) only plays events back, with text from `battleMessages.ts`. Never mutate the input state; tests pass a scripted `rng`.
+- Movesets come from `web/public/battle/battle-sets.json` (`npm run export-sets` in `ml/generate`), the same level-50 sets the win-prediction model is trained on. Adding an effect: export its data in `battleMove()` (`ml/generate/src/pkmnEngine.ts`), add the field to `types.ts`, handle it in the engine (+ a message and the AI's scoring in `ai.ts`), and add a test in `engine.test.ts`.
+- If movesets change, regenerate the pre-battle dataset and retrain/export the model (see `ml/README.md`).
