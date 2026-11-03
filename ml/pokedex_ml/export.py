@@ -65,7 +65,7 @@ def predict_json(exported: dict, row: list[float]) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=Path, default=model_io.DEFAULT_MODEL_PATH)
-    parser.add_argument("--data", type=Path, default=ROOT / "data" / "prebattle.csv")
+    parser.add_argument("--data", type=Path, default=ROOT / "data" / "soft.csv")
     parser.add_argument("--out", type=Path, default=WEB / "public" / "battle" / "win-model.json")
     parser.add_argument("--fixture", type=Path, default=WEB / "lib" / "winModel.fixture.json")
     args = parser.parse_args()

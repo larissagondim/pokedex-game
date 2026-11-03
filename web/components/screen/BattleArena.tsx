@@ -27,8 +27,9 @@ const EVENT_MS = 1100;
 const SILENT_EVENT_MS = 450;
 /** Below this share of HP the low-HP beep plays (once per drop). */
 const LOW_HP = 0.2;
-/** Simulations per live win-chance update. */
-const LIVE_RUNS = 200;
+/** Simulations per live win-chance update, run in chunks so the screen stays responsive. */
+const LIVE_RUNS = 600;
+const LIVE_CHUNK = 100;
 /** D-pad in the 2×2 move menu. */
 const MENU_STEPS = { UP: -2, DOWN: 2, LEFT: -1, RIGHT: 1 };
 
@@ -71,6 +72,8 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   /** Win chance during the fight, from simulating the rest of it (Monte Carlo). */
   const [live, setLive] = useState<number | null>(null);
   const shownHp = useRef<Record<Side, number>>({ a: 0, b: 0 });
+  /** Bumped to cancel an in-progress live estimate. */
+  const liveJob = useRef(0);
   const playback = useRef<{ events: BattleEvent[]; final: BattleState; index: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -100,13 +103,30 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
       cancelled = true;
       controller.abort();
       clearTimeout(timer.current);
+      // A counter, not a DOM ref: bumping it cancels the running estimate.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      liveJob.current++;
     };
   }, [player.id, foe.id]);
 
-  /** Recomputes the live win chance off the input path (≈50–150 ms). */
+  /**
+   * Re-estimates the live win chance from this state: chunks of simulations
+   * between frames, showing the running average as it gets more precise
+   * (600 runs: about ±2%). A newer state cancels the old estimate.
+   */
   const updateLive = (st: BattleState) => {
+    const job = ++liveJob.current;
     if (st.winner) return setLive(st.winner === "a" ? 1 : 0);
-    setTimeout(() => setLive(winChance(st, LIVE_RUNS)), 0);
+    let total = 0;
+    let done = 0;
+    const step = () => {
+      if (job !== liveJob.current) return;
+      total += winChance(st, LIVE_CHUNK) * LIVE_CHUNK;
+      done += LIVE_CHUNK;
+      setLive(total / done);
+      if (done < LIVE_RUNS) setTimeout(step, 0);
+    };
+    setTimeout(step, 0);
   };
 
   const start = () => {

@@ -4,6 +4,7 @@
  *   node src/cli.ts dataset    --battles 20000 --seed 1 --out ../data/battles.csv
  *   node src/cli.ts montecarlo --pairs 200 --runs 500 --seed 2 --out ../data/montecarlo.csv
  *   node src/cli.ts export-sets --out ../../web/public/battle/battle-sets.json
+ *   node src/cli.ts soft --pairs 8000 --runs 100 --seed 4 --out ../data/soft.csv
  *
  * dataset:    one row per turn of each battle, plus the same row seen from
  *             the other side (features swapped, label flipped).
@@ -12,6 +13,9 @@
  *             rate is a reference to evaluate the model against.
  * export-sets: each species as it enters battle (level 50 stats, moveset),
  *             so the app builds the pre-battle state like the training did.
+ * soft:       the app's own battles: the project's engine (web/lib/battle)
+ *             with the exported sets. Each random matchup is played `runs`
+ *             times by the AI; the win rate is a low-noise ("soft") label.
  */
 import { closeSync, mkdirSync, openSync, writeFileSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
@@ -20,6 +24,10 @@ import { battleFeatures, FEATURE_NAMES, swapSides } from "../../../web/lib/battl
 import { pkmnEngine, startingCombatant } from "./pkmnEngine.ts";
 import { makeRng, pick } from "./rng.ts";
 import { buildSet, DEX_NUMBERS } from "./sets.ts";
+import { readFileSync } from "node:fs";
+import { createBattle } from "../../../web/lib/battle/engine.ts";
+import { winChance } from "../../../web/lib/battle/montecarlo.ts";
+import type { BattlePokemon } from "../../../web/lib/battle/types.ts";
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -116,8 +124,30 @@ function exportSets(path: string) {
   process.stderr.write(`${DEX_NUMBERS.length} sets → ${path}\n`);
 }
 
+function soft(pairs: number, runs: number, path: string) {
+  const setsPath = new URL("../../../web/public/battle/battle-sets.json", import.meta.url);
+  const sets: Record<string, BattlePokemon> = JSON.parse(readFileSync(setsPath, "utf8"));
+  const ids = Object.keys(sets).map(Number);
+  const out = open(path, ["pair_id", "dex_a", "dex_b", "swapped", ...FEATURE_NAMES, "p", "runs"]);
+  const start = performance.now();
+  for (let id = 0; id < pairs; id++) {
+    const a = sets[pick(rng, ids)];
+    const b = sets[pick(rng, ids)];
+    const p = winChance(createBattle(a, b), runs, rng);
+    const snapshot = { turn: 0, a, b };
+    const f = battleFeatures(snapshot);
+    const g = battleFeatures(swapSides(snapshot));
+    out.write([id, a.dexId, b.dexId, 0, ...FEATURE_NAMES.map((k) => fmt(f[k])), fmt(p), runs].join(",") + "\n");
+    out.write([id, b.dexId, a.dexId, 1, ...FEATURE_NAMES.map((k) => fmt(g[k])), fmt(1 - p), runs].join(",") + "\n");
+    progress(id + 1, pairs);
+  }
+  out.end();
+  process.stderr.write(`\n${pairs} pairs × ${runs} runs in ${((performance.now() - start) / 1000).toFixed(0)} s → ${path}\n`);
+}
+
 const [command] = positionals;
 if (command === "dataset") dataset(Number(values.battles), values.out ?? "../data/battles.csv");
+else if (command === "soft") soft(Number(values.pairs), Number(values.runs), values.out ?? "../data/soft.csv");
 else if (command === "export-sets") exportSets(values.out ?? "../../web/public/battle/battle-sets.json");
 else if (command === "montecarlo") montecarlo(Number(values.pairs), Number(values.runs), values.out ?? "../data/montecarlo.csv");
 else {
