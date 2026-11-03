@@ -1,3 +1,5 @@
+import { canInflict, moveImmune } from "./battle/engine.ts";
+import type { BattleMove } from "./battle/types.ts";
 import { effectiveness } from "./typeChart.ts";
 
 /**
@@ -120,9 +122,44 @@ export const FEATURE_NAMES = [
   "ohko_a",
   "ohko_b",
   "speed_ratio",
+  "acc_a",
+  "acc_b",
+  "prio_a",
+  "prio_b",
+  "heal_a",
+  "heal_b",
+  "setup_a",
+  "setup_b",
+  "inflict_a",
+  "inflict_b",
 ] as const;
 
 export type FeatureName = (typeof FEATURE_NAMES)[number];
+
+/** Move details beyond MoveInfo, present when moves come from the battle sets. */
+const extra = (m: MoveInfo) => m as MoveInfo & Partial<BattleMove>;
+
+/** Strategy flags from the moveset: things the damage race doesn't see. */
+function moveFlags(me: Combatant, foe: Combatant) {
+  const best = bestMove(me, foe).move;
+  const moves = me.moves.map(extra);
+  return {
+    // How reliable the best hit is.
+    acc: best ? best.accuracy : 0,
+    // A damaging priority move (finishes faster foes).
+    prio: moves.some((m) => m.category !== "status" && m.power > 0 && m.priority > 0) ? 1 : 0,
+    // Recovers HP (Recover, Rest, drain, Leech Seed).
+    heal: moves.some((m) => m.heal || m.drain || m.id === "rest" || m.volatile === "leechseed") ? 1 : 0,
+    // Raises its own stats.
+    setup: moves.some((m) => m.boosts?.target === "self" && Object.values(m.boosts.stats).some((v) => (v ?? 0) > 0)) ? 1 : 0,
+    // A status move that would work on this foe.
+    inflict: moves.some(
+      (m) => m.category === "status" && m.status && !moveImmune({ id: m.id ?? "" }, foe) && canInflict(m.status, { ...foe, status: null }),
+    )
+      ? 1
+      : 0,
+  };
+}
 
 /**
  * Features from A's point of view. Most are differences (A − B) so swapping
@@ -140,6 +177,8 @@ export function battleFeatures(s: BattleSnapshot): Record<FeatureName, number> {
   // move takes (turns-to-KO rounds 51% and 99% to the same "2 turns").
   const dmgA = Math.min(MAX_DAMAGE_SHARE, bestMove(s.a, s.b).damage / Math.max(1, s.b.hp));
   const dmgB = Math.min(MAX_DAMAGE_SHARE, bestMove(s.b, s.a).damage / Math.max(1, s.a.hp));
+  const flagsA = moveFlags(s.a, s.b);
+  const flagsB = moveFlags(s.b, s.a);
   // Who wins the damage race if both just use their best move every turn.
   const race = ttkA < ttkB ? 1 : ttkA > ttkB ? 0 : first;
   return {
@@ -165,6 +204,16 @@ export function battleFeatures(s: BattleSnapshot): Record<FeatureName, number> {
     ohko_a: dmgA >= 1 ? 1 : 0,
     ohko_b: dmgB >= 1 ? 1 : 0,
     speed_ratio: Math.log(Math.max(1, speedOf(s.a)) / Math.max(1, speedOf(s.b))),
+    acc_a: flagsA.acc,
+    acc_b: flagsB.acc,
+    prio_a: flagsA.prio,
+    prio_b: flagsB.prio,
+    heal_a: flagsA.heal,
+    heal_b: flagsB.heal,
+    setup_a: flagsA.setup,
+    setup_b: flagsB.setup,
+    inflict_a: flagsA.inflict,
+    inflict_b: flagsB.inflict,
   };
 }
 

@@ -1,0 +1,77 @@
+{
+  "matchups": 25000,
+  "runs_per_matchup": 100,
+  "features": [
+    "ttk_a",
+    "ttk_b",
+    "ttk_diff",
+    "moves_first",
+    "race_win",
+    "eff_a",
+    "eff_b",
+    "eff_diff",
+    "stat_ratio",
+    "dmg_a",
+    "dmg_b",
+    "dmg_diff",
+    "ohko_a",
+    "ohko_b",
+    "speed_ratio",
+    "acc_a",
+    "acc_b",
+    "prio_a",
+    "prio_b",
+    "heal_a",
+    "heal_b",
+    "setup_a",
+    "setup_b",
+    "inflict_a",
+    "inflict_b"
+  ],
+  "models": {
+    "logistic": {
+      "cv": {
+        "cross_entropy": 0.2964737477985249,
+        "entropy_floor": 0.22664364398643527,
+        "mae": 0.08418181304983202,
+        "rmse": 0.14304812209778572,
+        "correlation": 0.9413177188011561,
+        "mean_label_noise": 0.019616449737210658,
+        "within_label_95_interval": 0.47064
+      }
+    },
+    "boosting": {
+      "cv": {
+        "cross_entropy": 0.2767425409611174,
+        "entropy_floor": 0.22664364398643527,
+        "mae": 0.06895544371042911,
+        "rmse": 0.12514980991262142,
+        "correlation": 0.9554103442540022,
+        "mean_label_noise": 0.019616449737210658,
+        "within_label_95_interval": 0.59168
+      },
+      "eval": {
+        "cross_entropy": 0.27765063802582934,
+        "entropy_floor": 0.23223741343921983,
+        "mae": 0.06529260200036213,
+        "rmse": 0.11905574523113374,
+        "correlation": 0.9596263954259912,
+        "mean_label_noise": 0.006554400077815377,
+        "within_label_95_interval": 0.4775
+      }
+    }
+  },
+  "previous_model_on_eval": {
+    "cross_entropy": 0.2890987672272674,
+    "entropy_floor": 0.23223741343921983,
+    "mae": 0.07724334893289532,
+    "rmse": 0.13345804256176214,
+    "correlation": 0.9490074262338479,
+    "mean_label_noise": 0.006554400077815377,
+    "within_label_95_interval": 0.42375
+  },
+  "chosen": {
+    "name": "boosting-soft",
+    "version": "20261103195842"
+  }
+}

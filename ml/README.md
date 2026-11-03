@@ -57,7 +57,29 @@ The evaluation compares the model's pre-battle probability with the Monte Carlo 
 
 Optional: in the web app, `predictWin(snapshot)` calls the API instead of the in-browser model when `NEXT_PUBLIC_ML_API_URL` is set. `CORS_ORIGINS` and `MODEL_PATH` configure the service.
 
-## Results: pre-battle model
+## Results: the app's own battles (soft labels)
+
+The shipped model is trained on **the battles the app actually plays**: the project's engine (`web/lib/battle`) with the exported movesets. `npm run soft` (in `generate/`) simulates each of 25,000 random matchups 100 times with the AI on both sides and uses the **win rate** as the label instead of a single win/loss; `python -m pokedex_ml.train_soft` trains on it (each row as a win weighted p and a loss weighted 1 − p, so the same classifier and browser export work).
+
+Evaluated on 400 separate matchups measured with 1,000 simulations each:
+
+| Model | Mean abs. error vs simulation ↓ | Correlation ↑ |
+| --- | --- | --- |
+| Previous model (hard labels, Showdown simulator, random movesets) | 0.077 | 0.95 |
+| Soft labels, same features | 0.077 | 0.95 |
+| **Soft labels + moveset features (shipped)** | **0.065** | **0.96** |
+
+The moveset features say what the damage race can't see: accuracy of the best move, a priority attack, healing (Recover, Rest, drain, Leech Seed), setup moves and status moves that would work on the foe. Cross-validated soft cross-entropy 0.277 against a floor of 0.227 (the labels' own uncertainty).
+
+During the fight, the battle screen re-estimates the chance each turn by simulating the rest of the battle 600 times in the browser; at the first turn the two estimates now agree closely (e.g. Charizard vs Venusaur: model 97%, simulation 94%).
+
+```bash
+cd generate && npm run soft -- --pairs 25000 --runs 100 --seed 4 --out ../data/soft.csv
+npm run soft -- --pairs 400 --runs 1000 --seed 77 --out ../data/soft_eval.csv && cd ..
+.venv/bin/python -m pokedex_ml.train_soft && .venv/bin/python -m pokedex_ml.export
+```
+
+## Results: hard labels from the Showdown simulator (earlier version)
 
 The app only needs the chance **before** the battle starts, so the model is trained on the starting state of 79,983 simulated battles (159,966 rows with both sides; HP, status and turn are constant there and get dropped, leaving 15 features). 5-fold cross-validation grouped by battle:
 

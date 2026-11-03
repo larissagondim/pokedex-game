@@ -102,3 +102,17 @@ test("feature vector follows FEATURE_NAMES", () => {
   assert.equal(v.length, FEATURE_NAMES.length);
   assert.equal(v[FEATURE_NAMES.indexOf("turn")], 0);
 });
+
+test("strategy flags from the moveset", () => {
+  const recover = { type: "normal", power: 0, category: "status" as const, accuracy: 1, priority: 0, id: "recover", heal: [1, 2] as [number, number] };
+  const quick = { type: "normal", power: 40, category: "physical" as const, accuracy: 1, priority: 1, id: "quickattack" };
+  const dance = { type: "normal", power: 0, category: "status" as const, accuracy: 1, priority: 0, id: "swordsdance", boosts: { target: "self" as const, stats: { atk: 2 } } };
+  const wave = { type: "electric", power: 0, category: "status" as const, accuracy: 0.9, priority: 0, id: "thunderwave", status: "par" };
+  const a = { ...charmander, moves: [...charmander.moves, recover, quick, dance, wave] };
+  const f = battleFeatures({ turn: 0, a, b: bulbasaur });
+  assert.deepEqual([f.prio_a, f.heal_a, f.setup_a, f.inflict_a, f.acc_a], [1, 1, 1, 1, 1]);
+  // Thunder Wave doesn't count against a Ground type.
+  const ground = { ...bulbasaur, types: ["ground"] };
+  assert.equal(battleFeatures({ turn: 0, a, b: ground }).inflict_a, 0);
+  assert.deepEqual([f.prio_b, f.heal_b, f.setup_b, f.inflict_b], [0, 0, 0, 0]);
+});
