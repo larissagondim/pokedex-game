@@ -219,11 +219,36 @@
 .hpFill[data-tone="mid"] { background-color: #f8c800; }
 .hpFill[data-tone="low"] { background-color: #f83818; }
 
-.dexNo {
+.statusFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 4px;
   margin-top: 2px;
+}
+
+.dexNo {
+  margin-left: auto;
   font-family: var(--font-pixel), monospace;
   font-size: 13px;
-  text-align: right;
+}
+
+/* Team battles: one ball per Pokémon, gray once fainted. */
+.balls {
+  display: flex;
+  gap: 4px;
+}
+
+.ball {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(var(--red) 0 45%, var(--graphite) 45% 55%, #f8f8f8 55%);
+  box-shadow: 0 0 0 1px var(--graphite);
+}
+
+.ball[data-fainted="true"] {
+  background: linear-gradient(#8a8a96 0 45%, var(--graphite) 45% 55%, #c8c8d0 55%);
 }
 
 /* Bottom box (win chance before the fight, moves during it). */
@@ -282,12 +307,21 @@
   color: #6b6b76;
 }
 
-/* Moves: 2×2 list with a ▶ cursor, plus a TYPE / PP panel. */
+/* Moves and the battle menu: 2×2 list with a ▶ cursor, plus an info panel. */
 .moves {
   display: grid;
   grid-template-columns: 1fr 1fr 118px;
   gap: 0 4px;
   padding: 3px 6px;
+}
+
+/* Bag: one item per row, wider info panel. */
+.moves[data-layout="list"] {
+  grid-template-columns: 1fr 180px;
+}
+
+.moves[data-layout="list"] .moveInfo {
+  grid-column: 2;
 }
 
 .moves[data-disabled="true"] .move {
@@ -415,6 +449,180 @@
   font-size: 13px;
   letter-spacing: 1px;
   box-shadow: 0 0 0 2px var(--graphite);
+}
+
+/* Menus (mode, opponent, record): a box centered on the backdrop. */
+.menu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  display: grid;
+  min-width: 300px;
+  padding: 6px 14px 10px;
+  background: #f8f8e8;
+  transform: translate(-50%, -58%);
+  box-shadow:
+    0 0 0 2px var(--graphite),
+    0 0 0 4px #f8f8e8,
+    0 0 0 6px var(--graphite),
+    6px 6px 0 4px rgba(0, 0, 0, 0.25);
+}
+
+.menuTitle {
+  margin: 0 -8px 6px;
+  padding: 2px 8px;
+  background: var(--red);
+  color: var(--white);
+  font-family: var(--font-pixel), monospace;
+  font-size: 13px;
+  letter-spacing: 1px;
+  box-shadow: 0 0 0 2px var(--graphite);
+}
+
+.menuItem {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  align-items: center;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--graphite);
+  font: inherit;
+  font-size: 22px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuDetail {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  left: 6px;
+  z-index: 3;
+  padding: 6px 10px;
+  background: #f8f8e8;
+  color: var(--graphite);
+  font-size: 17px;
+  box-shadow:
+    0 0 0 2px var(--graphite),
+    0 0 0 4px #f8f8e8,
+    0 0 0 6px var(--graphite);
+}
+
+.record {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 2px solid var(--graphite);
+  font-family: var(--font-pixel), monospace;
+  font-size: 12px;
+}
+
+.record p {
+  margin: 0;
+  color: #6b6b76;
+}
+
+.recordTotal,
+.recordRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.recordTotal {
+  margin-bottom: 4px;
+  color: var(--red);
+}
+
+/* Party: your team over the scene, one row per Pokémon. */
+.party {
+  position: absolute;
+  inset: 6px;
+  z-index: 3;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #f8f8e8;
+  box-shadow:
+    0 0 0 2px var(--graphite),
+    0 0 0 4px #f8f8e8,
+    0 0 0 6px var(--graphite);
+}
+
+.party .menuTitle {
+  margin-bottom: 2px;
+}
+
+.partyRow {
+  display: grid;
+  grid-template-columns: 16px 56px 1fr 220px;
+  align-items: center;
+  gap: 6px;
+  height: 62px;
+  padding: 0 6px 0 0;
+  border: 0;
+  background: #e8e8d0;
+  color: var(--graphite);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--graphite);
+}
+
+.partyRow[aria-current="true"] {
+  background: #f8e8a0;
+}
+
+.partyRow[data-fainted="true"] {
+  background: #d8c8c8;
+  color: #6b6b76;
+}
+
+.partyRow[data-fainted="true"] .partyIcon {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+
+.partyIcon {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.partyName {
+  font-family: var(--font-pixel), monospace;
+  font-size: 14px;
+}
+
+.partyName small {
+  display: block;
+  color: var(--red);
+  font-size: 10px;
+}
+
+.partyHp {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-pixel), monospace;
+  font-size: 11px;
+}
+
+.partyHp .statusTag {
+  margin: 0;
+}
+
+.partyHp .hpTrack {
+  display: block;
+  grid-column: 2;
+}
+
+.partyHp .hpFill {
+  display: block;
 }
 
 @keyframes blink {

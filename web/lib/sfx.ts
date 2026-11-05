@@ -1,7 +1,7 @@
 import { AudioContext as ThreeAudioContext } from "three";
 import { audioEnabled } from "@/stores/audio";
 
-export type Sfx = "dpad" | "a" | "b" | "click" | "open" | "close" | "boot" | "hit" | "superHit" | "weakHit" | "faint" | "win" | "lose" | "lowHp";
+export type Sfx = "dpad" | "a" | "b" | "click" | "open" | "close" | "boot" | "hit" | "superHit" | "weakHit" | "faint" | "win" | "lose" | "lowHp" | "heal" | "ball";
 
 /** Shared with three.js so PositionalAudio and the UI blips use one context. */
 export const getAudioContext = () => ThreeAudioContext.getContext() as unknown as globalThis.AudioContext;
@@ -41,6 +41,17 @@ const SOUNDS: Record<Sfx, Note[]> = {
     { freq: 1760, at: 0.24, dur: 0.06, type: "square", gain: 0.04 },
   ],
   faint: [{ freq: 600, to: 60, at: 0, dur: 0.6, type: "triangle", gain: 0.09 }],
+  heal: [
+    { freq: 784, at: 0, dur: 0.08, type: "triangle", gain: 0.07 },
+    { freq: 988, at: 0.08, dur: 0.08, type: "triangle", gain: 0.07 },
+    { freq: 1175, at: 0.16, dur: 0.08, type: "triangle", gain: 0.07 },
+    { freq: 1568, at: 0.24, dur: 0.2, type: "triangle", gain: 0.07 },
+  ],
+  // A ball opening: a quick upward whoosh and a pop.
+  ball: [
+    { freq: 300, to: 1200, at: 0, dur: 0.18, type: "square", gain: 0.05 },
+    { freq: 1400, to: 700, at: 0.18, dur: 0.08, type: "triangle", gain: 0.07 },
+  ],
   win: [
     { freq: 523, at: 0, dur: 0.12, type: "square", gain: 0.06 },
     { freq: 659, at: 0.12, dur: 0.12, type: "square", gain: 0.06 },

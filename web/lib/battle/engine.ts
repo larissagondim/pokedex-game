@@ -110,7 +110,7 @@ export type BattleEvent =
   | { kind: "wake"; side: Side }
   | { kind: "residual"; side: Side; status: Status; amount: number; hp: number }
   | { kind: "faint"; side: Side }
-  | { kind: "switch"; side: Side; from: string; to: string; dexId: number; forced: boolean }
+  | { kind: "switch"; side: Side; from: string; to: string; dexId: number; hp: number; maxHp: number; status: Status | null; forced: boolean }
   | { kind: "item"; side: Side; item: ItemId }
   | { kind: "cure"; side: Side };
 
@@ -610,7 +610,17 @@ function doSwitch(st: BattleState, side: Side, index: number, forced: boolean, e
   });
   st.bench[side][index] = out;
   st[side] = incoming;
-  events.push({ kind: "switch", side, from: out.name, to: incoming.name, dexId: incoming.dexId, forced });
+  events.push({
+    kind: "switch",
+    side,
+    from: out.name,
+    to: incoming.name,
+    dexId: incoming.dexId,
+    hp: incoming.hp,
+    maxHp: incoming.maxHp,
+    status: incoming.status,
+    forced,
+  });
 }
 
 /** Uses an item from the bag on the active Pokémon. */
