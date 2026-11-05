@@ -1,4 +1,4 @@
-import type { BattleEvent, Side } from "@/lib/battle/engine";
+import { type BattleEvent, ITEMS, type Side } from "@/lib/battle/engine";
 import type { StatName, Status } from "@/lib/battle/types";
 
 const STAT_NAMES: Record<StatName, string> = {
@@ -21,7 +21,8 @@ const boostWord = (n: number) => (Math.abs(n) >= 3 ? "drastically " : Math.abs(n
 
 /**
  * Dialog text for a battle event, or null when the event has no line of its
- * own (a plain hit just animates). `name(side)` gives "EEVEE" / "Foe CHARIZARD".
+ * own (a plain hit just animates). `name(side)` gives "EEVEE" / "Foe CHARIZARD"
+ * (the Pokémon out at that moment).
  */
 export function describeBattleEvent(event: BattleEvent, name: (side: Side) => string): string | null {
   switch (event.kind) {
@@ -87,5 +88,14 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
       return `${name(event.side)} is hurt by ${event.status === "brn" ? "its burn" : "poison"}!`;
     case "faint":
       return `${name(event.side)} fainted!`;
+    case "switch": {
+      const to = event.to.toUpperCase();
+      if (event.side === "a") return event.forced ? `Go! ${to}!` : `${event.from.toUpperCase()}, come back! Go! ${to}!`;
+      return event.forced ? `The foe sent out ${to}!` : `The foe withdrew ${event.from.toUpperCase()} and sent out ${to}!`;
+    }
+    case "item":
+      return `${event.side === "a" ? "You" : "The foe"} used a ${ITEMS[event.item].name.toUpperCase()}!`;
+    case "cure":
+      return `${name(event.side)} was cured!`;
   }
 }

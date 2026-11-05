@@ -2,7 +2,7 @@ import { effectiveness } from "../typeChart.ts";
 import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./types.ts";
 
 /**
- * 1v1 battle engine with the standard (gen 5+) rules: move priority, then
+ * Battle engine (1v1 or teams) with the standard (gen 5+) rules: move priority, then
  * speed (paralysis halves it, ties are random); the damage formula with the
  * 85–100% roll, STAB, type effectiveness, critical hits and burn; accuracy;
  * stat stages; burn, paralysis, poison, bad poison and sleep with their type
@@ -12,7 +12,12 @@ import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./type
  * items are not modeled. Special moves handled: Fake Out / First Impression
  * (first turn only), Sucker Punch, Focus Punch, Rest, Super Fang / Ruination,
  * Pain Split, Belly Drum, Haze. Other effects (Substitute, hazards, weather,
- * Taunt...) just fail. Switching doesn't exist in 1v1.
+ * Taunt...) just fail.
+ *
+ * Teams: each side has one Pokémon out (`a` / `b`) and the rest on its
+ * `bench`. Switching and using an item take the whole turn and go before any
+ * move; a fainted Pokémon is replaced between turns (`switchIn`). The battle
+ * ends when a side has nobody left. In 1v1 the benches are empty.
  *
  * Pure: `runTurn` returns a new state plus the events that happened, in
  * order, for the screen to play back.
@@ -55,12 +60,30 @@ export interface Fighter {
   moves: FighterMove[];
 }
 
+export type ItemId = "potion" | "fullheal";
+
+export const ITEMS: Record<ItemId, { name: string; count: number }> = {
+  /** Heals 60 HP (a Super Potion). */
+  potion: { name: "Super Potion", count: 2 },
+  /** Cures status and confusion. */
+  fullheal: { name: "Full Heal", count: 1 },
+};
+const POTION_HP = 60;
+
 export interface BattleState {
   turn: number;
+  /** The Pokémon out on each side. */
   a: Fighter;
   b: Fighter;
+  /** The rest of each team (empty in 1v1). Switching swaps one with the active Pokémon. */
+  bench: Record<Side, Fighter[]>;
+  /** Items left on each side. */
+  bag: Record<Side, Record<ItemId, number>>;
   winner: Side | null;
 }
+
+/** A move (its index), a switch to a bench slot, or an item on the active Pokémon. */
+export type Choice = number | { switchTo: number } | { item: ItemId };
 
 export type BattleEvent =
   | { kind: "move"; side: Side; move: string }
@@ -86,7 +109,10 @@ export type BattleEvent =
   | { kind: "leech"; side: Side; amount: number; hp: number; healerHp: number }
   | { kind: "wake"; side: Side }
   | { kind: "residual"; side: Side; status: Status; amount: number; hp: number }
-  | { kind: "faint"; side: Side };
+  | { kind: "faint"; side: Side }
+  | { kind: "switch"; side: Side; from: string; to: string; dexId: number; forced: boolean }
+  | { kind: "item"; side: Side; item: ItemId }
+  | { kind: "cure"; side: Side };
 
 const STATS: StatName[] = ["atk", "def", "spa", "spd", "spe"];
 const STAB = 1.5;
@@ -139,12 +165,29 @@ export function createFighter(p: BattlePokemon): Fighter {
   };
 }
 
-export const createBattle = (a: BattlePokemon, b: BattlePokemon): BattleState => ({
+const fullBag = (): Record<ItemId, number> => ({ potion: ITEMS.potion.count, fullheal: ITEMS.fullheal.count });
+
+export const createBattle = (a: BattlePokemon, b: BattlePokemon): BattleState => createTeamBattle([a], [b]);
+
+/** The first Pokémon of each team leads. */
+export const createTeamBattle = (a: BattlePokemon[], b: BattlePokemon[]): BattleState => ({
   turn: 1,
-  a: createFighter(a),
-  b: createFighter(b),
+  a: createFighter(a[0]),
+  b: createFighter(b[0]),
+  bench: { a: a.slice(1).map(createFighter), b: b.slice(1).map(createFighter) },
+  bag: { a: fullBag(), b: fullBag() },
   winner: null,
 });
+
+/** Pokémon still able to fight on a side (active included). */
+export const remaining = (st: BattleState, side: Side) => [st[side], ...st.bench[side]].filter((f) => f.hp > 0).length;
+
+/** The active Pokémon fainted and there's someone on the bench to send out. */
+export const needsReplacement = (st: BattleState, side: Side) => st[side].hp <= 0 && st.bench[side].some((f) => f.hp > 0);
+
+/** Whether the active Pokémon may switch out by choice (not locked into a move or recharging). */
+export const canSwitch = (st: BattleState, side: Side) =>
+  !st[side].locked && !st[side].mustRecharge && st.bench[side].some((f) => f.hp > 0);
 
 export const effectiveSpeed = (f: Fighter) => f.stats.spe * stageMultiplier(f.boosts.spe) * (f.status === "par" ? 0.5 : 1);
 
@@ -287,7 +330,8 @@ function performMove(
   rng: Rng,
   events: BattleEvent[],
   foeMovesLater: boolean,
-  foeMove: FighterMove,
+  /** null if the foe isn't using a move this turn (it switched or used an item). */
+  foeMove: FighterMove | null,
 ) {
   const user = st[side];
   const foeSide = other(side);
@@ -334,7 +378,7 @@ function performMove(
     (move.id === "focuspunch" && events.some((e) => e.kind === "damage" && e.side === side)) ||
     (FIRST_TURN_ONLY.has(move.id) && user.turnsActive > 0) ||
     // Sucker Punch only works if the target is about to attack.
-    (move.id === "suckerpunch" && (!foeMovesLater || foeMove.category === "status"));
+    (move.id === "suckerpunch" && (!foeMovesLater || !foeMove || foeMove.category === "status"));
   if (failed) {
     events.push({ kind: "fail", side });
     user.locked = null;
@@ -541,18 +585,78 @@ function checkFaints(st: BattleState, events: BattleEvent[], order: Side[]): boo
   for (const side of order) {
     if (st[side].hp <= 0 && !events.some((e) => e.kind === "faint" && e.side === side)) {
       events.push({ kind: "faint", side });
-      // The one still standing wins; if both fall, the one that fell last.
-      st.winner = st[other(side)].hp > 0 ? other(side) : side;
+      // A side with nobody left loses; if both run out, the one that fell last wins.
+      if (remaining(st, side) === 0) st.winner = remaining(st, other(side)) > 0 ? other(side) : side;
     }
   }
   return st.winner !== null;
 }
 
+/** Swaps the active Pokémon with bench slot `index`. Leaving clears stat changes and volatile effects. */
+function doSwitch(st: BattleState, side: Side, index: number, forced: boolean, events: BattleEvent[]) {
+  const out = st[side];
+  const incoming = st.bench[side][index];
+  Object.assign(out, {
+    boosts: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+    toxicTurns: 0,
+    confusion: 0,
+    locked: null,
+    mustRecharge: false,
+    seeded: false,
+    protectStreak: 0,
+    turnsActive: 0,
+    protected: false,
+    flinched: false,
+  });
+  st.bench[side][index] = out;
+  st[side] = incoming;
+  events.push({ kind: "switch", side, from: out.name, to: incoming.name, dexId: incoming.dexId, forced });
+}
+
+/** Uses an item from the bag on the active Pokémon. */
+function applyItem(st: BattleState, side: Side, item: ItemId, events: BattleEvent[]) {
+  const f = st[side];
+  st.bag[side][item]--;
+  events.push({ kind: "item", side, item });
+  if (item === "potion") {
+    if (f.hp >= f.maxHp) events.push({ kind: "fail", side });
+    else heal(st, side, POTION_HP, events);
+  } else if (f.status || f.confusion > 0) {
+    f.status = null;
+    f.sleepTurns = 0;
+    f.toxicTurns = 0;
+    f.confusion = 0;
+    events.push({ kind: "cure", side });
+  } else {
+    events.push({ kind: "fail", side });
+  }
+}
+
 /**
- * Plays one turn: both sides use the move at the given index (Struggle if out
- * of PP). Doesn't mutate `state`.
+ * Sends out bench slot `index` in place of a fainted Pokémon (between turns).
+ * Doesn't mutate `state`.
  */
-export function runTurn(state: BattleState, choiceA: number, choiceB: number, rng: Rng = Math.random): { state: BattleState; events: BattleEvent[] } {
+export function switchIn(state: BattleState, side: Side, index: number): { state: BattleState; events: BattleEvent[] } {
+  const st: BattleState = structuredClone(state);
+  const events: BattleEvent[] = [];
+  if (st.bench[side][index]?.hp > 0) doSwitch(st, side, index, true, events);
+  return { state: st, events };
+}
+
+/** The choice as the engine will honor it: illegal switches and items fall back to the first move. */
+function legalChoice(st: BattleState, side: Side, choice: Choice): Choice {
+  if (typeof choice === "number") return choice;
+  if ("switchTo" in choice) return canSwitch(st, side) && st.bench[side][choice.switchTo]?.hp > 0 ? choice : 0;
+  return st[side].locked || st[side].mustRecharge || !(st.bag[side][choice.item] > 0) ? 0 : choice;
+}
+
+/**
+ * Plays one turn. Each side picks a move index (Struggle if out of PP), a
+ * switch or an item; switches and items go first (the faster side first),
+ * then the moves. Fainted Pokémon must be replaced with `switchIn` before the
+ * next turn. Doesn't mutate `state`.
+ */
+export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rng: Rng = Math.random): { state: BattleState; events: BattleEvent[] } {
   const st: BattleState = structuredClone(state);
   const events: BattleEvent[] = [];
   if (st.winner) return { state: st, events };
@@ -561,19 +665,39 @@ export function runTurn(state: BattleState, choiceA: number, choiceB: number, rn
     f.protected = false;
     f.flinched = false;
   }
+  const choices = { a: legalChoice(st, "a", choiceA), b: legalChoice(st, "b", choiceB) };
   // A locked-in Pokémon repeats its move whatever was chosen.
-  const pick = (f: Fighter, choice: number) => (f.locked ? f.moves[f.locked.index] : resolveMove(f, choice));
-  const moves = { a: pick(st.a, choiceA), b: pick(st.b, choiceB) };
-  const order = turnOrder(st, moves.a, moves.b, rng);
+  const pick = (f: Fighter, choice: Choice) =>
+    f.locked ? f.moves[f.locked.index] : typeof choice === "number" ? resolveMove(f, choice) : null;
+  const moves = { a: pick(st.a, choices.a), b: pick(st.b, choices.b) };
+
+  // Switches and items: before any move, the faster side first.
+  const speedOrder: Side[] = effectiveSpeed(st.b) > effectiveSpeed(st.a) ? ["b", "a"] : ["a", "b"];
+  const fresh = new Set<Side>();
+  for (const side of speedOrder) {
+    const choice = choices[side];
+    if (typeof choice === "number") continue;
+    if ("switchTo" in choice) {
+      doSwitch(st, side, choice.switchTo, false, events);
+      fresh.add(side);
+    } else {
+      applyItem(st, side, choice.item, events);
+    }
+  }
+
+  const movers = (["a", "b"] as Side[]).filter((side) => moves[side]);
+  const order = movers.length === 2 ? turnOrder(st, moves.a!, moves.b!, rng) : movers;
   for (const [i, side] of order.entries()) {
     if (st[side].hp <= 0) continue;
-    performMove(st, side, moves[side], rng, events, i === 0, moves[other(side)]);
+    const foeMovesLater = i === 0 && order.length === 2;
+    performMove(st, side, moves[side]!, rng, events, foeMovesLater, moves[other(side)]);
     if (checkFaints(st, events, [other(side), side])) return { state: st, events };
   }
-  for (const side of order) residual(st, side, events);
-  checkFaints(st, events, order);
-  st.a.turnsActive++;
-  st.b.turnsActive++;
+  const endOrder = order.length === 2 ? order : speedOrder;
+  for (const side of endOrder) residual(st, side, events);
+  checkFaints(st, events, endOrder);
+  // A Pokémon that came in this turn hasn't had its first turn yet (Fake Out still works).
+  for (const side of ["a", "b"] as Side[]) if (!fresh.has(side)) st[side].turnsActive++;
   st.turn++;
   return { state: st, events };
 }

@@ -1,9 +1,27 @@
 import { type Combatant, expectedDamage, type MoveInfo } from "../battleFeatures.ts";
 import { effectiveness } from "../typeChart.ts";
-import { canInflict, effectiveSpeed, type Fighter, FIRST_TURN_ONLY, type FighterMove, moveImmune, type Rng, stageMultiplier } from "./engine.ts";
+import {
+  type BattleState,
+  canInflict,
+  canSwitch,
+  type Choice,
+  effectiveSpeed,
+  type Fighter,
+  FIRST_TURN_ONLY,
+  type FighterMove,
+  moveImmune,
+  needsReplacement,
+  type Rng,
+  type Side,
+  stageMultiplier,
+  switchIn,
+} from "./engine.ts";
 
 /** Chance of a random move instead of the best one, so the foe isn't predictable. */
 const RANDOMNESS = 0.15;
+/** Switch out when a bench Pokémon's matchup is this much better (and the current one is losing). */
+const SWITCH_MARGIN = 0.6;
+const SWITCH_CHANCE = 0.7;
 /** Same stand-in power the engine uses for variable-power moves. */
 const FALLBACK_POWER = 60;
 
@@ -104,4 +122,63 @@ export function chooseMove(me: Fighter, foe: Fighter, rng: Rng = Math.random): n
     }
   }
   return best;
+}
+
+/** Share of the target's current HP the attacker's best move takes per turn (capped at 1). */
+function pressure(me: Fighter, foe: Fighter): number {
+  const usable = me.moves.filter((m) => m.ppLeft > 0 && isAttack(m));
+  const best = Math.max(0, ...usable.map((m) => damageIfHits(m, me, foe) * m.accuracy));
+  return Math.min(1, best / Math.max(1, foe.hp));
+}
+
+/**
+ * How good `me` looks against `foe`, from about −1 (loses badly) to +1: the
+ * pressure it puts on the foe minus the pressure it takes, and a bonus for
+ * moving first.
+ */
+export function matchup(me: Fighter, foe: Fighter): number {
+  const faster = effectiveSpeed(me) > effectiveSpeed(foe) ? 0.15 : effectiveSpeed(me) < effectiveSpeed(foe) ? -0.15 : 0;
+  return pressure(me, foe) - pressure(foe, me) + faster;
+}
+
+/** The bench slot with the best matchup against the foe (fainted ones skipped), or −1. */
+export function chooseReplacement(bench: Fighter[], foe: Fighter): number {
+  let best = -1;
+  let bestScore = -Infinity;
+  bench.forEach((f, i) => {
+    if (f.hp <= 0) return;
+    const score = matchup(f, foe);
+    if (score > bestScore) {
+      best = i;
+      bestScore = score;
+    }
+  });
+  return best;
+}
+
+/**
+ * The AI's full choice for `side`: usually a move (see `chooseMove`), but it
+ * switches out of a losing matchup when a bench Pokémon is clearly better,
+ * not right after coming in, and not always (70%), so it isn't predictable.
+ */
+export function chooseAction(st: BattleState, side: Side, rng: Rng = Math.random): Choice {
+  const me = st[side];
+  const foe = st[side === "a" ? "b" : "a"];
+  if (canSwitch(st, side) && me.turnsActive > 0) {
+    const current = matchup(me, foe);
+    const slot = chooseReplacement(st.bench[side], foe);
+    // The incoming Pokémon takes a hit on the way in, so it has to be clearly better.
+    if (slot >= 0 && current < 0 && matchup(st.bench[side][slot], foe) - current > SWITCH_MARGIN && rng() < SWITCH_CHANCE) {
+      return { switchTo: slot };
+    }
+  }
+  return chooseMove(me, foe, rng);
+}
+
+/** Sends out the best replacement for every fainted Pokémon (both sides). */
+export function replaceFainted(st: BattleState, sides: Side[] = ["a", "b"]): BattleState {
+  for (const side of sides) {
+    if (needsReplacement(st, side)) st = switchIn(st, side, chooseReplacement(st.bench[side], st[side === "a" ? "b" : "a"])).state;
+  }
+  return st;
 }

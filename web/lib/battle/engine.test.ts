@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chooseMove } from "./ai.ts";
-import { type BattleState, calcDamage, createBattle, type Fighter, runTurn, turnOrder } from "./engine.ts";
+import { chooseAction, chooseMove, chooseReplacement, replaceFainted } from "./ai.ts";
+import {
+  type BattleState,
+  calcDamage,
+  createBattle,
+  createTeamBattle,
+  type Fighter,
+  needsReplacement,
+  runTurn,
+  switchIn,
+  turnOrder,
+} from "./engine.ts";
 import type { BattleMove, BattlePokemon } from "./types.ts";
 
 /** RNG that returns the given values in order, then `fallback`. */
@@ -297,4 +307,89 @@ test("Rest, Super Fang, Pain Split, Belly Drum and Haze", () => {
   const hz = battle({ moves: [haze] }, { moves: [splash] });
   hz.b.boosts.atk = 4;
   assert.equal(runTurn(hz, 0, 0, seq([0.1], 0.99)).state.b.boosts.atk, 0);
+});
+
+// --- Teams, switching and items ---
+
+const team = (...mons: Partial<BattlePokemon>[]) => mons.map((m, i) => mon({ name: `M${i}`, dexId: i + 1, ...m }));
+const splashOnly = [move({ id: "splash", name: "Splash", category: "status", power: 0 })];
+
+test("a faint with someone on the bench doesn't end the battle", () => {
+  const st = createTeamBattle(team({ moves: [move({ power: 250 })] }), team({ hp: 1, maxHp: 150 }, {}));
+  const r = runTurn(st, 0, 0, seq([0.1], 0.99));
+  assert.equal(r.state.winner, null);
+  assert.ok(needsReplacement(r.state, "b"));
+  const next = switchIn(r.state, "b", 0);
+  assert.equal(next.state.b.name, "M1");
+  assert.deepEqual(kinds(next.events), ["switch"]);
+  assert.equal(next.state.bench.b[0].hp, 0);
+});
+
+test("the battle ends when a side has nobody left", () => {
+  let st = createTeamBattle(team({ moves: [move({ power: 250 })] }), team({ hp: 1, maxHp: 150 }, { hp: 1, maxHp: 150 }));
+  st = runTurn(st, 0, 0, seq([0.1], 0.99)).state;
+  st = switchIn(st, "b", 0).state;
+  const last = runTurn(st, 0, 0, seq([0.1], 0.99));
+  assert.equal(last.state.winner, "a");
+});
+
+test("switching goes before moves, the foe hits the incoming Pokémon and stat changes reset", () => {
+  const st = createTeamBattle(team({ moves: splashOnly }, { types: ["ghost"] }), team({ stats: { atk: 100, def: 100, spa: 100, spd: 100, spe: 200 } }));
+  st.a.boosts.atk = 2;
+  const r = runTurn(st, { switchTo: 0 }, 0, seq([0.1], 0.99));
+  assert.equal(r.events[0].kind, "switch");
+  assert.equal(r.state.a.name, "M1");
+  assert.equal(r.state.bench.a[0].boosts.atk, 0);
+  // Tackle into a Ghost: no effect.
+  assert.ok(r.events.some((e) => e.kind === "no-effect" && e.side === "a"));
+  // The Pokémon that came in still gets its "first turn" next turn.
+  assert.equal(r.state.a.turnsActive, 0);
+});
+
+test("can't switch while locked into a move, or to a fainted Pokémon", () => {
+  const st = createTeamBattle(team({}, { hp: 0, maxHp: 150 }), team({}));
+  st.bench.a[0].hp = 0;
+  const r = runTurn(st, { switchTo: 0 }, 0, seq([0.1], 0.99));
+  assert.ok(!r.events.some((e) => e.kind === "switch"));
+  assert.ok(r.events.some((e) => e.kind === "move" && e.side === "a"));
+  const locked = createTeamBattle(team({}, {}), team({}));
+  locked.a.locked = { index: 0, turnsLeft: 1 };
+  assert.ok(!runTurn(locked, { switchTo: 0 }, 0, seq([0.1], 0.99)).events.some((e) => e.kind === "switch"));
+});
+
+test("items: Super Potion heals 60, Full Heal cures, and they run out", () => {
+  const st = createTeamBattle(team({}), team({ moves: splashOnly }));
+  st.a.hp = 50;
+  st.a.status = "psn";
+  const potion = runTurn(st, { item: "potion" }, 0, seq([0.1], 0.99));
+  assert.deepEqual(kinds(potion.events).slice(0, 2), ["item", "heal"]);
+  assert.equal(potion.state.bag.a.potion, 1);
+  const cured = runTurn(potion.state, { item: "fullheal" }, 0, seq([0.1], 0.99));
+  assert.equal(cured.state.a.status, null);
+  assert.equal(cured.state.bag.a.fullheal, 0);
+  // None left: falls back to a move.
+  const empty = runTurn(cured.state, { item: "fullheal" }, 0, seq([0.1], 0.99));
+  assert.ok(!empty.events.some((e) => e.kind === "item"));
+});
+
+test("Sucker Punch fails if the foe switches", () => {
+  const sucker = move({ id: "suckerpunch", name: "Sucker Punch", priority: 1, type: "dark" });
+  const st = createTeamBattle(team({ moves: [sucker] }), team({}, {}));
+  const r = runTurn(st, 0, { switchTo: 0 }, seq([0.1], 0.99));
+  assert.ok(r.events.some((e) => e.kind === "fail" && e.side === "a"));
+});
+
+test("the AI sends out its best matchup and switches out of a bad one", () => {
+  const water = move({ id: "surf", name: "Surf", type: "water", category: "special", power: 90 });
+  const grass = move({ id: "gigadrain", name: "Giga Drain", type: "grass", category: "special", power: 75 });
+  // Your Water type against the foe's Fire lead; the foe has a Grass type on the bench.
+  const st = createTeamBattle(team({ types: ["water"], moves: [water] }), team({ types: ["fire"], moves: [move({ type: "fire", power: 40 })] }, { types: ["grass"], moves: [grass] }));
+  assert.equal(chooseReplacement(st.bench.b, st.a), 0);
+  st.b.turnsActive = 1;
+  assert.deepEqual(chooseAction(st, "b", seq([0.1], 0.5)), { switchTo: 0 });
+  // Not on its first turn out.
+  st.b.turnsActive = 0;
+  assert.equal(typeof chooseAction(st, "b", seq([0.9], 0.5)), "number");
+  st.b.hp = 0;
+  assert.equal(replaceFainted(st).b.types[0], "grass");
 });

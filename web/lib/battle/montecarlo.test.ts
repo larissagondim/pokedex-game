@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createBattle } from "./engine.ts";
+import { createBattle, createTeamBattle } from "./engine.ts";
 import { winChance } from "./montecarlo.ts";
 import type { BattleMove, BattlePokemon } from "./types.ts";
 
@@ -45,4 +45,11 @@ test("does not change the state it starts from", () => {
   const copy = structuredClone(st);
   winChance(st, 20, mulberry(3));
   assert.deepEqual(st, copy);
+});
+
+test("teams: three against one strong-enough Pokémon wins more often than one against one", () => {
+  const foe = mon({ stats: { atk: 130, def: 130, spa: 100, spd: 130, spe: 130 } });
+  const solo = winChance(createBattle(mon({}), foe), 200, mulberry(4));
+  const trio = winChance(createTeamBattle([mon({}), mon({}), mon({})], [foe]), 200, mulberry(4));
+  assert.ok(trio > solo + 0.2, `${solo} → ${trio}`);
 });
