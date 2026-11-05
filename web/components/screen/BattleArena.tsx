@@ -43,16 +43,47 @@ const SILENT_EVENT_MS = 450;
 const LOW_HP = 0.2;
 /** Simulations per live win-chance update, run in chunks so the screen stays responsive. */
 const LIVE_RUNS = 600;
-const LIVE_CHUNK = 100;
 /** Simulations per option on the party screen (each switch is estimated separately). */
 const PARTY_RUNS = 300;
 /** D-pad in the 2×2 menus. */
 const GRID_STEPS: Partial<Record<DeviceButton, number>> = { UP: -2, DOWN: 2, LEFT: -1, RIGHT: 1 };
+/** Party screens with more Pokémon than this use two columns. */
+const PARTY_COLUMN = 3;
 /** D-pad in the bag and party lists. */
 const LIST_STEPS: Partial<Record<DeviceButton, number>> = { UP: -1, DOWN: 1 };
 const COMMANDS = ["FIGHT", "BAG", "POKéMON", "RUN"] as const;
 const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 const ITEM_INFO: Record<ItemId, string> = { potion: "Restores 60 HP.", fullheal: "Cures status and confusion." };
+
+/** Average win chance over `runs` simulations. */
+type Estimator = (runs: number) => number;
+/** Simulations per slice, and how long a slice may take before yielding to the screen. */
+const SLICE_RUNS = 5;
+const SLICE_MS = 16;
+
+/**
+ * Runs the estimators bit by bit, all of them together, `SLICE_MS` at a time
+ * between frames so the screen and the buttons stay responsive however long
+ * one simulation takes (a 6v6 battle is ~20× a 1v1). Reports the running
+ * averages after each slice until each has `total` runs or `alive()` is false.
+ */
+function simulate(estimators: (Estimator | null)[], total: number, alive: () => boolean, report: (values: (number | null)[]) => void) {
+  const sums = estimators.map(() => 0);
+  let done = 0;
+  const step = () => {
+    if (!alive()) return;
+    const until = performance.now() + SLICE_MS;
+    do {
+      estimators.forEach((e, i) => {
+        if (e) sums[i] += e(SLICE_RUNS) * SLICE_RUNS;
+      });
+      done += SLICE_RUNS;
+    } while (done < total && performance.now() < until);
+    report(estimators.map((e, i) => (e ? sums[i] / done : null)));
+    if (done < total) setTimeout(step, 0);
+  };
+  setTimeout(step, 0);
+}
 
 /**
  * ready: win chance, A to start. command: FIGHT / BAG / POKéMON / RUN.
@@ -137,52 +168,35 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   const name = (side: Side) => (side === "a" ? nameOf(shownId.current.a) : `Foe ${nameOf(shownId.current.b)}`);
 
   /**
-   * Estimates side A's win chance from this state: chunks of simulations
-   * between frames, showing the running average as it gets more precise
-   * (600 runs: about ±2%). A newer state cancels the old estimate.
+   * Estimates side A's win chance from this state, simulating between frames
+   * and showing the running average as it gets more precise (600 runs: about
+   * ±2%). A newer state cancels the old estimate.
    */
   const updateLive = (st: BattleState) => {
     const job = ++liveJob.current;
     if (st.winner) return setLive(st.winner === "a" ? 1 : 0);
-    let total = 0;
-    let done = 0;
-    const step = () => {
-      if (job !== liveJob.current) return;
-      total += winChance(st, LIVE_CHUNK) * LIVE_CHUNK;
-      done += LIVE_CHUNK;
-      setLive(total / done);
-      if (done < LIVE_RUNS) setTimeout(step, 0);
-    };
-    setTimeout(step, 0);
+    simulate([(runs) => winChance(st, runs)], LIVE_RUNS, () => job === liveJob.current, ([p]) => setLive(p));
   };
 
   /**
    * On the party screen: the win chance for each Pokémon you could send out.
    * Forced (yours fainted): the battle with that one sent in. By choice: that
    * switch as this turn's action, against the foe's reply; the Pokémon already
-   * out shows the current chance. Chunks of simulations per option, refined
-   * in turns so all the numbers fill in together.
+   * out shows the current chance. All the numbers are refined together.
    */
   const estimateParty = (st: BattleState, isForced: boolean) => {
     const job = ++partyJob.current;
-    const members = team(st, "a");
-    const totals = members.map(() => 0);
-    let done = 0;
-    setPartyChances(members.map(() => null));
-    const step = () => {
-      if (job !== partyJob.current) return;
-      done += LIVE_CHUNK;
-      const chances = members.map((f, i) => {
-        if (f.hp <= 0 || (isForced && i === 0)) return null;
-        if (i === 0) totals[0] += winChance(st, LIVE_CHUNK) * LIVE_CHUNK;
-        else if (isForced) totals[i] += winChance(switchIn(st, "a", i - 1).state, LIVE_CHUNK) * LIVE_CHUNK;
-        else totals[i] += choiceWinChance(st, { switchTo: i - 1 }, LIVE_CHUNK) * LIVE_CHUNK;
-        return totals[i] / done;
-      });
-      setPartyChances(chances);
-      if (done < PARTY_RUNS) setTimeout(step, 0);
-    };
-    setTimeout(step, 0);
+    const estimators = team(st, "a").map((f, i): Estimator | null => {
+      if (f.hp <= 0 || (isForced && i === 0)) return null;
+      if (i === 0) return (runs) => winChance(st, runs);
+      if (isForced) {
+        const sent = switchIn(st, "a", i - 1).state;
+        return (runs) => winChance(sent, runs);
+      }
+      return (runs) => choiceWinChance(st, { switchTo: i - 1 }, runs);
+    });
+    setPartyChances(estimators.map(() => null));
+    simulate(estimators, PARTY_RUNS, () => job === partyJob.current, setPartyChances);
   };
 
   // Battle sets (stats and moves) and the pre-battle win chance: the ML model
@@ -487,7 +501,11 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
             partyJob.current++;
             setPhase("command");
           }
-        } else moveCursor("party", battle ? team(battle, "a").length : 0, button, LIST_STEPS);
+        } else {
+          const size = battle ? team(battle, "a").length : 0;
+          // Two columns for bigger teams.
+          moveCursor("party", size, button, size > PARTY_COLUMN ? GRID_STEPS : LIST_STEPS);
+        }
         return true;
       case "playing":
         if (button === "A") {
@@ -760,7 +778,7 @@ function PartyMenu({
   onPick: (i: number) => void;
 }) {
   return (
-    <div className={styles.party} role="menu" aria-label="Your Pokémon">
+    <div className={styles.party} role="menu" aria-label="Your Pokémon" data-compact={members.length > PARTY_COLUMN}>
       <div className={styles.menuTitle}>{forced ? "SEND OUT WHICH POKéMON?" : "POKéMON"}</div>
       {members.map((f, i) => {
         const pct = Math.max(0, Math.min(100, (f.hp / f.maxHp) * 100));

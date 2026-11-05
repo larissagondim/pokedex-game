@@ -17,14 +17,15 @@ interface Props {
   onNotice: (text: string) => void;
 }
 
-type Mode = "single" | "team";
+type Mode = "single" | "team" | "full";
 type Step = "menu" | "record" | "player" | "foeSource" | "foe" | "battle";
 
-const TEAM_SIZE: Record<Mode, number> = { single: 1, team: 3 };
+const TEAM_SIZE: Record<Mode, number> = { single: 1, team: 3, full: 6 };
 
-const MODES = [
-  { label: "SINGLE BATTLE", detail: "1 vs 1. The ML model predicts the winner before you start." },
-  { label: "TEAM BATTLE", detail: "3 vs 3. Switch Pokémon, use items; the last one standing wins." },
+const MODES: { label: string; detail: string; mode?: Mode }[] = [
+  { label: "SINGLE BATTLE", detail: "1 vs 1. The ML model predicts the winner before you start.", mode: "single" },
+  { label: "TEAM BATTLE", detail: "3 vs 3. Switch Pokémon, use items; the last one standing wins.", mode: "team" },
+  { label: "FULL BATTLE", detail: "6 vs 6, a full team each, like a real trainer battle.", mode: "full" },
   { label: "RECORD", detail: "Your wins and losses." },
 ];
 const FOE_SOURCES = [
@@ -69,7 +70,7 @@ export function BattleScreen({ active, onNotice }: Props) {
     if (step === "menu") onNotice("BATTLE! ▲▼ choose   A: OK");
     else if (step === "player" && size === 1) onNotice("Choose your Pokémon! ★ favorites come first. ▲ on the top row: search.");
     else if (step === "player") {
-      onNotice(playerTeam.length ? `Team: ${names(playerTeam)}. Choose #${playerTeam.length + 1}! B: undo` : "Choose 3 Pokémon for your team! ★ favorites first.");
+      onNotice(playerTeam.length ? `Team: ${names(playerTeam)}. Choose #${playerTeam.length + 1}! B: undo` : `Choose ${size} Pokémon for your team! ★ favorites first.`);
     } else if (step === "foeSource") onNotice("Who will you battle? B: back");
     else if (step === "foe") {
       onNotice(size === 1 ? "Now choose your opponent! B: back" : `Choose the foe team (${foeTeam.length + 1}/${size}). B: undo`);
@@ -111,7 +112,7 @@ export function BattleScreen({ active, onNotice }: Props) {
     return (
       <BattleMenu
         key="foeSource"
-        title={`${names(playerTeam)} VS ...?`}
+        title={size === 1 ? `${names(playerTeam)} VS ...?` : `${size} VS ${size}: WHO WILL YOU BATTLE?`}
         options={FOE_SOURCES}
         active={active}
         onPick={(i) => (i === 0 ? setStep("foe") : startBattle(randomPicks(list, size)))}
@@ -181,8 +182,9 @@ export function BattleScreen({ active, onNotice }: Props) {
       options={MODES}
       active={active}
       onPick={(i) => {
-        if (i === 2) return setStep("record");
-        setMode(i === 0 ? "single" : "team");
+        const chosen = MODES[i].mode;
+        if (!chosen) return setStep("record");
+        setMode(chosen);
         setPlayerTeam([]);
         setFoeTeam([]);
         setStep("player");

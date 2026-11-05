@@ -441,6 +441,9 @@
 
 /* Title above the picker's search field. */
 .pickerTitle {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   margin-bottom: 4px;
   padding: 2px 8px;
   background: var(--red);
@@ -459,6 +462,7 @@
   z-index: 3;
   display: grid;
   min-width: 300px;
+  max-width: calc(100% - 40px);
   padding: 6px 14px 10px;
   background: #f8f8e8;
   transform: translate(-50%, -58%);
@@ -470,6 +474,9 @@
 }
 
 .menuTitle {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   margin: 0 -8px 6px;
   padding: 2px 8px;
   background: var(--red);
@@ -602,6 +609,32 @@
   color: var(--red);
   font-size: 10px;
 }
+
+/* 4-6 Pokémon: two columns of shorter cards (name and chance over the HP bar). */
+.party[data-compact="true"] {
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+
+.party[data-compact="true"] .menuTitle {
+  grid-column: 1 / -1;
+}
+
+.party[data-compact="true"] .partyRow {
+  grid-template-columns: 14px 44px 1fr auto;
+  grid-template-areas:
+    "cur icon name chance"
+    "cur icon hp hp";
+  gap: 0 4px;
+  height: 74px;
+  padding-right: 8px;
+}
+
+.party[data-compact="true"] .partyRow > .moveCursor { grid-area: cur; }
+.party[data-compact="true"] .partyIcon { grid-area: icon; width: 44px; height: 44px; }
+.party[data-compact="true"] .partyName { grid-area: name; font-size: 12px; }
+.party[data-compact="true"] .partyChance { grid-area: chance; }
+.party[data-compact="true"] .partyHp { grid-area: hp; font-size: 10px; }
 
 .partyChance {
   font-family: var(--font-pixel), monospace;

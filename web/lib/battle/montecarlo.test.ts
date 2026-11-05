@@ -65,3 +65,9 @@ test("the chance of each choice: a wasted turn costs, and a switch can be evalua
   // Switching also gives up the attack this turn.
   assert.ok(swap < attack, `switch ${swap} vs attack ${attack}`);
 });
+
+test("6v6: a mirror of full teams is close to 50% and every battle finishes", () => {
+  const six = () => Array.from({ length: 6 }, () => mon({}));
+  const p = winChance(createTeamBattle(six(), six()), 200, mulberry(6));
+  assert.ok(p > 0.35 && p < 0.65, String(p));
+});
