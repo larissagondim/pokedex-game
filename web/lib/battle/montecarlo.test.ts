@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createBattle, createTeamBattle } from "./engine.ts";
-import { winChance } from "./montecarlo.ts";
+import { choiceWinChance, winChance } from "./montecarlo.ts";
 import type { BattleMove, BattlePokemon } from "./types.ts";
 
 const tackle: BattleMove = { id: "tackle", name: "Tackle", type: "normal", power: 40, category: "physical", accuracy: 1, priority: 0, pp: 35 };
+const move = (over = {}) => ({ id: "tackle", name: "Tackle", type: "normal", power: 40, category: "physical" as const, accuracy: 1, priority: 0, pp: 35, ...over });
 const mon = (over: Partial<BattlePokemon>): BattlePokemon => ({
   name: "Mon",
   dexId: 1,
@@ -52,4 +53,15 @@ test("teams: three against one strong-enough Pokémon wins more often than one a
   const solo = winChance(createBattle(mon({}), foe), 200, mulberry(4));
   const trio = winChance(createTeamBattle([mon({}), mon({}), mon({})], [foe]), 200, mulberry(4));
   assert.ok(trio > solo + 0.2, `${solo} → ${trio}`);
+});
+
+test("the chance of each choice: a wasted turn costs, and a switch can be evaluated", () => {
+  const splash = { id: "splash", name: "Splash", type: "normal", power: 0, category: "status" as const, accuracy: 1, priority: 0, pp: 40 };
+  const st = createTeamBattle([mon({ moves: [move(), splash] }), mon({})], [mon({}), mon({})]);
+  const attack = choiceWinChance(st, 0, 400, mulberry(5));
+  const wasted = choiceWinChance(st, 1, 400, mulberry(5));
+  const swap = choiceWinChance(st, { switchTo: 0 }, 400, mulberry(5));
+  assert.ok(wasted < attack - 0.05, `splash ${wasted} vs attack ${attack}`);
+  // Switching also gives up the attack this turn.
+  assert.ok(swap < attack, `switch ${swap} vs attack ${attack}`);
 });

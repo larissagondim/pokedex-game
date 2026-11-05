@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDexNumber, type Pokemon } from "@/data/pokedex";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { chooseAction, chooseReplacement } from "@/lib/battle/ai";
-import { winChance } from "@/lib/battle/montecarlo";
+import { choiceWinChance, winChance } from "@/lib/battle/montecarlo";
 import { effectiveness } from "@/lib/typeChart";
 import {
   type BattleEvent,
@@ -44,6 +44,8 @@ const LOW_HP = 0.2;
 /** Simulations per live win-chance update, run in chunks so the screen stays responsive. */
 const LIVE_RUNS = 600;
 const LIVE_CHUNK = 100;
+/** Simulations per option on the party screen (each switch is estimated separately). */
+const PARTY_RUNS = 300;
 /** D-pad in the 2×2 menus. */
 const GRID_STEPS: Partial<Record<DeviceButton, number>> = { UP: -2, DOWN: 2, LEFT: -1, RIGHT: 1 };
 /** D-pad in the bag and party lists. */
@@ -116,8 +118,11 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   const shownHp = useRef<Record<Side, { hp: number; max: number }>>({ a: { hp: 0, max: 1 }, b: { hp: 0, max: 1 } });
   /** The Pokémon on the field as the playback shows it (for names in messages). */
   const shownId = useRef<Record<Side, number>>({ a: player[0].id, b: foe[0].id });
-  /** Bumped to cancel an in-progress live estimate. */
+  /** Win chance if each party row is sent out / switched in (null while estimating). */
+  const [partyChances, setPartyChances] = useState<(number | null)[]>([]);
+  /** Bumped to cancel an in-progress live estimate (and the party estimates). */
   const liveJob = useRef(0);
+  const partyJob = useRef(0);
   const playback = useRef<{ events: BattleEvent[]; final: BattleState; index: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -151,6 +156,35 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     setTimeout(step, 0);
   };
 
+  /**
+   * On the party screen: the win chance for each Pokémon you could send out.
+   * Forced (yours fainted): the battle with that one sent in. By choice: that
+   * switch as this turn's action, against the foe's reply; the Pokémon already
+   * out shows the current chance. Chunks of simulations per option, refined
+   * in turns so all the numbers fill in together.
+   */
+  const estimateParty = (st: BattleState, isForced: boolean) => {
+    const job = ++partyJob.current;
+    const members = team(st, "a");
+    const totals = members.map(() => 0);
+    let done = 0;
+    setPartyChances(members.map(() => null));
+    const step = () => {
+      if (job !== partyJob.current) return;
+      done += LIVE_CHUNK;
+      const chances = members.map((f, i) => {
+        if (f.hp <= 0 || (isForced && i === 0)) return null;
+        if (i === 0) totals[0] += winChance(st, LIVE_CHUNK) * LIVE_CHUNK;
+        else if (isForced) totals[i] += winChance(switchIn(st, "a", i - 1).state, LIVE_CHUNK) * LIVE_CHUNK;
+        else totals[i] += choiceWinChance(st, { switchTo: i - 1 }, LIVE_CHUNK) * LIVE_CHUNK;
+        return totals[i] / done;
+      });
+      setPartyChances(chances);
+      if (done < PARTY_RUNS) setTimeout(step, 0);
+    };
+    setTimeout(step, 0);
+  };
+
   // Battle sets (stats and moves) and the pre-battle win chance: the ML model
   // for a single battle, a simulation of the whole battle for teams.
   const playerKey = player.map((p) => p.id).join();
@@ -180,6 +214,8 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
       // A counter, not a DOM ref: bumping it cancels the running estimate.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       liveJob.current++;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      partyJob.current++;
     };
     // The keys stand for the teams (new arrays on every render of the parent).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -270,6 +306,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   };
 
   const play = (events: BattleEvent[], final: BattleState) => {
+    partyJob.current++;
     playback.current = { events, final, index: 0 };
     setPhase("playing");
     playNext();
@@ -282,6 +319,9 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     if (final.winner) return gameOver(final);
     // Your Pokémon fainted: choose the next one (the foe's replacement comes after).
     if (needsReplacement(final, "a")) {
+      // The live chance drops right away (assuming the best replacement).
+      updateLive(final);
+      estimateParty(final, true);
       setForced(true);
       setCursor((c) => ({ ...c, party: 1 + final.bench.a.findIndex((f) => f.hp > 0) }));
       setPhase("party");
@@ -364,6 +404,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
         onNotice("Use which item? B: back");
         return;
       case "POKéMON":
+        if (!single) estimateParty(battle, false);
         setForced(false);
         setCursor((c) => ({ ...c, party: 0 }));
         setPhase("party");
@@ -442,7 +483,10 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
         if (button === "A") sendOut(cursor.party);
         else if (button === "B") {
           if (forced) onNotice("Choose a Pokémon to send out!");
-          else setPhase("command");
+          else {
+            partyJob.current++;
+            setPhase("command");
+          }
         } else moveCursor("party", battle ? team(battle, "a").length : 0, button, LIST_STEPS);
         return true;
       case "playing":
@@ -535,6 +579,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
       {phase === "party" && battle && (
         <PartyMenu
           members={team(battle, "a")}
+          chances={partyChances}
           selected={cursor.party}
           forced={forced}
           onPick={(i) => {
@@ -700,7 +745,20 @@ function BagMenu({ bag, selected, onPick }: { bag: Record<ItemId, number>; selec
 }
 
 /** Your team: the Pokémon out first, then the bench. */
-function PartyMenu({ members, selected, forced, onPick }: { members: Fighter[]; selected: number; forced: boolean; onPick: (i: number) => void }) {
+function PartyMenu({
+  members,
+  chances,
+  selected,
+  forced,
+  onPick,
+}: {
+  members: Fighter[];
+  /** Win chance with each one out (null: estimating or not an option). */
+  chances: (number | null)[];
+  selected: number;
+  forced: boolean;
+  onPick: (i: number) => void;
+}) {
   return (
     <div className={styles.party} role="menu" aria-label="Your Pokémon">
       <div className={styles.menuTitle}>{forced ? "SEND OUT WHICH POKéMON?" : "POKéMON"}</div>
@@ -724,6 +782,13 @@ function PartyMenu({ members, selected, forced, onPick }: { members: Fighter[]; 
             <span className={styles.partyName}>
               {f.name.toUpperCase()}
               {i === 0 && <small> IN BATTLE</small>}
+            </span>
+            <span className={styles.partyChance} title="Win chance with this Pokémon out (simulated)">
+              {chances.length > 0 && f.hp > 0 && !(forced && i === 0) && (
+                <>
+                  WIN <b>{chances[i] == null ? "…" : `${Math.round(chances[i]! * 100)}%`}</b>
+                </>
+              )}
             </span>
             <span className={styles.partyHp}>
               {f.hp <= 0 ? (

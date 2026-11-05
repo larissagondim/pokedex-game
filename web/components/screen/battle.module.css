@@ -557,7 +557,7 @@
 
 .partyRow {
   display: grid;
-  grid-template-columns: 16px 56px 1fr 220px;
+  grid-template-columns: 16px 56px 1fr 78px 200px;
   align-items: center;
   gap: 6px;
   height: 62px;
@@ -601,6 +601,16 @@
   display: block;
   color: var(--red);
   font-size: 10px;
+}
+
+.partyChance {
+  font-family: var(--font-pixel), monospace;
+  font-size: 11px;
+  text-align: right;
+}
+
+.partyChance b {
+  color: var(--red);
 }
 
 .partyHp {
