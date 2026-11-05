@@ -88,7 +88,7 @@ Inside `web`, the app is split into three layers:
 - **Stores (zustand):** `deviceInput` (button events, hold-to-repeat and subscriptions), `deviceState` (phase state machine: `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex` (loading, focus, selection and cries), `favorites` and `tamagotchi` (both persisted in `localStorage`) and `audio` (mute and unlock).
 - **Device (`components/device`):** the procedural 3D shell, hinge, buttons and camera rig. The scene is loaded lazily. Conventions for working on it are in [`CLAUDE.md`](CLAUDE.md).
 - **Screen (`components/screen`):** the 2D UI rendered inside the main screen. It subscribes to device input with higher priority than the device controller, so the UI gets the first say on each button.
-- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing (filters and sorting), fun facts, Tamagotchi rules, sound and music synthesis, the 1v1 battle engine (`lib/battle`), and the battle features and type chart shared with the ML pipeline.
+- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing (filters and sorting), fun facts, Tamagotchi rules, sound and music synthesis, the battle engine for 1v1 and 3v3 (`lib/battle`: rules, AI and Monte Carlo), and the battle features and type chart shared with the ML pipeline.
 
 ## Stack
 
@@ -118,18 +118,18 @@ pokedex-game/
 │   ├── components/
 │   │   ├── device/         # 3D shell; all measurements in device.config.ts
 │   │   └── screen/         # Pokédex UI inside the 4:3 screen
-│   ├── hooks/              # keyboard/gamepad input, device controller and layout, sound, music, screen power
-│   ├── stores/             # zustand stores (deviceInput, deviceState, pokedex, favorites, tamagotchi, audio)
-│   ├── lib/                # search, regions, listing, fun facts, Tamagotchi rules, sound/music, battle features, battle/ (the 1v1 engine) (+ tests)
+│   ├── hooks/              # keyboard/gamepad input, device controller and layout, sound, music, screen power, Tamagotchi alert
+│   ├── stores/             # zustand stores (deviceInput, deviceState, pokedex, favorites, tamagotchi, battleRecord, audio)
+│   ├── lib/                # search, regions, listing, fun facts, Tamagotchi rules, sound/music, battle features, battle/ (engine, AI, Monte Carlo) (+ tests)
 │   ├── data/               # Pokémon types and helpers
 │   ├── scripts/
 │   │   └── sync-assets.mjs # copies images and builds public/data/pokedex.json
 │   └── AGENTS.md           # guidance for coding agents
 ├── ml/                     # win prediction (see ml/README.md)
 │   ├── generate/           # Node: simulates battles with @pkmn/sim and writes the datasets
-│   ├── pokedex_ml/         # Python: training, Monte Carlo evaluation, FastAPI
+│   ├── pokedex_ml/         # Python: training (hard and soft labels), Monte Carlo evaluation, FastAPI
 │   ├── tests/              # pytest
-│   └── reports/            # metrics.json, montecarlo.json
+│   └── reports/            # metrics.json, montecarlo.json, soft.json
 ├── CLAUDE.md               # conventions for coding agents (commits, 3D device)
 ├── docker-compose.yml      # (planned) web, ml, db
 ├── .env.example            # (planned)
@@ -201,11 +201,11 @@ Planned environment variables for `.env.example` (names may change):
 
 Full details, commands and results in [`ml/README.md`](ml/README.md). In short:
 
-1. **Battle state contract:** `BattleSnapshot` in `web/lib/battleFeatures.ts` is the engine-neutral 1v1 state. The features (turns to KO with the damage formula, damage share, turn order, damage race, HP, type advantage, stats, status) are computed there, once, and shared by the dataset generator and the app.
-2. **Dataset:** `ml/generate` simulates thousands of battles through a `BattleEngine` interface. Today the adapter is `@pkmn/sim` (Showdown, gen 9); the project's own engine (`web/lib/battle`) will get its own adapter, so the model learns its rules. Greedy agents play both sides; every turn is a row, mirrored from the other side so the model is symmetric.
-3. **Training:** logistic regression vs. gradient boosting, cross-validated **by battle** (GroupKFold), with log loss, Brier, AUC, calibration and a test on species never seen in training. Pre-battle model: AUC 0.93, calibration error 0.14%, against 0.79 for a "who wins the damage race" heuristic.
-4. **Comparison with Monte Carlo:** replaying fixed matchups hundreds of times; the model is thousands of times faster with a mean error of 0.12 against it.
-5. **Serving:** the trees are exported to JSON and evaluated in the browser (`web/lib/winModel.ts`, tested to match scikit-learn), so the battle screen works without a server. FastAPI (`/predict`) is used instead when `NEXT_PUBLIC_ML_API_URL` is set.
+1. **Battle state contract:** `BattleSnapshot` in `web/lib/battleFeatures.ts` is the engine-neutral 1v1 state. The features (turns to KO with the damage formula, damage share, turn order, damage race, HP, type advantage, stats, status, plus moveset features: accuracy, priority, healing, setup and usable status moves) are computed there, once, and shared by the dataset generator and the app.
+2. **First version (hard labels):** `ml/generate` simulated ~80,000 battles with `@pkmn/sim` (Showdown, gen 9), every turn a row mirrored from the other side. Gradient boosting reached AUC 0.93 with ~0.14% calibration error, against 0.79 for a "who wins the damage race" heuristic, cross-validated **by battle** (GroupKFold) and tested on species never seen in training.
+3. **Shipped model (soft labels):** the model is trained on **the battles the app actually plays**: the project's own engine and movesets. Each of 25,000 random matchups is simulated 100 times with the AI on both sides, and the **win rate** is the label. Mean error 0.065 against 1,000-simulation estimates (correlation 0.96), down from 0.077.
+4. **Serving:** the trees are exported to JSON and evaluated in the browser (`web/lib/winModel.ts`, tested to match scikit-learn), so the battle screen works without a server. FastAPI (`/predict`) is used instead when `NEXT_PUBLIC_ML_API_URL` is set.
+5. **During the fight:** after every turn the win chance is re-estimated with a Monte Carlo run of the rest of the battle in the browser (`web/lib/battle/montecarlo.ts`, refined in chunks and cancelled when a newer turn arrives). At the first turn it agrees closely with the model.
 
 ## Data structures and algorithms
 
