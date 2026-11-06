@@ -1,137 +1,133 @@
 # Pokédex Game
 
-An interactive 3D Pokédex with battles, machine-learning win prediction and a Tamagotchi. A non-profit fan project built for portfolio and learning purposes, developed with **agentic programming** using [Claude Code](https://claude.com/claude-code).
+An interactive 3D Pokédex with turn-based battles, in-browser win-probability prediction and a Tamagotchi. Built as a portfolio project with a procedural React Three Fiber device, a hand-written battle engine and a machine-learning pipeline.
 
-> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, a **battle screen** with the pre-battle win chance (a model that runs in the browser) and a **trainer profile**. You can already **fight 1v1, 3v3 or 6v6** on a hand-built, tested battle engine. Still to come: Docker and a database. Anything marked _(planned)_ below is not implemented yet.
+> Non-profit fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company. See the [legal notice](#legal-notice).
+
+**Status:** in development. The scraper, the 3D device, the Pokédex, the Tamagotchi, the trainer profile and 1v1 / 3v3 / 6v6 battles with win prediction are working. Docker and a database are planned (marked _(planned)_ below).
 
 ## Table of contents
 
-- [Built with agentic programming](#built-with-agentic-programming)
+- [Highlights](#highlights)
 - [Features](#features)
-- [Screenshots](#screenshots)
 - [Architecture](#architecture)
-- [Stack](#stack)
+- [Tech stack](#tech-stack)
 - [Project structure](#project-structure)
 - [Getting started](#getting-started)
-- [Training the model](#training-the-model)
-- [Data structures and algorithms](#data-structures-and-algorithms)
-- [Roadmap](#roadmap)
 - [Controls](#controls)
+- [Win-prediction model](#win-prediction-model)
+- [Data structures and algorithms](#data-structures-and-algorithms)
+- [Development workflow](#development-workflow)
+- [Roadmap](#roadmap)
 - [Legal notice](#legal-notice)
 - [Credits](#credits)
 
-## Built with agentic programming
+## Highlights
 
-This project is developed in pair with an AI coding agent (Claude Code). The workflow:
-
-- **I set the direction:** the product idea, the roadmap, the design decisions and the review of every change.
-- **The agent does the legwork:** it reads the codebase, proposes and implements changes, runs the linter and the dev server, and fixes what breaks.
-- **Small, reviewable commits:** work is split into focused steps and committed with [Conventional Commits](https://www.conventionalcommits.org/) (`feat(screen): ...`, `fix(screen): ...`, `chore(web): ...`).
-- **Agent guidance lives in the repo:** [`web/AGENTS.md`](web/AGENTS.md) tells coding agents to read the bundled Next.js docs before writing code, since this Next.js version has breaking changes compared to older releases.
-
-The commit history shows how the project grew step by step: scraper, web scaffold, input system, retro UI prototype, 3D shell, the Pokédex (search, regions, filters, fun facts), the Tamagotchi, and the win-prediction pipeline. Conventions for agents are in [`CLAUDE.md`](CLAUDE.md).
+- **Procedural 3D device** with a spring hinge, pressable buttons, a zoom camera, positional sound and a phone layout. No external model needed.
+- **Full Pokédex** for all 1025 Pokémon (generations 1 to 9): prefix search, regions with music, filters, favorites and generated fun facts.
+- **Own battle engine** in pure TypeScript with standard gen 5+ rules, a foe AI and unit tests. Supports 1v1, 3v3 and 6v6.
+- **Win prediction** by a gradient-boosting model that runs entirely in the browser, plus a live Monte Carlo re-estimate every turn.
+- **Tamagotchi and trainer profile** with evolution, eggs, coins, a customizable pixel sprite and a trainer card.
 
 ## Features
 
-| Feature | Description | Status |
-| --- | --- | --- |
-| Data scraping | Script that downloads data, sprites, artwork and animated sprites for all 1025 Pokémon (generations 1 to 9) from PokéAPI and Pokémon Showdown | ✅ Done |
-| 3D device | Original red device built procedurally with React Three Fiber, with every measurement in `device.config.ts`. The screen half opens to the left like a book cover on a spring hinge; idle float while closed; retro boot animation; status LED; secondary screen with the focused Pokémon. Drag to rotate, zoom into the main screen. Physical buttons (D-pad, A, B, MENU, ZOOM) are pressable in 3D | ✅ Done |
-| Phone layout | On touch screens in portrait, all the buttons move next to the screen on one half, the lid opens flat and the camera frames just that half (rotation off, so a finger on a button doesn't turn the device). It zooms into the screen as soon as the device opens. Force it with `?layout=compact` (or `?layout=split`) | ✅ Done |
-| Input system | Keyboard, gamepad and 3D buttons emit the same events through a priority-based handler stack. Held directions repeat | ✅ Done |
-| Sound | Synthesized UI blips (WebAudio) and Pokémon cries played from the speaker grill (positional audio). Mute button; audio starts after the first interaction | ✅ Done |
-| Pokédex screen | 4:3 retro handheld UI inside the device. Scrollable list of all 1025 Pokémon with a preview panel, and a detail page with animated sprite, types, base stats, height, weight, abilities and a typewriter-style dialog box with the dex entry. Respects `prefers-reduced-motion` | ✅ Done |
-| Search | Search by name prefix (binary search, results A→Z) or by number (`25`, `#25`). Type with the real keyboard (`/` focuses the field) or with the device buttons on an on-screen keyboard | ✅ Done |
-| Regions and music | The list shows the region of the focused Pokémon (Kanto … Paldea, by dex number); ◀ ▶ jump between regions. Each region has its own background music, which crossfades when the cursor crosses a region boundary. The themes are original synthesized chiptune loops (no game music is bundled); your own recordings can be mapped per region in `web/lib/music.ts`. Battles have three driving themes with drums and arpeggios: two picked at random per battle and a heavier one for legendary and mythical foes | ✅ Done |
-| Filters, sorting and favorites | Options row above the list: filter by type or ★ favorites, sort by number, name or base stat total. Rows show a mini sprite, type dots and the searched prefix highlighted. Favorites (MENU on a Pokémon page) are saved in `localStorage`. Jumping past Paldea shows a "Gen X: coming soon" slot | ✅ Done |
-| Fun facts | Each Pokémon page ends with three "Did you know?" facts computed from the data by comparing it with all 1025 Pokémon: stat total ranking, top-1% stats, rare typings ("the only Bug/Ghost Pokémon"), size extremes or weight in Pikachu, catch rate, branched evolutions… (`web/lib/funFacts.ts`) | ✅ Done |
-| Battle screen | BATTLE tab: a menu (single battle 1v1, team battle 3v3, full battle 6v6, record), then choose your Pokémon (or a team of three or six) and then the opponent (chosen or random) (★ favorites first, then your Tamagotchi party; searchable with the on-screen keyboard or `/`), then see yours from the back against the opponent, on a backdrop picked from the foe's type (field, sea, snow, volcano, rocky, cave, mystic, sky, power), with status boxes, the **pre-battle win chance** and an original battle theme. Then you fight from the classic FIGHT / BAG / POKéMON / RUN menu: pick a move from a 2×2 menu (type, PP, power and SUPER EFFECTIVE / NOT VERY EFFECTIVE hints against the foe), use a Super Potion or Full Heal, or switch Pokémon; the foe answers, and the turn plays back event by event (messages, HP bars, hits, sounds; A skips ahead). Winning pays 15 coins per foe Pokémon for the Tamagotchi shop, and if your Pokémon is in your Tamagotchi party it gains XP and joy (and can evolve). Each Pokémon keeps a win/loss record, shown before the fight. During the fight a live win chance is re-estimated every turn by simulating the rest of the battle 600 times in the browser, a slice per frame (Monte Carlo with the same engine and AI); warning beeps play when your Pokémon drops below 20% HP. MENU can't switch tabs mid-fight. 16-bit look with flat sky bands, dithered ground, segmented HP bars and scanlines | ✅ Done |
-| 1v1 battle engine | Pure TypeScript engine built by hand (`web/lib/battle`), no `@pkmn/sim` at runtime. Standard gen 5+ rules: priority then speed (paralysis halves it), damage formula with the 85–100% roll, STAB, type chart, critical hits, accuracy, stat stages, PP; burn, paralysis, poison, bad poison and sleep with type immunities; drain, recoil, healing, multi-hit, fixed-damage moves and chance effects; flinch, confusion, Protect, Leech Seed, locked moves (Outrage) and recharge turns (Hyper Beam); type-based move immunities (Thunder Wave vs Ground, powders vs Grass); special moves common in the sets (Fake Out and First Impression on the first turn only, Sucker Punch, Focus Punch, Rest, Super Fang, Pain Split, Belly Drum, Haze). Abilities and items are not modeled, and moves with other effects (Substitute...) just fail. `runTurn` returns the new state plus the events for the screen to play back. A greedy AI picks the foe's moves: it takes the surest KO when it has one and never wastes status moves that wouldn't work. Unit-tested | ✅ Done |
-| 3v3 and 6v6 battles | Teams of three or six: switching (it takes the turn and goes before moves; stat changes and volatile effects reset), items, a party screen to send out the next Pokémon when one faints, ball rows showing who is left, and the win chance of each possible switch on the party screen (two columns for six). The foe AI sends out its best matchup and switches out of losing ones. The pre-battle team win chance is simulated (Monte Carlo), since the ML model is 1v1 | ✅ Done |
-| Win prediction | Win chance **before the battle**, shown on the battle screen. Gradient boosting trained on the app's own battles (its engine and movesets) with **soft labels**: each of 25,000 matchups simulated 100 times, the win rate as the target. Mean error 0.065 against 1,000-simulation estimates (correlation 0.96). Exported to JSON and run **in the browser**; FastAPI is optional. During the fight a live Monte Carlo estimate takes over | ✅ Done |
-| Tamagotchi | Adopt up to 5 Pokémon from the list (A at the end of a Pokémon page, or ♥ ADOPT). Food, joy and energy decay with real time; feed, play, sleep and train them. XP raises the level and they **evolve** (babies also need to be happy). Coins earned by playing and training buy **eggs** that hatch into a random base-stage or baby Pokémon. Hearts when happy, mood bubbles, reactions per action, idle animation by evolution stage, and clicking one plays its cry. A blinking "!" on the tab when one is hungry, tired or sad, or an egg is ready. Saved in `localStorage` | ✅ Done (v1) |
-| Trainer profile | TRAINER tab: pick a name (on-screen keyboard or the real one) and design an original 24×40 pixel sprite, shaded and outlined automatically: skin, hair style and color, eye color, hat (cap, wide-brimmed hat with a band, beanie), top (jacket, tee, hoodie, sleeveless), bottom (pants, shorts, high-waisted skirt), shoes and an extra (shoulder bag, glasses), each in a choice of colors, or a random look. The trainer card ties the rest of the game together: a rank earned from battle wins (Rookie → Champion), total wins and losses, your best battle partner, the Tamagotchi party, favorites, coins and the start date. The secondary screen shows your name and ID on this tab. Saved in `localStorage` (`web/lib/trainer.ts`, unit-tested) | ✅ Done |
+### Device and interface
 
+| Area | Description |
+| --- | --- |
+| 3D device | Original red handheld built with React Three Fiber. The screen half opens like a book cover on a spring hinge, with idle float, boot animation, status LED and a secondary screen. Drag to rotate, zoom into the main screen. Every measurement lives in `device.config.ts`. |
+| Phone layout | On touch screens in portrait, the controls move next to the screen, the lid opens flat and the camera frames one half. Force it with `?layout=compact` or `?layout=split`. |
+| Input | Keyboard, gamepad and 3D buttons emit the same events through a priority-based handler stack. Held directions repeat. |
+| Sound | Synthesized UI sounds and music (WebAudio), and Pokémon cries played from the speaker grill. Nothing from the games is bundled. |
+| Accessibility | Respects `prefers-reduced-motion`: no float, instant hinge and camera, no boot animation. |
 
-## Screenshots
+### Pokédex
 
-_Placeholders. They will be added as the screens are finished._
+| Area | Description |
+| --- | --- |
+| Browse | Scrollable list with a preview panel and a detail page: animated sprite, types, base stats, height, weight, abilities and a typewriter dex entry. |
+| Search | Prefix search by name (binary search, A→Z) or lookup by number (`25`, `#25`). Real keyboard (`/` to focus) or on-screen keyboard. |
+| Regions and music | Region of the focused Pokémon, jump between regions with ◀ ▶, and crossfading chiptune loops per region. |
+| Filters and favorites | Filter by type or ★ favorites, sort by number, name or base stat total. Favorites persist in `localStorage`. |
+| Fun facts | Three "Did you know?" facts per Pokémon, computed by comparing it with all 1025 (stat rankings, rare typings, size extremes, catch rate…). |
 
-| 3D device | Pokédex list | Details |
-| --- | --- | --- |
-| ![3D device](docs/screenshots/shell.png) | ![List](docs/screenshots/list.png) | ![Details](docs/screenshots/detail.png) |
+### Battles
 
-| Battle | Win prediction | Tamagotchi |
-| --- | --- | --- |
-| ![Battle](docs/screenshots/battle.png) | ![Prediction](docs/screenshots/prediction.png) | ![Tamagotchi](docs/screenshots/tamagotchi.png) |
+| Area | Description |
+| --- | --- |
+| Modes | Single (1v1), team (3v3) and full (6v6) battles against a chosen or random opponent, with backdrops picked from the foe's type and original battle themes. |
+| Fight menu | Classic FIGHT / BAG / POKéMON / RUN flow with type-effectiveness hints, Super Potions, Full Heals and switching. Turns play back event by event. |
+| Engine | Hand-written, pure TypeScript (`web/lib/battle`). Priority and speed, damage formula, STAB, type chart, crits, accuracy, stat stages, PP, status conditions, drain, recoil, multi-hit, flinch, confusion, Protect, Leech Seed, locked and recharge moves and several special moves. Abilities and items are not modeled. |
+| Foe AI | Greedy: takes the surest KO when available, avoids useless status moves, and in team battles sends out its best matchup and switches out of losing ones. |
+| Win chance | Shown before the fight (ML model) and re-estimated every turn (Monte Carlo, 600 simulations per estimate in the browser). Team win chances are simulated, since the model is 1v1. |
+| Rewards | Coins for the Tamagotchi shop, XP and joy for party members (they can evolve), and a win/loss record per Pokémon. |
+
+### Tamagotchi and trainer
+
+| Area | Description |
+| --- | --- |
+| Tamagotchi | Adopt up to 5 Pokémon. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Coins buy eggs that hatch into random base-stage Pokémon. Alerts when one needs attention. Saved in `localStorage`. |
+| Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card shows rank (Rookie → Champion), wins and losses, best partner, party, favorites, coins and start date. |
 
 ## Architecture
-
-The scraper, the `web` app and the `ml` service exist today. The battle engine runs in the browser (`web/lib/battle`, pure TypeScript, so no API routes are needed). The database and Docker are _(planned)_. The pre-battle win chance runs in the browser from an exported model (`web/public/battle/win-model.json`); the FastAPI service is optional.
 
 ```mermaid
 flowchart LR
     U["Browser"] -->|HTTP| W["web<br/>Next.js + R3F<br/>battle engine in TS"]
-    W -->|REST| M["ml<br/>FastAPI + model"]
-    W -->|SQL| D[("db<br/>Postgres")]
+    W -.->|REST, optional| M["ml<br/>FastAPI + model"]
+    W -.->|SQL, planned| D[("db<br/>Postgres")]
     M -.->|simulated battle dataset| S["@pkmn/sim<br/>dataset generator only"]
     P["PokéAPI + Showdown"] -->|scrape_pokemon.py| J["data/pokemon.json<br/>sprites/ animated/ artwork/"]
     J -->|sync-assets.mjs| W
     J --> M
 ```
 
-Planned Docker Compose services: **web**, **ml** and **db**. For now the Tamagotchi and favorites live in `localStorage`; Postgres comes later for persistence and history.
+The battle engine and the win model run in the browser, so no API routes are needed. The FastAPI service is optional, and Postgres is planned for persistence (for now the Tamagotchi, favorites and trainer live in `localStorage`).
 
-Inside `web`, the app is split into three layers:
+Inside `web`, the code is split into four layers:
 
-- **Stores (zustand):** `deviceInput` (button events, hold-to-repeat and subscriptions), `deviceState` (phase state machine: `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex` (loading, focus, selection and cries), `favorites` and `tamagotchi` (both persisted in `localStorage`) and `audio` (mute and unlock).
-- **Device (`components/device`):** the procedural 3D shell, hinge, buttons and camera rig. The scene is loaded lazily. Conventions for working on it are in [`CLAUDE.md`](CLAUDE.md).
-- **Screen (`components/screen`):** the 2D UI rendered inside the main screen. It subscribes to device input with higher priority than the device controller, so the UI gets the first say on each button.
-- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing (filters and sorting), fun facts, Tamagotchi rules, sound and music synthesis, the battle engine for 1v1 and 3v3 (`lib/battle`: rules, AI and Monte Carlo), and the battle features and type chart shared with the ML pipeline.
+- **Stores (zustand):** `deviceInput` (button events, repeat, subscriptions), `deviceState` (phase machine `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex`, `favorites`, `tamagotchi`, `battleRecord` and `audio`.
+- **Device (`components/device`):** procedural 3D shell, hinge, buttons and camera rig, loaded lazily.
+- **Screen (`components/screen`):** the 2D UI rendered inside the main screen. It subscribes to input with higher priority than the device controller, so the UI gets the first say on each button.
+- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing, fun facts, Tamagotchi rules, trainer, sound and music synthesis, the battle engine (rules, AI, Monte Carlo) and the battle features shared with the ML pipeline.
 
-## Stack
+## Tech stack
 
 | Layer | Technologies |
 | --- | --- |
 | Front end | Next.js 16 (App Router), React 19, TypeScript, React Three Fiber, drei, three.js, camera-controls, zustand |
-| Battle | Own TypeScript engine (`web/lib/battle`); `@pkmn/sim` only to generate the ML dataset |
-| ML | Python, scikit-learn, pandas, FastAPI; dataset generator in Node with `@pkmn/sim` |
-| Persistence | `localStorage` today; Postgres _(planned)_ for the Tamagotchi and history |
-| Infra _(planned)_ | Docker and Docker Compose |
+| Battle | Own TypeScript engine; `@pkmn/sim` only to generate the ML dataset |
+| ML | Python, scikit-learn, pandas, FastAPI; Node dataset generator with `@pkmn/sim` |
+| Persistence | `localStorage` today; Postgres _(planned)_ |
+| Infrastructure | Docker and Docker Compose _(planned)_ |
 | Data scraping | Python 3, standard library only |
 
 ## Project structure
 
-Entries marked _(planned)_ do not exist yet.
-
 ```
 pokedex-game/
 ├── scrape_pokemon.py       # scrapes data and images from PokéAPI / Showdown
-├── data/
-│   └── pokemon.json        # 1025 Pokémon (raw cache in data/cache/, git-ignored)
-├── sprites/                # <id>.png, small sprite (back/ has the back views)
-├── artwork/                # <id>.png, high-resolution official artwork
-├── animated/               # <id>.gif, animated sprite (back/ has the back views; git-ignored)
+├── data/pokemon.json       # 1025 Pokémon (raw cache in data/cache/, git-ignored)
+├── sprites/  artwork/      # static sprites (with back views) and official artwork
+├── animated/               # animated sprites (git-ignored)
 ├── web/                    # Next.js app
 │   ├── app/                # App Router entry
 │   ├── components/
 │   │   ├── device/         # 3D shell; all measurements in device.config.ts
-│   │   └── screen/         # Pokédex UI inside the 4:3 screen
-│   ├── hooks/              # keyboard/gamepad input, device controller and layout, sound, music, screen power, Tamagotchi alert
-│   ├── stores/             # zustand stores (deviceInput, deviceState, pokedex, favorites, tamagotchi, battleRecord, audio)
-│   ├── lib/                # search, regions, listing, fun facts, Tamagotchi rules, sound/music, battle features, battle/ (engine, AI, Monte Carlo) (+ tests)
-│   ├── data/               # Pokémon types and helpers
-│   ├── scripts/
-│   │   └── sync-assets.mjs # copies images and builds public/data/pokedex.json
+│   │   └── screen/         # UI inside the 4:3 screen
+│   ├── hooks/              # input, device controller and layout, sound, music, Tamagotchi alert
+│   ├── stores/             # zustand stores
+│   ├── lib/                # search, regions, listing, fun facts, Tamagotchi, trainer, audio, battle/ (+ tests)
+│   ├── scripts/            # sync-assets.mjs: copies images, builds public/data/pokedex.json
 │   └── AGENTS.md           # guidance for coding agents
 ├── ml/                     # win prediction (see ml/README.md)
-│   ├── generate/           # Node: simulates battles with @pkmn/sim and writes the datasets
-│   ├── pokedex_ml/         # Python: training (hard and soft labels), Monte Carlo evaluation, FastAPI
+│   ├── generate/           # Node: simulates battles with @pkmn/sim, writes datasets
+│   ├── pokedex_ml/         # Python: training, Monte Carlo evaluation, FastAPI
 │   ├── tests/              # pytest
-│   └── reports/            # metrics.json, montecarlo.json, soft.json
-├── CLAUDE.md               # conventions for coding agents (commits, 3D device)
-├── docker-compose.yml      # (planned) web, ml, db
-├── .env.example            # (planned)
+│   └── reports/            # metrics
+├── CLAUDE.md               # conventions for coding agents
+├── docker-compose.yml      # (planned)
 └── README.md
 ```
 
@@ -139,22 +135,16 @@ pokedex-game/
 
 ### 1. Scrape the data
 
-Requires only Python 3, no dependencies to install.
+Requires Python 3 and no extra dependencies.
 
 ```bash
 python3 scrape_pokemon.py              # all 1025 Pokémon
 python3 scrape_pokemon.py --limit 151  # first generation only
-python3 scrape_pokemon.py --no-images  # JSON only, no images
+python3 scrape_pokemon.py --no-images  # JSON only
 python3 scrape_pokemon.py --workers 4  # fewer parallel requests
 ```
 
-The script is resumable: API responses are cached in `data/cache/` and images already downloaded are skipped. Alternate forms (mega, regional, etc.) are not included, only the default forms. Animated GIFs come from PokéAPI's Showdown sprites; for Pokémon it lacks, the scraper tries Showdown's Gen 5 style GIFs (`sprites/gen5ani/`). That leaves 1017 of 1025 animated; the other 8 (#990, #991, #993, #1010, #1017, #1022, #1023, #1025) use the static sprite.
-
-Fields of each Pokémon in `data/pokemon.json`:
-
-`id`, `name`, `display_name`, `genus`, `description`, `types`, `height_m`, `weight_kg`, `base_experience`, `stats`, `abilities`, `color`, `habitat`, `generation`, `is_legendary`, `is_mythical`, `capture_rate`, `evolves_from`, `evolution_chain_id`, `sprite`, `artwork`, `animated`, `back_sprite`, `animated_back`, `sprite_url`, `artwork_url`, `animated_url`, `back_sprite_url`, `animated_back_url`, `cry_url`, `evolves_from_id`, `is_baby`.
-
-> Cries are not downloaded: the app streams them from `cry_url` (PokéAPI cries repository). Fun facts are computed in the app from these fields, not scraped.
+The script is resumable: API responses are cached in `data/cache/` and existing images are skipped. Only default forms are included (no megas or regional forms). 1017 of 1025 Pokémon have an animated sprite; the other 8 (#990, #991, #993, #1010, #1017, #1022, #1023, #1025) fall back to the static one. Cries are streamed from `cry_url` and not downloaded.
 
 ### 2. Run the web app
 
@@ -163,32 +153,30 @@ Requires Node.js and npm.
 ```bash
 cd web
 npm install
-npm run dev
+npm run dev      # http://localhost:3000
 ```
 
-Then open http://localhost:3000. `npm run dev` and `npm run build` first run `npm run sync-assets`, which copies `sprites/` and `animated/` into `web/public/` and builds a trimmed `web/public/data/pokedex.json` from `data/pokemon.json`. In that file, `animated` is the local `/animated/<id>.gif` when it exists, otherwise the remote `animated_url`, or `null` (static sprite); `animatedBack` works the same way for the back view used on the battle screen. If the scraper has not been run, the script warns and the Pokédex will fail to load.
-
-> **Deploying (e.g. Vercel):** `animated/` is git-ignored (~72 MB), so a deploy does not have the GIFs and the app loads them from the remote URLs (PokéAPI sprites on GitHub and Showdown). If they go offline, the UI falls back to the static PNGs. The build also needs `sprites/` and `data/` from outside `web/`, so keep Vercel's "Include source files outside of the Root Directory" enabled when the Root Directory is `web`.
+`npm run dev` and `npm run build` first run `npm run sync-assets`, which copies `sprites/` and `animated/` into `web/public/` and builds a trimmed `web/public/data/pokedex.json`. Without the scraped data the Pokédex fails to load.
 
 ```bash
-npm run lint    # ESLint
-npm test        # unit tests (lib/)
-npm run build   # production build
-npm run start   # serve the production build
+npm run lint     # ESLint
+npm test         # unit tests (lib/)
+npm run build    # production build
+npm run start    # serve the production build
 ```
+
+> **Deploying (e.g. Vercel):** `animated/` is git-ignored (~72 MB), so a deploy loads the GIFs from remote URLs and falls back to static PNGs if they are offline. The build needs `sprites/` and `data/` from outside `web/`, so keep Vercel's "Include source files outside of the Root Directory" enabled when the Root Directory is `web`.
 
 ### 3. Win-prediction service (optional)
 
-See [`ml/README.md`](ml/README.md) for the full steps (generate data, train, serve). Once the service is running on port 8000, the app can call it (`NEXT_PUBLIC_ML_API_URL`, default `http://localhost:8000`).
+The app already ships the exported model. To retrain it or serve it through FastAPI, follow [`ml/README.md`](ml/README.md). With the service on port 8000, set `NEXT_PUBLIC_ML_API_URL` (default `http://localhost:8000`).
 
-### 4. Full application _(planned)_
+### 4. Full stack with Docker _(planned)_
 
 ```bash
 cp .env.example .env
 docker compose up
 ```
-
-Planned environment variables for `.env.example` (names may change):
 
 | Variable | Purpose |
 | --- | --- |
@@ -196,31 +184,52 @@ Planned environment variables for `.env.example` (names may change):
 | `ML_API_URL` | URL of the FastAPI service used by `web` |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Credentials for the `db` service |
 
-## Training the model
+## Controls
 
-Full details, commands and results in [`ml/README.md`](ml/README.md). In short:
+Keyboard, gamepad and the 3D buttons emit the same events.
 
-1. **Battle state contract:** `BattleSnapshot` in `web/lib/battleFeatures.ts` is the engine-neutral 1v1 state. The features (turns to KO with the damage formula, damage share, turn order, damage race, HP, type advantage, stats, status, plus moveset features: accuracy, priority, healing, setup and usable status moves) are computed there, once, and shared by the dataset generator and the app.
-2. **First version (hard labels):** `ml/generate` simulated ~80,000 battles with `@pkmn/sim` (Showdown, gen 9), every turn a row mirrored from the other side. Gradient boosting reached AUC 0.93 with ~0.14% calibration error, against 0.79 for a "who wins the damage race" heuristic, cross-validated **by battle** (GroupKFold) and tested on species never seen in training.
-3. **Shipped model (soft labels):** the model is trained on **the battles the app actually plays**: the project's own engine and movesets. Each of 25,000 random matchups is simulated 100 times with the AI on both sides, and the **win rate** is the label. Mean error 0.065 against 1,000-simulation estimates (correlation 0.96), down from 0.077.
-4. **Serving:** the trees are exported to JSON and evaluated in the browser (`web/lib/winModel.ts`, tested to match scikit-learn), so the battle screen works without a server. FastAPI (`/predict`) is used instead when `NEXT_PUBLIC_ML_API_URL` is set.
-5. **During the fight:** after every turn the win chance is re-estimated with a Monte Carlo run of the rest of the battle in the browser (`web/lib/battle/montecarlo.ts`, refined in chunks and cancelled when a newer turn arrives). At the first turn it agrees closely with the model.
+| Keyboard | Device button | Action |
+| --- | --- | --- |
+| ↑ ↓ ← → | D-pad | Navigate (hold to repeat: 300 ms, then every 90 ms). In the list, ↑ ↓ move and ← → jump between regions; ↑ on the first row reaches the filter/sort row, then the search field. On a Pokémon page they step through the National Dex. |
+| `Z` | A | Confirm, open details, advance dialog, type a key |
+| `X` | B | Go back (clears the search, deletes a letter); at the root, leave zoom |
+| `Enter` | MENU | Next tab (List, Battle, Tamagotchi, Trainer); on a Pokémon page, toggle ★ favorite |
+| `Space` | ZOOM | Zoom in or out of the screen (opens the device if closed) |
+| `Esc` | n/a | Leave zoom (in the search field: clear, then leave) |
+| `/` | n/a | Focus the search field |
+
+Gamepads with the standard mapping also work: D-pad or left stick, A/B, Start = MENU, Select or Y = ZOOM. To open the device: click the cover, press A, or use the page button. To close it: the ⏻ button on the screen, a click on the hinge, or the page button.
+
+<details>
+<summary>Per-tab controls</summary>
+
+- **Battle:** pick SINGLE, TEAM (3v3) or FULL BATTLE (6v6), then your Pokémon and the opponent (A confirms, B goes back or undoes the last pick). In the arena, A starts the battle; the D-pad moves through FIGHT / BAG / POKéMON / RUN, A confirms, B goes back, and A skips messages while a turn plays. When it ends, A fights again and B returns to the lists.
+- **Tamagotchi:** ↑ ↓ pick a Pokémon, ← → pick an action, A does it, B goes back.
+- **Trainer:** A creates or edits the profile. In the editor, ↑ ↓ pick a row, ← → change it, A on NAME opens the keyboard, MENU saves and B cancels.
+
+</details>
+
+The mapping may still change during development.
+
+## Win-prediction model
+
+Full details, commands and results are in [`ml/README.md`](ml/README.md).
+
+1. **Shared battle contract:** `BattleSnapshot` in `web/lib/battleFeatures.ts` is the engine-neutral 1v1 state. Features (turns to KO, damage share, turn order, HP, type advantage, stats, status, moveset features) are computed there once and used by both the dataset generator and the app.
+2. **Baseline (hard labels):** ~80,000 battles simulated with `@pkmn/sim` (gen 9). Gradient boosting reached AUC 0.93 with ~0.14% calibration error, against 0.79 for a "who wins the damage race" heuristic, cross-validated by battle (GroupKFold) and tested on unseen species.
+3. **Shipped model (soft labels):** trained on the battles the app actually plays (its own engine and movesets). Each of 25,000 random matchups is simulated 100 times with the AI on both sides and the win rate is the label. Mean error 0.065 against 1,000-simulation estimates (correlation 0.96), down from 0.077.
+4. **Serving:** trees are exported to JSON and evaluated in the browser (`web/lib/winModel.ts`, tested to match scikit-learn). FastAPI (`/predict`) is used instead when `NEXT_PUBLIC_ML_API_URL` is set.
+5. **During the fight:** after each turn, a Monte Carlo run of the rest of the battle refines the estimate in chunks (`web/lib/battle/montecarlo.ts`), cancelled when a newer turn arrives.
+
+If movesets change, regenerate the dataset and retrain the model (see `ml/README.md`).
 
 ## Data structures and algorithms
 
 ### Prefix search with binary search
 
-Implemented in [`web/lib/search.ts`](web/lib/search.ts), with tests in `web/lib/search.test.ts` (`npm test` in `web/`).
+[`web/lib/search.ts`](web/lib/search.ts), tested in `web/lib/search.test.ts`.
 
-When the Pokédex loads, a search index is built once: the Pokémon **sorted by normalized name** (lowercase, accents removed, so "flabe" finds Flabébé). For a prefix search (the user types "c" and sees every Pokémon starting with C, in alphabetical order), binary search finds the **first position** whose name is `>= prefix` (a _lower bound_), then the code scans forward while names still start with the prefix. All matches are contiguous in the sorted list, so the scan touches only the results.
-
-**Why:**
-
-- The data is static (1025 items), so sorting once pays off.
-- Filtering the whole list on every keystroke costs `O(n)`; here the cost is lower and predictable.
-- No extra structure such as a trie is needed, which would spend more memory for a small gain at this size.
-
-**Complexity:**
+On load, an index is built once: Pokémon **sorted by normalized name** (lowercase, accents removed, so "flabe" finds Flabébé). A prefix search uses binary search to find the first name `>= prefix` (a _lower bound_), then scans forward while names still match. All matches are contiguous, so the scan touches only the results.
 
 | Operation | Cost |
 | --- | --- |
@@ -229,64 +238,40 @@ When the Pokédex loads, a search index is built once: the Pokémon **sorted by 
 | Collect the `k` results | `O(k)` |
 | Full search | `O(log n + k)` |
 
-A numeric query (`25`, `#25`, `#0025`) is an exact lookup by number in a `Map`, `O(1)`.
+A numeric query (`25`, `#25`, `#0025`) is an exact `Map` lookup, `O(1)`. A trie was not needed: at 1025 items it would cost more memory for little gain.
 
 ### Region of a Pokémon
 
-Regions are contiguous dex ranges sorted by their first number ([`web/lib/regions.ts`](web/lib/regions.ts)). The region of an id is found with a binary search for the last range starting at or before it, `O(log r)`; the tests check every boundary (e.g. #151 Kanto, #152 Johto) against a linear scan.
+Regions are contiguous dex ranges sorted by start ([`web/lib/regions.ts`](web/lib/regions.ts)). The region of an id is a binary search for the last range starting at or before it, `O(log r)`. Tests check every boundary (e.g. #151 Kanto, #152 Johto) against a linear scan, and the search tests compare against a brute-force filter on 500 prefixes.
 
-The tests cover the lower bound edges, case/accent handling, number lookups and a comparison against a brute-force filter on 500 prefixes.
+## Development workflow
+
+This project is developed in pair with an AI coding agent ([Claude Code](https://claude.com/claude-code)). I set the direction (product, roadmap, design decisions) and review every change; the agent reads the codebase, implements, runs the linter and the dev server, and fixes what breaks.
+
+- **Small, reviewable commits** following [Conventional Commits](https://www.conventionalcommits.org/) (`feat(screen): …`, `fix(screen): …`, `docs: …`).
+- **Agent guidance lives in the repo:** [`CLAUDE.md`](CLAUDE.md) holds the conventions (3D device, battle engine, commits) and [`web/AGENTS.md`](web/AGENTS.md) tells agents to read the bundled Next.js docs first, since this Next.js version has breaking changes.
+- **Quality gates:** `npx tsc --noEmit`, `npx eslint .` and `npm test` in `web/` must be clean.
 
 ## Roadmap
 
 Done:
 
-- [x] Data and image scraper (PokéAPI and Showdown, 1025 Pokémon, 1017 animated)
+- [x] Data and image scraper (1025 Pokémon, 1017 animated)
 - [x] Next.js scaffold with R3F, drei and zustand
-- [x] Input system (keyboard, gamepad and 3D buttons)
-- [x] Procedural 3D device: phase state machine, spring hinge, boot animation, sound, cries, phone layout
-- [x] Pokédex screen: list, preview and detail page for all 1025 Pokémon
-- [x] Search by name prefix (binary search) or number, with an on-screen keyboard
-- [x] Region bar and per-region background music
-- [x] Type filter, sorting, favorites and a "coming soon" slot for the next generation
-- [x] Fun facts
+- [x] Input system (keyboard, gamepad, 3D buttons)
+- [x] Procedural 3D device: state machine, spring hinge, boot animation, sound, cries, phone layout
+- [x] Pokédex: list, preview, details, binary-search lookup, on-screen keyboard
+- [x] Regions with music, filters, sorting, favorites, fun facts
 - [x] Tamagotchi v1 (party of 5, needs, evolution, eggs)
-- [x] Win-prediction model v1: dataset generator, training, Monte Carlo evaluation, FastAPI
-- [x] Battle screen with backdrops, battle music and the pre-battle win chance
-- [x] 1v1 battle: engine with the standard rules and a greedy foe AI (`web/lib/battle`), and the fight screen
-- [x] 3v3 team battle with switching, items and a battle menu
-- [x] 6v6 full battle
-- [x] Trainer profile (name, customizable sprite, trainer card)
+- [x] Win-prediction pipeline: dataset generator, training, Monte Carlo evaluation, FastAPI
+- [x] Battle engine and screen: 1v1, 3v3 and 6v6, items, switching, rewards
+- [x] Trainer profile
 
 Next:
 
 - [ ] **Phase 1:** Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
 - [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
-
-## Controls
-
-Keyboard and the physical buttons on the device do the same thing. Each key maps to the same button event that clicking the 3D button emits.
-
-| Keyboard | Device button | Action |
-| --- | --- | --- |
-| ↑ ↓ ← → | D-pad | Navigate (hold to repeat: 300 ms, then every 90 ms). In the list, ↑ ↓ move and ← → jump between regions; ↑ on the first row selects the filter/sort row (← → change the filter, A the sort), and ↑ again the search field. On a Pokémon page they step through the National Dex. On the on-screen keyboard they move between keys |
-| `Z` | A | Confirm / open details / advance the dialog / open the keyboard / type a key |
-| `X` | B | Go back (clears the search; deletes a letter on the keyboard); at the root, leave zoom |
-| `Enter` | MENU | Next tab (List, Battle, Tamagotchi, Trainer); on a Pokémon page, toggle ★ favorite; on the keyboard, done |
-| `Space` | ZOOM | Zoom in or out of the screen (opens the device if closed) |
-| `Esc` | n/a | Leave zoom (in the search field: clear it, then leave the field) |
-| `/` | n/a | Focus the search field. While typing, ↑ ↓ move through the results and `Enter` opens one |
-
-On the BATTLE tab: choose SINGLE, TEAM (3v3) or FULL BATTLE (6v6) in the menu, pick your Pokémon and then the opponent (A confirms, B goes back or undoes the last pick). In the arena, A starts the battle; the D-pad moves through the FIGHT / BAG / POKéMON / RUN menu and its submenus, A confirms and B goes back; A skips the messages while a turn plays. When it ends, A fights again and B returns to the lists.
-
-On the TAMAGOTCHI tab: ↑ ↓ pick a Pokémon from the party, ← → pick an action, A does it, B goes back to the list.
-
-On the TRAINER tab: A creates or edits your profile. In the editor, ↑ ↓ pick a row, ← → change it, A on NAME opens the keyboard (or click the field and type), MENU saves and B cancels.
-
-Gamepads with the standard mapping also work: D-pad or left stick, A/B (bottom/right face buttons), Start = MENU, Select or Y = ZOOM. Opening: click the cover, press A, or use the "Open device" page button. Closing: the ⏻ button on the screen, a click on the hinge, or the page button.
-
-The mapping may still change during development.
 
 ## Legal notice
 
@@ -296,6 +281,6 @@ Pokémon and all related names, images and sounds are trademarks and property of
 
 - [PokéAPI](https://pokeapi.co/): Pokémon data, sprites, artwork and cries.
 - [Pokémon Showdown](https://play.pokemonshowdown.com/): animated sprites.
-- [`@pkmn/sim`](https://github.com/pkmn/ps): battle engine based on Pokémon Showdown.
-- [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans): pixel font, licensed under the SIL OFL.
+- [`@pkmn/sim`](https://github.com/pkmn/ps): battle engine used to generate the ML dataset.
+- [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans): pixel font, SIL OFL.
 - [Claude Code](https://claude.com/claude-code): AI coding agent used to build the project.
