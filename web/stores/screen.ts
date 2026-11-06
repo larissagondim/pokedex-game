@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import type { BattleTrack } from "@/lib/music";
 
-export const TABS = ["LIST", "BATTLE", "TAMAGOTCHI"] as const;
+export const TABS = ["LIST", "BATTLE", "TAMAGOTCHI", "TRAINER"] as const;
 export const LIST_TAB = 0;
 export const BATTLE_TAB = 1;
 export const TAMAGOTCHI_TAB = 2;
+export const TRAINER_TAB = 3;
 
 interface ScreenState {
   /** Tab shown on the main screen (the music follows it). */

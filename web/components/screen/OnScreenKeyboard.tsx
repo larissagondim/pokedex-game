@@ -58,14 +58,18 @@ export function moveKey(pos: KeyPos, dx: number, dy: number): KeyPos {
   return { row: pos.row, col: startCol(keys, index) };
 }
 
+/** Status line for a search: "N results · B: delete · MENU: done". */
+export const resultStatus = (count: number) => `${count} result${count === 1 ? "" : "s"} · B: delete · MENU: done`;
+
 interface Props {
   pos: KeyPos;
-  resultCount: number;
+  /** Line under the keys (e.g. the result count). */
+  status: string;
   onKey: (key: KeyDef, pos: KeyPos) => void;
 }
 
 /** Retro on-screen keyboard driven by the D-pad (or clicks). */
-export function OnScreenKeyboard({ pos, resultCount, onKey }: Props) {
+export function OnScreenKeyboard({ pos, status, onKey }: Props) {
   const focused = keyFor(pos);
   return (
     <div className={styles.panel + " " + styles.keyboard} role="group" aria-label="On-screen keyboard">
@@ -85,9 +89,7 @@ export function OnScreenKeyboard({ pos, resultCount, onKey }: Props) {
           ))}
         </div>
       ))}
-      <p className={styles.keyboardStatus}>
-        {resultCount} result{resultCount === 1 ? "" : "s"} · B: delete · MENU: done
-      </p>
+      <p className={styles.keyboardStatus}>{status}</p>
     </div>
   );
 }

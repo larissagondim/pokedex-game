@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScreenPower } from "@/hooks/useScreenPower";
 import { useTamagotchiAlert } from "@/hooks/useTamagotchiAlert";
 import { useTypewriter } from "@/hooks/useTypewriter";
@@ -11,7 +11,7 @@ import { normalize, searchPokemon } from "@/lib/search";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { acceptsInput, useDeviceState } from "@/stores/deviceState";
 import { useFavorites } from "@/stores/favorites";
-import { BATTLE_TAB, TABS, TAMAGOTCHI_TAB, useScreen } from "@/stores/screen";
+import { BATTLE_TAB, TABS, TAMAGOTCHI_TAB, TRAINER_TAB, useScreen } from "@/stores/screen";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import { usePokedex } from "@/stores/pokedex";
 import type { Pokemon } from "@/data/pokedex";
@@ -19,7 +19,7 @@ import { BattleScreen } from "./BattleScreen";
 import { DialogBox } from "./DialogBox";
 import { ListOptions } from "./ListOptions";
 import { PokemonDetail } from "./PokemonDetail";
-import { type KeyDef, type KeyPos, keyFor, moveKey, OnScreenKeyboard } from "./OnScreenKeyboard";
+import { type KeyDef, type KeyPos, keyFor, moveKey, OnScreenKeyboard, resultStatus } from "./OnScreenKeyboard";
 import { PokemonList } from "./PokemonList";
 import { PreviewPanel } from "./PreviewPanel";
 import { RegionBar } from "./RegionBar";
@@ -27,6 +27,7 @@ import { SearchBar } from "./SearchBar";
 import styles from "./screen.module.css";
 import { TabBar } from "./TabBar";
 import { TamagotchiScreen } from "./TamagotchiScreen";
+import { TRAINER_HINTS, type TrainerHint, TrainerScreen } from "./TrainerScreen";
 import { describeEvent } from "./tamaMessages";
 
 const BATTLE_HINT = "▲▼ choose   ◀▶ jump 10   A: pick   ▲ on the top row: search   B: back";
@@ -94,6 +95,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   /** Showing the "coming soon" region after Paldea. */
   const [teaser, setTeaser] = useState(false);
   const favorites = useFavorites((s) => s.ids);
+  const [trainerHint, setTrainerHint] = useState<TrainerHint>("card");
   const searchInput = useRef<HTMLInputElement>(null);
 
   /** What the list shows: search results (or everything), filtered and sorted. */
@@ -128,9 +130,9 @@ export function DeviceScreen({ onRequestZoom }: Props) {
 
   // The secondary screen (and the region music) follow the open page, or else
   // whatever is under the cursor.
-  // (On the Tamagotchi tab, the selected party member drives them instead.)
+  // (The Tamagotchi, Battle and Trainer tabs drive them themselves.)
   useEffect(() => {
-    if (tab === TAMAGOTCHI_TAB || tab === BATTLE_TAB) return;
+    if (tab === TAMAGOTCHI_TAB || tab === BATTLE_TAB || tab === TRAINER_TAB) return;
     usePokedex.getState().focus(detailPokemon?.id ?? items[cursor]?.id ?? null);
   }, [tab, detailPokemon, items, cursor]);
 
@@ -163,6 +165,11 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   const say = (text: string) => setNotice({ text, id: ++noticeCount.current });
   /** On a Pokémon page, "Adopt X?" is waiting for A (yes) or B (no). */
   const [adoptPrompt, setAdoptPrompt] = useState(false);
+  /** The trainer editor's help line replaces any message left in the dialog box. */
+  const onTrainerHint = useCallback((hint: TrainerHint) => {
+    setTrainerHint(hint);
+    if (hint === "edit" || hint === "keyboard") setNotice(null);
+  }, []);
   const typing = useTypewriter(power === "on" ? (notice?.text ?? pages[page] ?? null) : null, notice?.id ?? page);
   const hasNextPage = page < pages.length - 1;
 
@@ -424,6 +431,8 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       ? TAMA_HINT
       : tab === BATTLE_TAB
         ? BATTLE_HINT
+        : tab === TRAINER_TAB
+        ? TRAINER_HINTS[trainerHint]
         : keyPos
         ? "◀▲▼▶ move   A: type   B: delete   MENU: done"
         : searchSelected
@@ -434,11 +443,15 @@ export function DeviceScreen({ onRequestZoom }: Props) {
               ? "A new region is coming. ◀▶ other regions"
               : LIST_HINT;
 
+  const trainerActive = tab === TRAINER_TAB && power === "on" && phaseAcceptsInput;
+
   let body;
   if (tab === TAMAGOTCHI_TAB) {
     body = <TamagotchiScreen active={tamaActive} onNotice={say} />;
   } else if (tab === BATTLE_TAB) {
     body = <BattleScreen active={battleActive} onNotice={say} />;
+  } else if (tab === TRAINER_TAB) {
+    body = <TrainerScreen active={trainerActive} onNotice={say} onHint={onTrainerHint} />;
   } else if (status !== "ready") {
     body = (
       <div className={styles.panel + " " + styles.soon}>
@@ -501,7 +514,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
           }
         />
         {keyPos ? (
-          <OnScreenKeyboard pos={keyPos} resultCount={query.trim() ? items.length : 0} onKey={pressKey} />
+          <OnScreenKeyboard pos={keyPos} status={resultStatus(query.trim() ? items.length : 0)} onKey={pressKey} />
         ) : items[cursor] && !teaser ? (
           <PreviewPanel pokemon={items[cursor]} />
         ) : (

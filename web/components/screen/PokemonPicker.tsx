@@ -6,7 +6,7 @@ import { normalize, searchPokemon } from "@/lib/search";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { usePokedex } from "@/stores/pokedex";
 import battle from "./battle.module.css";
-import { type KeyDef, type KeyPos, keyFor, moveKey, OnScreenKeyboard } from "./OnScreenKeyboard";
+import { type KeyDef, type KeyPos, keyFor, moveKey, OnScreenKeyboard, resultStatus } from "./OnScreenKeyboard";
 import { PokemonList } from "./PokemonList";
 import { PreviewPanel } from "./PreviewPanel";
 import styles from "./screen.module.css";
@@ -192,7 +192,7 @@ export function PokemonPicker({ title, active, favorites, pinned = [], onPick, o
         }
       />
       {keyPos ? (
-        <OnScreenKeyboard pos={keyPos} resultCount={query.trim() ? items.length : 0} onKey={pressKey} />
+        <OnScreenKeyboard pos={keyPos} status={resultStatus(query.trim() ? items.length : 0)} onKey={pressKey} />
       ) : focused ? (
         <PreviewPanel pokemon={focused} />
       ) : (
