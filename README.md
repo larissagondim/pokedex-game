@@ -2,7 +2,7 @@
 
 An interactive 3D Pokédex with battles, machine-learning win prediction and a Tamagotchi. A non-profit fan project built for portfolio and learning purposes, developed with **agentic programming** using [Claude Code](https://claude.com/claude-code).
 
-> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, a **battle screen** with the pre-battle win chance (a model that runs in the browser). You can already **fight 1v1, 3v3 or 6v6** on a hand-built, tested battle engine. Still to come: Docker, a database and the trainer profile. Anything marked _(planned)_ below is not implemented yet.
+> **Status:** in development. Working today: the **data scraper**, a **procedural 3D device** (spring hinge, pressable buttons, zoom camera, sound, gamepad, phone layout), a full **Pokédex** (search, regions with music, filters, favorites, fun facts), a **Tamagotchi**, a **battle screen** with the pre-battle win chance (a model that runs in the browser) and a **trainer profile**. You can already **fight 1v1, 3v3 or 6v6** on a hand-built, tested battle engine. Still to come: Docker and a database. Anything marked _(planned)_ below is not implemented yet.
 
 ## Table of contents
 
@@ -50,7 +50,7 @@ The commit history shows how the project grew step by step: scraper, web scaffol
 | 3v3 and 6v6 battles | Teams of three or six: switching (it takes the turn and goes before moves; stat changes and volatile effects reset), items, a party screen to send out the next Pokémon when one faints, ball rows showing who is left, and the win chance of each possible switch on the party screen (two columns for six). The foe AI sends out its best matchup and switches out of losing ones. The pre-battle team win chance is simulated (Monte Carlo), since the ML model is 1v1 | ✅ Done |
 | Win prediction | Win chance **before the battle**, shown on the battle screen. Gradient boosting trained on the app's own battles (its engine and movesets) with **soft labels**: each of 25,000 matchups simulated 100 times, the win rate as the target. Mean error 0.065 against 1,000-simulation estimates (correlation 0.96). Exported to JSON and run **in the browser**; FastAPI is optional. During the fight a live Monte Carlo estimate takes over | ✅ Done |
 | Tamagotchi | Adopt up to 5 Pokémon from the list (A at the end of a Pokémon page, or ♥ ADOPT). Food, joy and energy decay with real time; feed, play, sleep and train them. XP raises the level and they **evolve** (babies also need to be happy). Coins earned by playing and training buy **eggs** that hatch into a random base-stage or baby Pokémon. Hearts when happy, mood bubbles, reactions per action, idle animation by evolution stage, and clicking one plays its cry. A blinking "!" on the tab when one is hungry, tired or sad, or an egg is ready. Saved in `localStorage` | ✅ Done (v1) |
-| Trainer profile | Create your own trainer profile: pick a name, design your trainer sprite (hair, outfit, colors, etc.) and show it on the device. The profile ties together your Tamagotchi, favorites and battle history | 🕒 Planned |
+| Trainer profile | TRAINER tab: pick a name (on-screen keyboard or the real one) and design an original 24×40 pixel sprite, shaded and outlined automatically: skin, hair style and color, eye color, hat (cap, wide-brimmed hat with a band, beanie), top (jacket, tee, hoodie, sleeveless), bottom (pants, shorts, high-waisted skirt), shoes and an extra (shoulder bag, glasses), each in a choice of colors, or a random look. The trainer card ties the rest of the game together: a rank earned from battle wins (Rookie → Champion), total wins and losses, your best battle partner, the Tamagotchi party, favorites, coins and the start date. The secondary screen shows your name and ID on this tab. Saved in `localStorage` (`web/lib/trainer.ts`, unit-tested) | ✅ Done |
 
 
 ## Screenshots
@@ -256,13 +256,13 @@ Done:
 - [x] 1v1 battle: engine with the standard rules and a greedy foe AI (`web/lib/battle`), and the fight screen
 - [x] 3v3 team battle with switching, items and a battle menu
 - [x] 6v6 full battle
+- [x] Trainer profile (name, customizable sprite, trainer card)
 
 Next:
 
 - [ ] **Phase 1:** Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
 - [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
-- [ ] **Phase 7:** Trainer profile (name and customizable sprite)
 
 ## Controls
 
@@ -273,7 +273,7 @@ Keyboard and the physical buttons on the device do the same thing. Each key maps
 | ↑ ↓ ← → | D-pad | Navigate (hold to repeat: 300 ms, then every 90 ms). In the list, ↑ ↓ move and ← → jump between regions; ↑ on the first row selects the filter/sort row (← → change the filter, A the sort), and ↑ again the search field. On a Pokémon page they step through the National Dex. On the on-screen keyboard they move between keys |
 | `Z` | A | Confirm / open details / advance the dialog / open the keyboard / type a key |
 | `X` | B | Go back (clears the search; deletes a letter on the keyboard); at the root, leave zoom |
-| `Enter` | MENU | Next tab (List, Battle, Tamagotchi); on a Pokémon page, toggle ★ favorite; on the keyboard, done |
+| `Enter` | MENU | Next tab (List, Battle, Tamagotchi, Trainer); on a Pokémon page, toggle ★ favorite; on the keyboard, done |
 | `Space` | ZOOM | Zoom in or out of the screen (opens the device if closed) |
 | `Esc` | n/a | Leave zoom (in the search field: clear it, then leave the field) |
 | `/` | n/a | Focus the search field. While typing, ↑ ↓ move through the results and `Enter` opens one |
@@ -281,6 +281,8 @@ Keyboard and the physical buttons on the device do the same thing. Each key maps
 On the BATTLE tab: choose SINGLE, TEAM (3v3) or FULL BATTLE (6v6) in the menu, pick your Pokémon and then the opponent (A confirms, B goes back or undoes the last pick). In the arena, A starts the battle; the D-pad moves through the FIGHT / BAG / POKéMON / RUN menu and its submenus, A confirms and B goes back; A skips the messages while a turn plays. When it ends, A fights again and B returns to the lists.
 
 On the TAMAGOTCHI tab: ↑ ↓ pick a Pokémon from the party, ← → pick an action, A does it, B goes back to the list.
+
+On the TRAINER tab: A creates or edits your profile. In the editor, ↑ ↓ pick a row, ← → change it, A on NAME opens the keyboard (or click the field and type), MENU saves and B cancels.
 
 Gamepads with the standard mapping also work: D-pad or left stick, A/B (bottom/right face buttons), Start = MENU, Select or Y = ZOOM. Opening: click the cover, press A, or use the "Open device" page button. Closing: the ⏻ button on the screen, a click on the hinge, or the page button.
 
