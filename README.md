@@ -10,6 +10,7 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 
 - [Highlights](#highlights)
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Architecture](#architecture)
 - [Tech stack](#tech-stack)
 - [Project structure](#project-structure)
@@ -69,6 +70,16 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 | --- | --- |
 | Tamagotchi | Adopt up to 5 Pokémon. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Coins buy eggs that hatch into random base-stage Pokémon. Alerts when one needs attention. Saved in `localStorage`. |
 | Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card shows rank (Rookie → Champion), wins and losses, best partner, party, favorites, coins and start date. |
+
+## Screenshots
+
+| 3D device | Pokédex list |
+| --- | --- |
+| ![3D device](docs/screenshots/shell.png) | ![Pokédex list](docs/screenshots/list.png) |
+
+| Pokémon details | Tamagotchi |
+| --- | --- |
+| ![Pokémon details](docs/screenshots/detail.png) | ![Tamagotchi](docs/screenshots/tamagotchi.png) |
 
 ## Architecture
 
