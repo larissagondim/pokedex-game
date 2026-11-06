@@ -8,6 +8,8 @@ import { formatDexNumber } from "@/data/pokedex";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { isLidOpen, useDeviceState } from "@/stores/deviceState";
 import { usePokedex } from "@/stores/pokedex";
+import { TRAINER_TAB, useScreen } from "@/stores/screen";
+import { useTrainer } from "@/stores/trainer";
 import { useRoundedSlab } from "./geometry";
 import { COLORS, FONT_URL, CONTROL_HALF, SECONDARY_CENTER } from "./device.config";
 import { ModelPart } from "./ModelPart";
@@ -21,7 +23,8 @@ type TroikaText = Mesh & {
 };
 
 /**
- * Graphite strip on the lid showing "#0000 · NAME" for the focused Pokémon.
+ * Graphite strip on the lid showing "#0000 · NAME" for the focused Pokémon
+ * (or the trainer's name and ID on the TRAINER tab).
  * Names wider than the strip scroll back and forth. Dark while closed.
  */
 export function SecondaryScreen() {
@@ -30,7 +33,13 @@ export function SecondaryScreen() {
   const on = useDeviceState((s) => isLidOpen(s.phase) && s.phase !== "OPENING");
   const reducedMotion = useReducedMotion();
   const pokemon = usePokedex((s) => s.list.find((p) => p.id === s.focusedId));
-  const label = pokemon ? `${formatDexNumber(pokemon.id)} · ${pokemon.name.toUpperCase()}` : "#0000 · ----------";
+  // On the TRAINER tab, the strip shows the trainer instead.
+  const trainer = useTrainer((s) => (s.name ? `TRAINER ${s.name} · ID ${s.id}` : null));
+  const onTrainerTab = useScreen((s) => s.tab === TRAINER_TAB);
+  const label =
+    onTrainerTab && trainer ? trainer
+    : pokemon ? `${formatDexNumber(pokemon.id)} · ${pokemon.name.toUpperCase()}`
+    : "#0000 · ----------";
 
   const text = useRef<TroikaText>(null);
   const [overflow, setOverflow] = useState(0);
