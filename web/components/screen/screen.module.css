@@ -75,6 +75,7 @@
 }
 
 .tab {
+  position: relative;
   flex: 1;
   background: var(--red);
   color: var(--white);
@@ -83,10 +84,13 @@
   letter-spacing: 1px;
 }
 
+/* A badge on the tab's corner, so it never pushes the label onto two lines. */
 .tabAlert {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 5px;
+  position: absolute;
+  top: -7px;
+  right: -5px;
+  z-index: 1;
+  padding: 1px 5px;
   background: #ffd23f;
   color: var(--graphite);
   box-shadow: 0 0 0 2px var(--graphite);
