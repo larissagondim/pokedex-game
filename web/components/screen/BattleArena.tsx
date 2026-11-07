@@ -26,11 +26,15 @@ import { loadBattleSets, preBattleSnapshot, predictWin } from "@/lib/winPredicti
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { usePokedex } from "@/stores/pokedex";
 import { useScreen } from "@/stores/screen";
+import { badgeNotice, checkBadges } from "@/stores/badges";
+import { useBattleLog } from "@/stores/battleLog";
 import { useBattleRecord } from "@/stores/battleRecord";
 import { useTamagotchi } from "@/stores/tamagotchi";
+import { useTrainer } from "@/stores/trainer";
 import styles from "./battle.module.css";
 import { describeBattleEvent } from "./battleMessages";
 import { terrainFor } from "./battleTerrain";
+import { TrainerSprite } from "./TrainerSprite";
 
 /** Above the main screen handler (10), like the other tabs. */
 const INPUT_PRIORITY = 11;
@@ -39,6 +43,8 @@ const WIN_REWARD = 15;
 /** How long each event stays on screen (A skips ahead). */
 const EVENT_MS = 1100;
 const SILENT_EVENT_MS = 450;
+/** After a battle ends, A is ignored this long so skipping messages doesn't start a rematch. */
+const REMATCH_GUARD_MS = 800;
 /** Below this share of HP the low-HP beep plays (once per drop). */
 const LOW_HP = 0.2;
 /** Simulations per live win-chance update, run in chunks so the screen stays responsive. */
@@ -156,6 +162,12 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   const partyJob = useRef(0);
   const playback = useRef<{ events: BattleEvent[]; final: BattleState; index: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** When the battle ended (for the rematch guard). */
+  const overAt = useRef(0);
+  /** Win chance before this battle started (for the history and the UNDERDOG badge). */
+  const startOdds = useRef<number | null>(null);
+  const trainerName = useTrainer((s) => (s.since !== null ? s.name : null));
+  const trainerLook = useTrainer((s) => s.appearance);
 
   // Legendary and mythical foes get their own theme; otherwise one of the two battle themes.
   useEffect(() => {
@@ -237,6 +249,10 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
 
   const start = () => {
     if (!sets) return onNotice("Loading the battle data...");
+    // The pre-battle chance: the model's (1v1) or the simulation shown on the
+    // ready screen (teams). A rematch keeps the one from the first start.
+    if (single) startOdds.current = chance ?? null;
+    else if (phase === "ready") startOdds.current = live;
     const st = createTeamBattle(sets.a, sets.b);
     shownHp.current = { a: { hp: st.a.hp, max: st.a.maxHp }, b: { hp: st.b.hp, max: st.b.maxHp } };
     shownId.current = { a: st.a.dexId, b: st.b.dexId };
@@ -247,7 +263,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     setFainted({ a: false, b: false });
     setCursor({ command: 0, fight: 0, bag: 0, party: 0 });
     setPhase("command");
-    const go = `Go, ${name("a")}!`;
+    const go = trainerName ? `${trainerName} sent out ${name("a")}!` : `Go, ${name("a")}!`;
     onNotice(single ? `${go} What will it do?` : `The foe sent out ${nameOf(st.b.dexId)}! ${go}`);
     usePokedex.getState().playCry(st.a.dexId);
   };
@@ -262,7 +278,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
       setView((v) => v && { ...v, [side]: { ...v[side], hp } });
     };
     // Text first: a switch event names the Pokémon that is leaving.
-    const text = describeBattleEvent(event, name);
+    const text = describeBattleEvent(event, name, trainerName ?? "You");
     switch (event.kind) {
       case "damage":
         setHp(event.side, event.hp);
@@ -357,7 +373,9 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   const gameOver = (final: BattleState) => {
     updateLive(final);
     setPhase("over");
+    overAt.current = performance.now();
     const won = final.winner === "a";
+    useBattleLog.getState().add({ at: Date.now(), player: player.map((p) => p.id), foe: foe.map((p) => p.id), won, odds: startOdds.current });
     const list = usePokedex.getState().list;
     const notes: string[] = [];
     for (const p of player) {
@@ -373,11 +391,17 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
       const coins = WIN_REWARD * foe.length;
       playSfx("win");
       useTamagotchi.getState().reward(coins);
-      onNotice(`You won! +${coins}₽ ${notes.join(" ")}   A: rematch   B: new opponent`);
     } else {
       playSfx("lose");
-      onNotice(`${single ? `${nameOf(final.a.dexId)} lost...` : "Your team was defeated..."} A: rematch   B: new opponent`);
     }
+    const fresh = checkBadges();
+    const badges = fresh.length > 0 ? ` ${badgeNotice(fresh)}` : "";
+    const result = won
+      ? `You won! +${WIN_REWARD * foe.length}₽ ${notes.join(" ")}`
+      : single
+        ? `${nameOf(final.a.dexId)} lost...`
+        : "Your team was defeated...";
+    onNotice(`${result}${badges}   A: rematch   B: new opponent`);
   };
 
   const playNext = () => {
@@ -393,6 +417,12 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     if (!battle) return;
     const result = runTurn(battle, choice, chooseAction(battle, "b"));
     play(result.events, result.state);
+  };
+
+  /** Back to FIGHT / BAG / POKéMON / RUN, with the prompt back in the dialog box. */
+  const backToCommand = () => {
+    setPhase("command");
+    if (battle) onNotice(`What will ${nameOf(battle.a.dexId)} do?`);
   };
 
   const runAway = () => {
@@ -485,12 +515,12 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
         return true;
       case "fight":
         if (button === "A") fight(cursor.fight);
-        else if (button === "B") setPhase("command");
+        else if (button === "B") backToCommand();
         else moveCursor("fight", battle?.a.moves.length ?? 0, button);
         return true;
       case "bag":
         if (button === "A") pickItem(cursor.bag);
-        else if (button === "B") setPhase("command");
+        else if (button === "B") backToCommand();
         else moveCursor("bag", ITEM_IDS.length, button, LIST_STEPS);
         return true;
       case "party":
@@ -499,7 +529,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
           if (forced) onNotice("Choose a Pokémon to send out!");
           else {
             partyJob.current++;
-            setPhase("command");
+            backToCommand();
           }
         } else {
           const size = battle ? team(battle, "a").length : 0;
@@ -514,7 +544,9 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
         }
         return true;
       case "over":
-        if (button === "A") start();
+        if (button === "A") {
+          if (performance.now() - overAt.current >= REMATCH_GUARD_MS) start();
+        }
         else if (button === "B") onLeave();
         return true;
     }
@@ -588,7 +620,12 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
 
       <StatusBox pokemon={shown.a} side="player" view={sideOf("a")} balls={balls("a")} />
       <span className={styles.platform} data-side="player" aria-hidden />
-      <Sprite pokemon={shown.a} side="player" hitKey={hit?.side === "a" ? hit.key : null} fainted={fainted.a} />
+      {phase === "ready" && trainerName ? (
+        // Before the battle, you stand on your side; your Pokémon comes out on A.
+        <TrainerSprite appearance={trainerLook} scale={3} className={styles.trainer} />
+      ) : (
+        <Sprite pokemon={shown.a} side="player" hitKey={hit?.side === "a" ? hit.key : null} fainted={fainted.a} />
+      )}
 
       {phase !== "ready" && <LiveChance value={live} />}
 

@@ -22,9 +22,9 @@ const boostWord = (n: number) => (Math.abs(n) >= 3 ? "drastically " : Math.abs(n
 /**
  * Dialog text for a battle event, or null when the event has no line of its
  * own (a plain hit just animates). `name(side)` gives "EEVEE" / "Foe CHARIZARD"
- * (the Pokémon out at that moment).
+ * (the Pokémon out at that moment). `you` names the player in item lines.
  */
-export function describeBattleEvent(event: BattleEvent, name: (side: Side) => string): string | null {
+export function describeBattleEvent(event: BattleEvent, name: (side: Side) => string, you = "You"): string | null {
   switch (event.kind) {
     case "move":
       return `${name(event.side)} used ${event.move}!`;
@@ -94,7 +94,7 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
       return event.forced ? `The foe sent out ${to}!` : `The foe withdrew ${event.from.toUpperCase()} and sent out ${to}!`;
     }
     case "item":
-      return `${event.side === "a" ? "You" : "The foe"} used a ${ITEMS[event.item].name.toUpperCase()}!`;
+      return `${event.side === "a" ? you : "The foe"} used a ${ITEMS[event.item].name.toUpperCase()}!`;
     case "cure":
       return `${name(event.side)} was cured!`;
   }

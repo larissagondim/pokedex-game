@@ -126,6 +126,14 @@
   animation: idle 2s steps(1) infinite;
 }
 
+/* Your trainer, on your side before the battle starts. */
+.trainer {
+  position: absolute;
+  z-index: 1;
+  bottom: 70px;
+  left: 100px;
+}
+
 /* Hit: blink. Faint: drop out of view in steps. */
 .sprite[data-hit="true"] {
   animation: blink 0.12s steps(1) 4;
