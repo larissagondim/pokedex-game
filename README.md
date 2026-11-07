@@ -69,7 +69,8 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 | Area | Description |
 | --- | --- |
 | Tamagotchi | Adopt up to 5 Pokémon. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Coins buy eggs that hatch into random base-stage Pokémon. Alerts when one needs attention. Saved in `localStorage`. |
-| Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card shows rank (Rookie → Champion), wins and losses, best partner, party, favorites, coins and start date. |
+| Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card has three pages (▲▼): **stats** (rank from Rookie to Champion, wins and losses, win streak, best partner, party, favorites, coins, start date), **badges** and **history** (the last 30 battles with the teams, the pre-battle win chance and the result). Your trainer stands in the arena before each battle and sends your Pokémon out by name. |
+| Badges | Eight badges, kept once earned: first win, a 3v3 win, a 6v6 win, beating a legendary or mythical, winning with under 30% win chance, 5 wins in a row, a full Tamagotchi party and 10 favorites. New ones are announced in the dialog box. |
 
 ## Screenshots
 
@@ -80,6 +81,14 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 | Pokémon details | Tamagotchi |
 | --- | --- |
 | ![Pokémon details](docs/screenshots/detail.png) | ![Tamagotchi](docs/screenshots/tamagotchi.png) |
+
+| Pre-battle win chance | Fight menu |
+| --- | --- |
+| ![Pre-battle win chance](docs/screenshots/prediction.png) | ![Fight menu](docs/screenshots/battle.png) |
+
+| Trainer card |
+| --- |
+| ![Trainer card](docs/screenshots/trainer.png) |
 
 ## Architecture
 
@@ -283,6 +292,14 @@ Next:
 - [ ] **Phase 1:** Docker
 - [ ] **Phase 2:** polish the 3D device around the interface
 - [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
+
+Ideas:
+
+- [x] Trainer in battles: your sprite in the arena intro and your name in the messages ("LARISSA sent out PIKACHU!")
+- [x] Badges on the trainer card
+- [x] Battle history on the profile: the last battles, the opponents and the results
+- [ ] Deploy (e.g. Vercel) with a live demo link. The win model runs in the browser, so no backend is needed
+- [ ] Battle engine: abilities, held items, Substitute and the moves that still fail (changing movesets means regenerating the dataset and retraining the model)
 
 ## Legal notice
 
