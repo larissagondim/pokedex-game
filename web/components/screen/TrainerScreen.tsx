@@ -6,13 +6,18 @@ import {
   type Appearance,
   APPEARANCE_FIELDS,
   appearanceValue,
+  BADGES,
+  type BattleLogEntry,
   battleTotals,
   cleanName,
   NAME_MAX,
   randomAppearance,
   rankOf,
   stepAppearance,
+  winStreak,
 } from "@/lib/trainer";
+import { badgeNotice, checkBadges } from "@/stores/badges";
+import { useBattleLog } from "@/stores/battleLog";
 import { useBattleRecord } from "@/stores/battleRecord";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { useFavorites } from "@/stores/favorites";
@@ -27,7 +32,7 @@ import { TrainerSprite } from "./TrainerSprite";
 const INPUT_PRIORITY = 11;
 
 export const TRAINER_HINTS = {
-  card: "A: edit your profile   ◀▶ tabs   B: back to the list",
+  card: "▲▼ stats / badges / history   A: edit your profile   ◀▶ tabs   B: back to the list",
   new: "A: create your trainer profile",
   edit: "▲▼ choose   ◀▶ change   A: select   MENU: save   B: cancel",
   keyboard: "◀▲▼▶ move   A: type   B: delete   MENU: done",
@@ -46,6 +51,9 @@ const KEY_STEPS: Partial<Record<DeviceButton, [number, number]>> = {
 };
 
 const wrap = (i: number, n: number) => (i + n) % n;
+
+/** Pages of the card's right panel (▲▼). */
+const PAGES = ["STATS", "BADGES", "HISTORY"] as const;
 
 /** Screen pixels per sprite pixel on the card. */
 const SPRITE_SCALE = 3.4;
@@ -71,6 +79,7 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [row, setRow] = useState(0);
   const [keyPos, setKeyPos] = useState<KeyPos | null>(null);
+  const [page, setPage] = useState(0);
   const editor = useRef<HTMLUListElement>(null);
 
   // Keep the focused editor row in view (the list scrolls).
@@ -91,6 +100,17 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
   useEffect(() => {
     if (active) usePokedex.getState().focus(totals.bestId);
   }, [active, totals.bestId]);
+
+  // Badges earned since the last check (e.g. from older battles) get announced here.
+  const notice = useRef(onNotice);
+  useEffect(() => {
+    notice.current = onNotice;
+  });
+  useEffect(() => {
+    if (!active) return;
+    const fresh = checkBadges();
+    if (fresh.length > 0 && useTrainer.getState().since !== null) notice.current(badgeNotice(fresh));
+  }, [active]);
 
   const hint: TrainerHint = keyPos ? "keyboard" : draft ? "edit" : created ? "card" : "new";
   useEffect(() => onHint(hint), [hint, onHint]);
@@ -145,6 +165,10 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
     if (!draft) {
       if (button === "A") {
         startEditing();
+        return true;
+      }
+      if (created && (button === "UP" || button === "DOWN")) {
+        setPage((p) => wrap(p + (button === "UP" ? -1 : 1), PAGES.length));
         return true;
       }
       return false; // tabs, back to the list
@@ -246,7 +270,9 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
     );
   }
 
-  return <TrainerCard bestId={totals.bestId} wins={totals.wins} losses={totals.losses} onEdit={startEditing} />;
+  return (
+    <TrainerCard bestId={totals.bestId} wins={totals.wins} losses={totals.losses} page={page} onPage={setPage} onEdit={startEditing} />
+  );
 }
 
 interface EditorRowProps {
@@ -312,20 +338,20 @@ interface CardProps {
   bestId: number | null;
   wins: number;
   losses: number;
+  page: number;
+  onPage: (page: number) => void;
   onEdit: () => void;
 }
 
-/** The trainer card: portrait, rank and what you've done in the game. */
-function TrainerCard({ bestId, wins, losses, onEdit }: CardProps) {
-  const { name, appearance, id, since } = useTrainer();
-  const list = usePokedex((s) => s.list);
-  const pets = useTamagotchi((s) => s.pets);
-  const coins = useTamagotchi((s) => s.coins);
-  const favorites = useFavorites((s) => s.ids.size);
-  const record = useBattleRecord((s) => (bestId !== null ? s.records[bestId] : undefined));
-  const rank = rankOf(wins);
-  const battles = wins + losses;
-  const nameOf = (dexId: number) => (list.find((p) => p.id === dexId)?.name ?? `#${dexId}`).toUpperCase();
+const shortDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+/** The trainer card: portrait on the left; stats, badges or history on the right. */
+function TrainerCard({ bestId, wins, losses, page, onPage, onEdit }: CardProps) {
+  const name = useTrainer((s) => s.name);
+  const appearance = useTrainer((s) => s.appearance);
+  const id = useTrainer((s) => s.id);
+  const badges = useTrainer((s) => s.badges);
+  const earned = BADGES.filter((b) => badges[b.id] !== undefined).length;
 
   return (
     <div className={styles.trainer}>
@@ -338,47 +364,142 @@ function TrainerCard({ bestId, wins, losses, onEdit }: CardProps) {
         <p className={styles.idNo}>ID No. {id}</p>
       </button>
       <div className={styles.stats}>
-        <div className={styles.rank}>
-          <span>{rank.title}</span>
-          <small>{rank.next !== null ? `${rank.next} win${rank.next === 1 ? "" : "s"} to ${rankOf(wins + rank.next).title}` : "Top rank!"}</small>
-        </div>
-        <dl>
-          <dt>BATTLES</dt>
-          <dd>
-            {wins}W {losses}L{battles > 0 && <small> ({Math.round((wins / battles) * 100)}%)</small>}
-          </dd>
-          <dt>BEST PARTNER</dt>
-          <dd>
-            {bestId !== null ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className={styles.mini} src={`/sprites/${bestId}.png`} alt="" draggable={false} />
-                {nameOf(bestId)} <small>{record?.wins}W</small>
-              </>
-            ) : (
-              <small>— win a battle —</small>
-            )}
-          </dd>
-          <dt>PARTY</dt>
-          <dd className={styles.party}>
-            {Array.from({ length: MAX_SLOTS }, (_, i) => {
-              const pet = pets[i];
-              if (!pet) return <span key={`empty-${i}`} className={styles.mini} data-empty />;
-              if (pet.dexId === null) return <span key={pet.uid} className={styles.mini} data-egg title="Egg" />;
-              return (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={pet.uid} className={styles.mini} src={`/sprites/${pet.dexId}.png`} alt={nameOf(pet.dexId)} title={nameOf(pet.dexId)} draggable={false} />
-              );
-            })}
-          </dd>
-          <dt>FAVORITES</dt>
-          <dd>★ {favorites}</dd>
-          <dt>COINS</dt>
-          <dd className={styles.coins}>{coins}₽</dd>
-          <dt>STARTED</dt>
-          <dd>{since ? new Date(since).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "—"}</dd>
-        </dl>
+        <nav className={styles.pages} role="tablist" aria-label="Trainer card pages">
+          {PAGES.map((label, i) => (
+            <button key={label} type="button" role="tab" aria-selected={i === page} data-active={i === page} onClick={() => onPage(i)}>
+              {label}
+              {label === "BADGES" && <small> {earned}/{BADGES.length}</small>}
+            </button>
+          ))}
+        </nav>
+        {page === 0 && <StatsPage bestId={bestId} wins={wins} losses={losses} />}
+        {page === 1 && <BadgesPage />}
+        {page === 2 && <HistoryPage />}
       </div>
     </div>
+  );
+}
+
+function StatsPage({ bestId, wins, losses }: { bestId: number | null; wins: number; losses: number }) {
+  const since = useTrainer((s) => s.since);
+  const list = usePokedex((s) => s.list);
+  const pets = useTamagotchi((s) => s.pets);
+  const coins = useTamagotchi((s) => s.coins);
+  const favorites = useFavorites((s) => s.ids.size);
+  const record = useBattleRecord((s) => (bestId !== null ? s.records[bestId] : undefined));
+  const streak = useBattleLog((s) => winStreak(s.log));
+  const rank = rankOf(wins);
+  const battles = wins + losses;
+  const nameOf = (dexId: number) => (list.find((p) => p.id === dexId)?.name ?? `#${dexId}`).toUpperCase();
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.rank}>
+        <span>{rank.title}</span>
+        <small>{rank.next !== null ? `${rank.next} win${rank.next === 1 ? "" : "s"} to ${rankOf(wins + rank.next).title}` : "Top rank!"}</small>
+      </div>
+      <dl>
+        <dt>BATTLES</dt>
+        <dd>
+          {wins}W {losses}L{battles > 0 && <small> ({Math.round((wins / battles) * 100)}%)</small>}
+          {streak > 1 && <small className={styles.streak}> ♨ {streak} in a row</small>}
+        </dd>
+        <dt>BEST PARTNER</dt>
+        <dd>
+          {bestId !== null ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className={styles.mini} src={`/sprites/${bestId}.png`} alt="" draggable={false} />
+              {nameOf(bestId)} <small>{record?.wins}W</small>
+            </>
+          ) : (
+            <small>— win a battle —</small>
+          )}
+        </dd>
+        <dt>PARTY</dt>
+        <dd className={styles.party}>
+          {Array.from({ length: MAX_SLOTS }, (_, i) => {
+            const pet = pets[i];
+            if (!pet) return <span key={`empty-${i}`} className={styles.mini} data-empty />;
+            if (pet.dexId === null) return <span key={pet.uid} className={styles.mini} data-egg title="Egg" />;
+            return (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={pet.uid} className={styles.mini} src={`/sprites/${pet.dexId}.png`} alt={nameOf(pet.dexId)} title={nameOf(pet.dexId)} draggable={false} />
+            );
+          })}
+        </dd>
+        <dt>FAVORITES</dt>
+        <dd>★ {favorites}</dd>
+        <dt>COINS</dt>
+        <dd className={styles.coins}>{coins}₽</dd>
+        <dt>STARTED</dt>
+        <dd>{since ? new Date(since).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "—"}</dd>
+      </dl>
+    </div>
+  );
+}
+
+/** Every badge: earned ones in color with the date, the rest grayed out with how to get them. */
+function BadgesPage() {
+  const badges = useTrainer((s) => s.badges);
+  return (
+    <ul className={styles.badges}>
+      {BADGES.map((b) => {
+        const at = badges[b.id];
+        return (
+          <li key={b.id} data-earned={at !== undefined} title={b.hint}>
+            <span className={styles.badgeIcon} style={at !== undefined ? { background: b.color } : undefined} aria-hidden>
+              {at !== undefined ? b.icon : "?"}
+            </span>
+            <span className={styles.badgeText}>
+              <b>{b.name}</b>
+              <small>{at !== undefined ? `Earned ${shortDate(at)}` : b.hint}</small>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The latest battles, newest first. */
+function HistoryPage() {
+  const log = useBattleLog((s) => s.log);
+  if (log.length === 0) return <p className={styles.emptyPage}>No battles yet. Go to the BATTLE tab!</p>;
+  return (
+    <ul className={styles.history}>
+      {log.map((e) => (
+        <HistoryRow key={e.at} entry={e} />
+      ))}
+    </ul>
+  );
+}
+
+function HistoryRow({ entry }: { entry: BattleLogEntry }) {
+  const list = usePokedex((s) => s.list);
+  const nameOf = (dexId: number) => (list.find((p) => p.id === dexId)?.name ?? `#${dexId}`).toUpperCase();
+  const size = entry.player.length;
+  const team = (ids: number[]) => (
+    <span className={styles.team}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className={styles.mini} src={`/sprites/${ids[0]}.png`} alt="" draggable={false} />
+      <span>{nameOf(ids[0])}</span>
+      {ids.length > 1 && <small>+{ids.length - 1}</small>}
+    </span>
+  );
+  return (
+    <li title={`${entry.player.map(nameOf).join(", ")} vs ${entry.foe.map(nameOf).join(", ")}`}>
+      <span className={styles.result} data-won={entry.won}>
+        {entry.won ? "WIN" : "LOSS"}
+      </span>
+      <span className={styles.mode}>
+        {size}v{entry.foe.length}
+      </span>
+      {team(entry.player)}
+      <small className={styles.vs}>vs</small>
+      {team(entry.foe)}
+      <small className={styles.odds}>{entry.odds !== null ? `${Math.round(entry.odds * 100)}%` : ""}</small>
+      <small className={styles.when}>{shortDate(entry.at)}</small>
+    </li>
   );
 }

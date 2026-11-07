@@ -13,6 +13,8 @@ import { acceptsInput, useDeviceState } from "@/stores/deviceState";
 import { useFavorites } from "@/stores/favorites";
 import { BATTLE_TAB, TABS, TAMAGOTCHI_TAB, TRAINER_TAB, useScreen } from "@/stores/screen";
 import { useTamagotchi } from "@/stores/tamagotchi";
+import { badgeNotice, checkBadges } from "@/stores/badges";
+import { useTrainer } from "@/stores/trainer";
 import { usePokedex } from "@/stores/pokedex";
 import type { Pokemon } from "@/data/pokedex";
 import { BattleScreen } from "./BattleScreen";
@@ -33,6 +35,9 @@ import { describeEvent } from "./tamaMessages";
 const BATTLE_HINT = "▲▼ choose   ◀▶ jump 10   A: pick   ▲ on the top row: search   B: back";
 const TAMA_HINT = "▲▼ party   ◀▶ action   A: do it   Click your Pokémon to hear it!";
 const LIST_HINT = "▲▼ Pokémon   ◀▶ region   A: open   MENU: tab   ▲ on the first row: filters, then search (A = keyboard)";
+
+/** A new badge is announced this long after what earned it. */
+const BADGE_NOTICE_DELAY_MS = 1800;
 
 /** Runs before the device controller, so the UI gets first say on each button. */
 const SCREEN_INPUT_PRIORITY = 10;
@@ -280,6 +285,28 @@ export function DeviceScreen({ onRequestZoom }: Props) {
       }),
     [],
   );
+
+  // Badges for favorites and the Tamagotchi party (battle badges are announced
+  // with the battle result). Said a moment later so the action's own message shows first.
+  useEffect(() => {
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      const fresh = checkBadges();
+      if (fresh.length === 0 || useTrainer.getState().since === null) return;
+      clearTimeout(pending);
+      pending = setTimeout(() => say(badgeNotice(fresh)), BADGE_NOTICE_DELAY_MS);
+    };
+    const hatched = (pets: { dexId: number | null }[]) => pets.filter((p) => p.dexId !== null).length;
+    const offFavorites = useFavorites.subscribe(check);
+    const offParty = useTamagotchi.subscribe((s, prev) => {
+      if (hatched(s.pets) !== hatched(prev.pets)) check();
+    });
+    return () => {
+      offFavorites();
+      offParty();
+      clearTimeout(pending);
+    };
+  }, []);
 
   /** Returns true when the screen consumed the button. */
   const handle = (button: DeviceButton): boolean => {

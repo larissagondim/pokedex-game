@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  BADGES,
+  type BadgeInput,
+  type BattleLogEntry,
   battleTotals,
   BOTTOM_STYLES,
   cleanName,
@@ -8,7 +11,10 @@ import {
   EXTRA_STYLES,
   HAIR_STYLES,
   HAT_STYLES,
+  LOG_MAX,
+  logBattle,
   NAME_MAX,
+  qualifiedBadges,
   randomAppearance,
   rankOf,
   sanitizeAppearance,
@@ -19,6 +25,7 @@ import {
   spriteRows,
   stepAppearance,
   TOP_STYLES,
+  winStreak,
 } from "./trainer.ts";
 
 /** Every combination of the style fields (colors don't change the shape). */
@@ -116,4 +123,50 @@ test("battleTotals sums records and finds the best partner", () => {
     { wins: 9, losses: 3, bestId: 25 },
   );
   assert.equal(battleTotals({ 9: { wins: 2, losses: 0 }, 3: { wins: 2, losses: 0 } }).bestId, 3);
+});
+
+const entry = (won: boolean, size = 1, extra: Partial<BattleLogEntry> = {}): BattleLogEntry => ({
+  at: 0,
+  player: Array(size).fill(25),
+  foe: Array(size).fill(130),
+  won,
+  odds: 0.5,
+  ...extra,
+});
+
+test("logBattle keeps the newest LOG_MAX battles, newest first", () => {
+  let log: BattleLogEntry[] = [];
+  for (let i = 0; i < LOG_MAX + 5; i++) log = logBattle(log, { ...entry(true), at: i });
+  assert.equal(log.length, LOG_MAX);
+  assert.equal(log[0].at, LOG_MAX + 4);
+});
+
+test("winStreak counts wins back from the newest battle", () => {
+  assert.equal(winStreak([]), 0);
+  assert.equal(winStreak([entry(true), entry(true), entry(false), entry(true)]), 2);
+  assert.equal(winStreak([entry(false), entry(true)]), 0);
+  assert.equal(winStreak([entry(true), entry(true)]), 2);
+});
+
+test("badges follow the data", () => {
+  const none: BadgeInput = { wins: 0, log: [], legendary: new Set([150]), party: 0, favorites: 0 };
+  assert.deepEqual(qualifiedBadges(none), []);
+  const lots: BadgeInput = {
+    wins: 9,
+    log: [
+      entry(true, 3),
+      entry(true, 6),
+      entry(true, 1, { foe: [150] }),
+      entry(true, 1, { odds: 0.2 }),
+      entry(true),
+      entry(false, 6, { foe: [150], odds: 0.1 }),
+    ],
+    legendary: new Set([150]),
+    party: 5,
+    favorites: 10,
+  };
+  assert.deepEqual(qualifiedBadges(lots), BADGES.map((b) => b.id));
+  // Losses don't count, and unknown odds aren't an upset.
+  const losses: BadgeInput = { ...none, log: [entry(false, 3), entry(false, 6, { foe: [150], odds: 0.1 }), entry(true, 1, { odds: null })] };
+  assert.deepEqual(qualifiedBadges({ ...losses, wins: 1 }), ["first-win"]);
 });

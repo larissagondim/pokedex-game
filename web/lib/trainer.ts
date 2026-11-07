@@ -512,3 +512,74 @@ export function battleTotals(records: { [dexId: number]: { wins: number; losses:
 
 /** Five-digit trainer ID. */
 export const newTrainerId = (rng: () => number = Math.random) => String(Math.floor(rng() * 100_000)).padStart(5, "0");
+
+/* Battle history and badges */
+
+/** One finished battle, as the trainer card's history keeps it. */
+export interface BattleLogEntry {
+  /** When it ended (ms). */
+  at: number;
+  /** Your team and the foe's (dex numbers, the lead first). 1, 3 or 6 each. */
+  player: number[];
+  foe: number[];
+  won: boolean;
+  /** Win chance before it started (ML model or simulation), when known. */
+  odds: number | null;
+}
+
+/** How many battles the history keeps (newest first). */
+export const LOG_MAX = 30;
+
+/** Adds a battle to the front of the history, dropping the oldest past LOG_MAX. */
+export const logBattle = (log: readonly BattleLogEntry[], entry: BattleLogEntry) => [entry, ...log].slice(0, LOG_MAX);
+
+/** Wins in a row, counting back from the newest battle. */
+export function winStreak(log: readonly BattleLogEntry[]): number {
+  const firstLoss = log.findIndex((e) => !e.won);
+  return firstLoss === -1 ? log.length : firstLoss;
+}
+
+/** Everything the badges look at. */
+export interface BadgeInput {
+  wins: number;
+  log: readonly BattleLogEntry[];
+  /** Dex numbers of legendary and mythical Pokémon. */
+  legendary: ReadonlySet<number>;
+  /** Hatched Pokémon in the Tamagotchi party. */
+  party: number;
+  favorites: number;
+}
+
+export const UNDERDOG_ODDS = 0.3;
+export const STREAK_BADGE = 5;
+export const COLLECTOR_FAVORITES = 10;
+
+export const BADGES = [
+  { id: "first-win", name: "FIRST WIN", hint: "Win a battle", icon: "★", color: "#f2c94c", earned: (d: BadgeInput) => d.wins > 0 },
+  { id: "team", name: "TEAM PLAYER", hint: "Win a 3v3 team battle", icon: "3", color: "#3a6ed8", earned: (d: BadgeInput) => d.log.some((e) => e.won && e.player.length === 3) },
+  { id: "full", name: "FULL BATTLE", hint: "Win a 6v6 full battle", icon: "6", color: "#7d4fc4", earned: (d: BadgeInput) => d.log.some((e) => e.won && e.player.length === 6) },
+  {
+    id: "legend",
+    name: "GIANT SLAYER",
+    hint: "Beat a legendary or mythical Pokémon",
+    icon: "♛",
+    color: "#d8343c",
+    earned: (d: BadgeInput) => d.log.some((e) => e.won && e.foe.some((id) => d.legendary.has(id))),
+  },
+  {
+    id: "underdog",
+    name: "UNDERDOG",
+    hint: `Win with a win chance under ${UNDERDOG_ODDS * 100}%`,
+    icon: "!",
+    color: "#f0884a",
+    earned: (d: BadgeInput) => d.log.some((e) => e.won && e.odds !== null && e.odds < UNDERDOG_ODDS),
+  },
+  { id: "streak", name: "ON FIRE", hint: `Win ${STREAK_BADGE} battles in a row`, icon: "♨", color: "#e86fa0", earned: (d: BadgeInput) => winStreak(d.log) >= STREAK_BADGE },
+  { id: "party", name: "FULL PARTY", hint: "Raise 5 Pokémon in the Tamagotchi", icon: "♥", color: "#3fa66b", earned: (d: BadgeInput) => d.party >= 5 },
+  { id: "collector", name: "COLLECTOR", hint: `Favorite ${COLLECTOR_FAVORITES} Pokémon`, icon: "◆", color: "#2fa3a8", earned: (d: BadgeInput) => d.favorites >= COLLECTOR_FAVORITES },
+] as const;
+
+export type BadgeId = (typeof BADGES)[number]["id"];
+
+/** Ids of the badges the current data qualifies for. */
+export const qualifiedBadges = (d: BadgeInput): BadgeId[] => BADGES.filter((b) => b.earned(d)).map((b) => b.id);
