@@ -2,7 +2,7 @@ import type { Combatant, MoveInfo } from "../battleFeatures.ts";
 
 export type StatName = "atk" | "def" | "spa" | "spd" | "spe";
 export type Boosts = Partial<Record<StatName, number>>;
-export type Status = "brn" | "par" | "psn" | "tox" | "slp";
+export type Status = "brn" | "par" | "psn" | "tox" | "slp" | "frz";
 
 /** Chance-based extra effect of a damaging move (e.g. Flamethrower: 10% burn). */
 export interface Secondary {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chooseAction, chooseMove, chooseReplacement, replaceFainted } from "./ai.ts";
 import {
+  type BattleEvent,
   type BattleState,
   calcDamage,
   createBattle,
@@ -662,4 +663,93 @@ test("alone, U-turn is just an attack; Parting Shot lowers the foe's stats befor
   assert.equal(r.state.pending?.side, "a");
   // The AI (and the simulations) settle a pending pivot with its best matchup.
   assert.equal(replaceFainted(r.state).pending, null);
+});
+
+// --- Damaging moves with their own rules, freeze ---
+
+const dmgTo = (events: BattleEvent[], side: string) => {
+  const hit = events.find((e) => e.kind === "damage" && e.side === side);
+  return hit?.kind === "damage" ? hit.amount : 0;
+};
+
+test("Explosion faints the user", () => {
+  const boom = move({ id: "explosion", name: "Explosion", power: 250 });
+  const r = runTurn(createTeamBattle(team({ moves: [boom] }, {}), team({ hp: 999, maxHp: 999, moves: splashOnly })), 0, 0, seq([], 0.99));
+  assert.ok(dmgTo(r.events, "b") > 0);
+  assert.equal(r.state.a.hp, 0);
+  assert.ok(needsReplacement(r.state, "a"));
+});
+
+test("Solar Beam charges for a turn, except in sun", () => {
+  const beam = move({ id: "solarbeam", name: "Solar Beam", type: "grass", category: "special", power: 120 });
+  const st = battle({ moves: [beam, move({})] }, { hp: 999, maxHp: 999, moves: [splash] });
+  const t1 = runTurn(st, 0, 0, seq([], 0.99));
+  assert.equal(dmgTo(t1.events, "b"), 0);
+  assert.equal(t1.state.a.charging, 0);
+  // Picks Tackle, but the beam fires; PP spent once.
+  const t2 = runTurn(t1.state, 1, 0, seq([], 0.99));
+  assert.ok(dmgTo(t2.events, "b") > 0);
+  assert.ok(t2.events.some((e) => e.kind === "move" && e.side === "a" && e.move === "Solar Beam"));
+  assert.equal(t2.state.a.moves[0].ppLeft, beam.pp - 1);
+  const sunny = battle({ moves: [beam] }, { hp: 999, maxHp: 999, moves: [splash] });
+  sunny.weather = { kind: "sun", turns: 5 };
+  assert.ok(dmgTo(runTurn(sunny, 0, 0, seq([], 0.99)).events, "b") > 0);
+});
+
+test("Counter returns double the physical damage taken this turn", () => {
+  const counter = move({ id: "counter", name: "Counter", type: "fighting", power: 0, priority: -5 });
+  const r = runTurn(battle({ moves: [counter] }, { hp: 999, maxHp: 999 }), 0, 0, seq([], 0.99));
+  assert.equal(dmgTo(r.events, "b"), 2 * dmgTo(r.events, "a"));
+  const special = move({ id: "swift", name: "Swift", category: "special", power: 60 });
+  const miss = runTurn(battle({ moves: [counter] }, { moves: [special] }), 0, 0, seq([], 0.99));
+  assert.ok(miss.events.some((e) => e.kind === "fail" && e.side === "a"));
+});
+
+test("variable power: Facade, Hex, Low Kick and Eruption", () => {
+  const hit = (m: BattleMove, a: Partial<BattlePokemon>, b: Partial<BattlePokemon>, setup?: (st: BattleState) => void) => {
+    const st = battle({ moves: [m], stats: fast, ...a }, { hp: 999, maxHp: 999, moves: [splash], ...b });
+    setup?.(st);
+    return dmgTo(runTurn(st, 0, 0, seq([], 0.99)).events, "b");
+  };
+  const facade = move({ id: "facade", name: "Facade", power: 70 });
+  // Burned: double power and no burn halving.
+  assert.ok(hit(facade, {}, {}, (st) => (st.a.status = "brn")) > 1.8 * hit(facade, {}, {}));
+  const hex = move({ id: "hex", name: "Hex", type: "ghost", category: "special", power: 65 });
+  assert.ok(hit(hex, {}, { types: ["psychic"] }, (st) => (st.b.status = "par")) > 1.8 * hit(hex, {}, { types: ["psychic"] }));
+  const kick = move({ id: "lowkick", name: "Low Kick", type: "fighting", power: 0 });
+  assert.ok(hit(kick, {}, { weight: 250 }) > 4 * hit(kick, {}, { weight: 5 }));
+  const eruption = move({ id: "eruption", name: "Eruption", type: "fire", category: "special", power: 150 });
+  assert.ok(hit(eruption, {}, {}) > 3 * hit(eruption, {}, {}, (st) => (st.a.hp = 30)));
+});
+
+test("Psyshock hits Defense, Body Press uses Defense, Foul Play uses the target's Attack", () => {
+  const st = battle({ stats: { atk: 50, def: 200, spa: 100, spd: 100, spe: 100 } }, { stats: { atk: 200, def: 100, spa: 100, spd: 300, spe: 100 } });
+  const f = (m: BattleMove) => calcDamage(st.a, st.b, { ...m, ppLeft: 1 }, seq([0.99]), false);
+  const psyshock = move({ id: "psyshock", name: "Psyshock", type: "psychic", category: "special", power: 80 });
+  const psychic = move({ id: "psychic", name: "Psychic", type: "psychic", category: "special", power: 80 });
+  assert.ok(f(psyshock) > 2 * f(psychic));
+  const press = move({ id: "bodypress", name: "Body Press", type: "fighting", power: 80 });
+  const tackle80 = move({ id: "strength", name: "Strength", type: "fighting", power: 80 });
+  assert.ok(f(press) > 3 * f(tackle80));
+  const foul = move({ id: "foulplay", name: "Foul Play", type: "dark", power: 95 });
+  const crunch = move({ id: "crunch", name: "Crunch", type: "dark", power: 95 });
+  assert.ok(f(foul) > 3 * f(crunch));
+});
+
+test("freeze: can't move, thaws 20% of the time, and Fire moves thaw it", () => {
+  const st = battle({}, { moves: [splash] });
+  st.a.status = "frz";
+  // Speed tie roll first, then the thaw roll: 0.99 ≥ 0.2 stays frozen.
+  const stuck = runTurn(st, 0, 0, seq([0.5], 0.99));
+  assert.ok(stuck.events.some((e) => e.kind === "cant-move" && e.side === "a" && e.reason === "frz"));
+  const thawed = runTurn(st, 0, 0, seq([0.1, 0.1], 0.99));
+  assert.equal(thawed.state.a.status, null);
+  const ember = move({ id: "ember", name: "Ember", type: "fire", category: "special", power: 40 });
+  const melt = battle({ moves: [ember] }, {});
+  melt.b.status = "frz";
+  assert.equal(runTurn(melt, 0, 0, seq([0.1, 0.99], 0.99)).state.b.status, null);
+  // Ice types can't be frozen.
+  const beam = move({ id: "icebeam", name: "Ice Beam", type: "ice", category: "special", power: 90, secondary: [{ chance: 100, status: "frz" }] });
+  assert.equal(runTurn(battle({ moves: [beam] }, { types: ["ice"], moves: [splash] }), 0, 0, seq([], 0.99)).state.b.status, null);
+  assert.equal(runTurn(battle({ moves: [beam] }, { hp: 999, maxHp: 999, moves: [splash] }), 0, 0, seq([], 0.99)).state.b.status, "frz");
 });

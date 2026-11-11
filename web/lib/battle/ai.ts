@@ -3,7 +3,9 @@ import { effectiveness } from "../typeChart.ts";
 import {
   type BattleState,
   bypassesSub,
+  CHARGE,
   canInflict,
+  COUNTERS,
   canSwitch,
   type Choice,
   effectiveSpeed,
@@ -12,8 +14,10 @@ import {
   type FighterMove,
   moveImmune,
   needsReplacement,
+  powerAgainst,
   resolvePivot,
   type Rng,
+  SELF_KO,
   type Side,
   stageMultiplier,
   switchIn,
@@ -71,8 +75,20 @@ function damageIfHits(m: FighterMove, me: Fighter, foe: Fighter, ctx?: AiContext
     if (effectiveness(m.type, foe.types) === 0) return 0;
     return m.fixedDamage === "level" ? me.level : m.fixedDamage;
   }
-  const move: MoveInfo = { ...m, power: m.power > 0 ? m.power : FALLBACK_POWER, accuracy: 1 };
-  return expectedDamage(move, view(me), view(foe)) * weatherFactor(weatherOf(ctx), m.type);
+  if (m.id in COUNTERS) {
+    // Only pays off if the foe hits back with the right kind of attack.
+    const [category, multiplier] = COUNTERS[m.id];
+    const answered = foe.moves.filter((x) => isAttack(x) && (!category || x.category === category));
+    if (answered.length === 0 || effectiveness(m.type, foe.types) === 0) return 0;
+    return multiplier * 0.5 * Math.max(...answered.map((x) => damageIfHits(x, foe, me, ctx)));
+  }
+  const power = powerAgainst(m, me, foe);
+  const move: MoveInfo = { ...m, power: power > 0 ? power : FALLBACK_POWER, accuracy: 1 };
+  let damage = expectedDamage(move, view(me), view(foe)) * weatherFactor(weatherOf(ctx), m.type);
+  // Two turns for one hit (Solar moves are instant in sun).
+  const instant = (m.id === "solarbeam" || m.id === "solarblade") && weatherOf(ctx) === "sun";
+  if (CHARGE.has(m.id) && !instant && me.charging === null) damage /= 2;
+  return damage;
 }
 
 const HALF_HEALS = new Set(["synthesis", "moonlight", "morningsun", "shoreup"]);
@@ -229,11 +245,14 @@ export function chooseMove(me: Fighter, foe: Fighter, rng: Rng = Math.random, ct
   }
 
   const bestHit = Math.max(1, ...usable.filter(({ m }) => isAttack(m)).map(({ m }) => damageIfHits(m, me, foe, ctx) * accuracyOf(m, ctx)));
+  // Fainting on purpose only makes sense when it's about to go down anyway.
+  const sacrifice = (m: FighterMove) => (SELF_KO.has(m.id) && me.hp > me.maxHp * 0.3 ? 0.3 : 1);
   let best = usable[0].i;
   let bestScore = -1;
   for (const { m, i } of usable) {
     const score =
       (isAttack(m) ? damageIfHits(m, me, foe, ctx) * accuracyOf(m, ctx) : statusUseful(m, me, foe, ctx) ? bestHit * STATUS_VALUE(m) : 0) *
+      sacrifice(m) *
       (0.9 + rng() * 0.2); // a little noise between similar options
     if (score > bestScore) {
       best = i;

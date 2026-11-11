@@ -322,6 +322,9 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
       case "status":
         setView((v) => v && { ...v, [event.side]: { ...v[event.side], status: event.status } });
         break;
+      case "effect":
+        if (event.effect === "thaw") setView((v) => v && { ...v, [event.side]: { ...v[event.side], status: null } });
+        break;
       case "wake":
       case "cure":
         setView((v) => v && { ...v, [event.side]: { ...v[event.side], status: null } });
@@ -392,6 +395,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     const me = nameOf(final.a.dexId);
     if (final.a.mustRecharge) onNotice(`${me} must recharge! Press A.`);
     else if (final.a.locked) onNotice(`${me} keeps using ${final.a.moves[final.a.locked.index].name}! Press A.`);
+    else if (final.a.charging !== null) onNotice(`${me} unleashes ${final.a.moves[final.a.charging].name}! Press A.`);
     else onNotice(`What will ${me} do?`);
   };
 
@@ -462,8 +466,8 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   const command = (index: number) => {
     if (!battle) return;
     const me = battle.a;
-    // Locked into a move or recharging: the turn just goes on.
-    if ((me.locked || me.mustRecharge) && COMMANDS[index] !== "RUN") return submit(0);
+    // Locked into a move, charging one or recharging: the turn just goes on.
+    if ((me.locked || me.mustRecharge || me.charging !== null) && COMMANDS[index] !== "RUN") return submit(0);
     switch (COMMANDS[index]) {
       case "FIGHT":
         setPhase("fight");
@@ -703,7 +707,7 @@ function Sprite({ pokemon, side, hitKey, fainted }: { pokemon: Pokemon; side: "p
   );
 }
 
-const STATUS_LABEL: Record<Status, string> = { brn: "BRN", par: "PAR", psn: "PSN", tox: "PSN", slp: "SLP" };
+const STATUS_LABEL: Record<Status, string> = { brn: "BRN", par: "PAR", psn: "PSN", tox: "PSN", slp: "SLP", frz: "FRZ" };
 
 const hpTone = (pct: number) => (pct > 50 ? "high" : pct >= 20 ? "mid" : "low");
 

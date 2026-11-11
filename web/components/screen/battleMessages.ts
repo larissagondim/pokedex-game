@@ -15,6 +15,7 @@ const STATUS_GAINED: Record<Status, string> = {
   psn: "was poisoned!",
   tox: "was badly poisoned!",
   slp: "fell asleep!",
+  frz: "was frozen solid!",
 };
 
 /** Lines for text-only effects: `who` is the Pokémon, `team` "your team" / "the foe's team", `move` the move involved (Taunt blocks). */
@@ -53,6 +54,9 @@ const EFFECT_TEXT: Record<Effect, (who: string, team: string, move?: string) => 
   "trick-room": () => "The dimensions were twisted!",
   "trick-room-end": () => "The twisted dimensions returned to normal!",
   "no-target": () => "But there was no target...",
+  thaw: (who) => `${who} thawed out!`,
+  charging: (who, _team, move) => `${who} is gathering power for ${move ?? "its attack"}!`,
+  "stats-reset": (who) => `${who}'s stat changes were removed!`,
 };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -112,6 +116,7 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
       return {
         par: `${name(event.side)} is paralyzed! It can't move!`,
         slp: `${name(event.side)} is fast asleep.`,
+        frz: `${name(event.side)} is frozen solid!`,
         flinch: `${name(event.side)} flinched and couldn't move!`,
         recharge: `${name(event.side)} must recharge!`,
       }[event.reason];

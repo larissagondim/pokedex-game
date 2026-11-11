@@ -191,6 +191,7 @@
 .statusTag[data-status="brn"] { background: #d9582b; }
 .statusTag[data-status="par"] { background: #c9a800; }
 .statusTag[data-status="slp"] { background: #6b6b76; }
+.statusTag[data-status="frz"] { background: #3c8fc4; }
 
 .hp {
   display: grid;
