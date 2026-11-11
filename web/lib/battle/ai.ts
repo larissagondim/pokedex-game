@@ -228,6 +228,13 @@ function statusUseful(m: FighterMove, me: Fighter, foe: Fighter, ctx?: AiContext
   return false;
 }
 
+/**
+ * Expected damage of a move, accuracy included, with the engine's rules
+ * (abilities, items, variable power, multi-hit). Used for the ML features.
+ */
+export const expectedMoveDamage = (m: FighterMove, me: Fighter, foe: Fighter) =>
+  isAttack(m) ? damageIfHits(m, me, foe) * accuracyOf(m) : 0;
+
 /** Status moves are worth this share of the best hit when useful. */
 const STATUS_VALUE = (m: FighterMove) =>
   m.id === "transform" || m.id === "sleeptalk"

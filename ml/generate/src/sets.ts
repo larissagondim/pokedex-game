@@ -1,18 +1,21 @@
 import { Dex, type PokemonSet, type Species, toID } from "@pkmn/sim";
 import { TeamGenerators } from "@pkmn/randoms";
-import { type Rng, pick, sample } from "./rng.ts";
+import type { Rng } from "./rng.ts";
 
 /**
- * Movesets for the simulated battles. Every Pokémon is level 50 with no item
- * (items change stats in ways the features can't see) and neutral spreads.
- * Curated random-battle movesets are used when they exist; otherwise the set
- * is built from the learnset (best STAB move per type, then coverage).
+ * Sets for the simulated battles, all at level 50. Species with a curated
+ * random-battle set get one from Showdown's generator (moves, ability and
+ * held item, chosen together the way random battles do). The rest get a set
+ * built from the learnset (best STAB move per type, then coverage), their
+ * first ability, and an Eviolite if they can still evolve (Leftovers if not).
  */
 
 export const LEVEL = 50;
 const dex = Dex.forGen(9);
 const randoms = TeamGenerators.getTeamGenerator("gen9randombattle") as unknown as {
   randomSets: Record<string, { sets: { movepool: string[]; abilities: string[] }[] }>;
+  setSeed(seed: number[]): void;
+  randomSet(species: Species, teamDetails?: object, isLead?: boolean, isDoubles?: boolean): PokemonSet;
 };
 
 /** Base (non-forme) species for each National Dex number. */
@@ -68,27 +71,21 @@ function learnsetMoves(species: Species): string[] {
 export function buildSet(dexNumber: number, rng: Rng): PokemonSet {
   const species = byNum.get(dexNumber);
   if (!species) throw new Error(`No species #${dexNumber}`);
-  const data = randoms.randomSets[species.id];
-  let moves: string[];
-  let ability = species.abilities[0];
-  if (data?.sets.length) {
-    const set = pick(rng, data.sets);
-    moves = sample(rng, set.movepool, 4).map(toID);
-    ability = pick(rng, set.abilities);
-  } else {
-    moves = learnsetMoves(species);
-  }
   const stat = { hp: 85, atk: 85, def: 85, spa: 85, spd: 85, spe: 85 };
-  return {
+  const base = {
     name: species.name,
     species: species.name,
     level: LEVEL,
-    moves,
-    ability,
-    item: "",
     nature: "Hardy",
     gender: "",
     evs: stat,
     ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 },
   };
+  if (randoms.randomSets[species.id]?.sets.length) {
+    // The generator has its own PRNG: seed it from ours so sets stay reproducible.
+    randoms.setSeed(Array.from({ length: 4 }, () => Math.floor(rng() * 65536)));
+    const set = randoms.randomSet(species, {}, false, false);
+    return { ...base, moves: set.moves.map(toID), ability: set.ability, item: set.item, evs: set.evs, ivs: set.ivs };
+  }
+  return { ...base, moves: learnsetMoves(species), ability: species.abilities[0], item: species.nfe ? "Eviolite" : "Leftovers" };
 }

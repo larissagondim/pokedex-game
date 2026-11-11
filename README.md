@@ -37,7 +37,7 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 
 | Area | Description |
 | --- | --- |
-| 3D device | Original red handheld built with React Three Fiber. The screen half opens like a book cover on a spring hinge, with idle float, boot animation, status LED and a secondary screen. Drag to rotate, zoom into the main screen. Every measurement lives in `device.config.ts`. |
+| 3D device | Original red handheld built with React Three Fiber. The screen half opens like a book cover on a spring hinge (a full-height barrel with knuckles alternating between the halves, screwed to each), with idle float, boot animation, a secondary screen and a status LED that pulses red in battle and amber when a Tamagotchi needs you. Engraved lettering, screws, parting lines and buttons that sink and darken when pressed. Drag to rotate, zoom into the main screen. Every measurement lives in `device.config.ts`. |
 | Phone layout | On touch screens in portrait, the controls move next to the screen, the lid opens flat and the camera frames one half. Force it with `?layout=compact` or `?layout=split`. |
 | Input | Keyboard, gamepad and 3D buttons emit the same events through a priority-based handler stack. Held directions repeat. |
 | Sound | Synthesized UI sounds and music (WebAudio), and Pokémon cries played from the speaker grill. Nothing from the games is bundled. |
@@ -59,7 +59,7 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 | --- | --- |
 | Modes | Single (1v1), team (3v3) and full (6v6) battles against a chosen or random opponent, with backdrops picked from the foe's type and original battle themes. |
 | Fight menu | Classic FIGHT / BAG / POKéMON / RUN flow with type-effectiveness hints, Super Potions, Full Heals and switching. Turns play back event by event. |
-| Engine | Hand-written, pure TypeScript (`web/lib/battle`). Priority and speed, damage formula, STAB, type chart, crits, accuracy, stat stages, PP, status conditions, drain, recoil, multi-hit, flinch, confusion, Protect, Leech Seed, locked and recharge moves and several special moves. Abilities and items are not modeled. |
+| Engine | Hand-written, pure TypeScript (`web/lib/battle`). Priority and speed, damage formula, STAB, type chart, crits, accuracy, stat stages, PP, status conditions (freeze included), drain, recoil, multi-hit, flinch, confusion, Protect, Substitute, Leech Seed, locked, recharge and two-turn moves. Abilities (Intimidate, Levitate, Sturdy, Multiscale, weather setters...) and held items (Leftovers, Life Orb, Choice items, Focus Sash, berries...). The field: entry hazards, screens, weather, Trick Room, Tailwind, Wish. Pivots (U-turn, Volt Switch) and forced switches (Roar, Dragon Tail, Red Card). |
 | Foe AI | Greedy: takes the surest KO when available, avoids useless status moves, and in team battles sends out its best matchup and switches out of losing ones. |
 | Win chance | Shown before the fight (ML model) and re-estimated every turn (Monte Carlo, 600 simulations per estimate in the browser). Team win chances are simulated, since the model is 1v1. |
 | Rewards | Coins for the Tamagotchi shop, XP and joy for party members (they can evolve), and a win/loss record per Pokémon. |
@@ -237,7 +237,7 @@ Full details, commands and results are in [`ml/README.md`](ml/README.md).
 
 1. **Shared battle contract:** `BattleSnapshot` in `web/lib/battleFeatures.ts` is the engine-neutral 1v1 state. Features (turns to KO, damage share, turn order, HP, type advantage, stats, status, moveset features) are computed there once and used by both the dataset generator and the app.
 2. **Baseline (hard labels):** ~80,000 battles simulated with `@pkmn/sim` (gen 9). Gradient boosting reached AUC 0.93 with ~0.14% calibration error, against 0.79 for a "who wins the damage race" heuristic, cross-validated by battle (GroupKFold) and tested on unseen species.
-3. **Shipped model (soft labels):** trained on the battles the app actually plays (its own engine and movesets). Each of 25,000 random matchups is simulated 100 times with the AI on both sides and the win rate is the label. Mean error 0.065 against 1,000-simulation estimates (correlation 0.96), down from 0.077.
+3. **Shipped model (soft labels):** trained on the battles the app actually plays (its own engine and movesets). Each of 25,000 random matchups is simulated 100 times with the AI on both sides and the win rate is the label. The sets carry abilities and held items, and the features use the engine's own damage and speed. Mean error 0.083 against 1,000-simulation estimates (correlation 0.94). Battles with abilities and items are more random than before, so the error is higher than the 0.065 of the earlier, simpler engine.
 4. **Serving:** trees are exported to JSON and evaluated in the browser (`web/lib/winModel.ts`, tested to match scikit-learn). FastAPI (`/predict`) is used instead when `NEXT_PUBLIC_ML_API_URL` is set.
 5. **During the fight:** after each turn, a Monte Carlo run of the rest of the battle refines the estimate in chunks (`web/lib/battle/montecarlo.ts`), cancelled when a newer turn arrives.
 
@@ -286,11 +286,12 @@ Done:
 - [x] Win-prediction pipeline: dataset generator, training, Monte Carlo evaluation, FastAPI
 - [x] Battle engine and screen: 1v1, 3v3 and 6v6, items, switching, rewards
 - [x] Trainer profile
+- [x] Battle engine: abilities, held items, Substitute, hazards, weather, pivots and the moves that used to fail
+- [x] 3D device polish: hinge, shell finish, buttons, LED
 
 Next:
 
 - [ ] **Phase 1:** Docker
-- [ ] **Phase 2:** polish the 3D device around the interface
 - [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
 
 Ideas:
@@ -299,7 +300,6 @@ Ideas:
 - [x] Badges on the trainer card
 - [x] Battle history on the profile: the last battles, the opponents and the results
 - [ ] Deploy (e.g. Vercel) with a live demo link. The win model runs in the browser, so no backend is needed
-- [ ] Battle engine: abilities, held items, Substitute and the moves that still fail (changing movesets means regenerating the dataset and retraining the model)
 
 ## Legal notice
 

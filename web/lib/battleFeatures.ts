@@ -1,5 +1,6 @@
-import { canInflict, moveImmune } from "./battle/engine.ts";
-import type { BattleMove } from "./battle/types.ts";
+import { expectedMoveDamage } from "./battle/ai.ts";
+import { canInflict, createFighter, effectiveSpeed, type Fighter, type FighterMove, moveImmune, priorityOf } from "./battle/engine.ts";
+import type { BattleMove, BattlePokemon } from "./battle/types.ts";
 import { effectiveness } from "./typeChart.ts";
 
 /**
@@ -62,11 +63,42 @@ export function expectedDamage(move: MoveInfo, attacker: Combatant, defender: Co
   return base * AVERAGE_ROLL * stab * effectiveness(move.type, defender.types) * burn * move.accuracy;
 }
 
+/**
+ * The app's battle sets carry the ability and held item: for them, damage,
+ * speed and priority come from the battle engine itself (Huge Power, Choice
+ * Scarf, Levitate...). Plain combatants (the Showdown datasets) use the
+ * formula above.
+ */
+const fullSet = (c: Combatant): c is BattlePokemon => typeof (c as BattlePokemon).ability === "string";
+
+const fighters = new WeakMap<Combatant, Fighter>();
+/** The combatant as an engine fighter, in its current HP and status. */
+function fighter(c: BattlePokemon): Fighter {
+  let f = fighters.get(c);
+  if (!f) {
+    f = createFighter(c);
+    fighters.set(c, f);
+  }
+  f.hp = c.hp;
+  f.status = (c.status as Fighter["status"]) ?? null;
+  return f;
+}
+
+/** Expected damage of one of the attacker's moves (engine rules for full sets). */
+function moveDamage(move: MoveInfo, attacker: Combatant, defender: Combatant): number {
+  if (fullSet(attacker) && fullSet(defender)) {
+    const me = fighter(attacker);
+    const m = me.moves[attacker.moves.indexOf(move as BattleMove)];
+    return m ? expectedMoveDamage(m, me, fighter(defender)) : 0;
+  }
+  return expectedDamage(move, attacker, defender);
+}
+
 /** The attacker's best move against the defender (by expected damage). */
 export function bestMove(attacker: Combatant, defender: Combatant) {
   let best: { move: MoveInfo | null; damage: number } = { move: null, damage: 0 };
   for (const move of attacker.moves) {
-    const damage = expectedDamage(move, attacker, defender);
+    const damage = moveDamage(move, attacker, defender);
     if (damage > best.damage) best = { move, damage };
   }
   return best;
@@ -79,13 +111,16 @@ export function turnsToKo(attacker: Combatant, defender: Combatant): number {
   return Math.min(MAX_TURNS, Math.ceil(defender.hp / damage));
 }
 
-/** Effective speed for turn order (paralysis halves it). */
-const speedOf = (c: Combatant) => c.stats.spe * (c.status === "par" ? 0.5 : 1);
+/** Effective speed for turn order (paralysis halves it; full sets add abilities and items). */
+const speedOf = (c: Combatant) => (fullSet(c) ? effectiveSpeed(fighter(c)) : c.stats.spe * (c.status === "par" ? 0.5 : 1));
+
+const priority = (c: Combatant, move: MoveInfo | null) =>
+  !move ? 0 : fullSet(c) ? priorityOf(fighter(c), move as FighterMove) : move.priority;
 
 /** 1 if A moves first with its best move, 0 if B does, 0.5 on a speed tie. */
 export function movesFirst(snapshot: BattleSnapshot): number {
-  const pa = bestMove(snapshot.a, snapshot.b).move?.priority ?? 0;
-  const pb = bestMove(snapshot.b, snapshot.a).move?.priority ?? 0;
+  const pa = priority(snapshot.a, bestMove(snapshot.a, snapshot.b).move);
+  const pb = priority(snapshot.b, bestMove(snapshot.b, snapshot.a).move);
   if (pa !== pb) return pa > pb ? 1 : 0;
   const sa = speedOf(snapshot.a);
   const sb = speedOf(snapshot.b);

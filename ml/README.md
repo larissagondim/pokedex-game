@@ -71,6 +71,8 @@ Evaluated on 400 separate matchups measured with 1,000 simulations each:
 
 The moveset features say what the damage race can't see: accuracy of the best move, a priority attack, healing (Recover, Rest, drain, Leech Seed), setup moves and status moves that would work on the foe. Cross-validated soft cross-entropy 0.277 against a floor of 0.227 (the labels' own uncertainty).
 
+**With abilities and held items (current).** The sets now come from Showdown's random-battle generator (moves, ability and item chosen together; species without a curated set get learnset moves and an Eviolite or Leftovers), and for these full sets the features compute damage, speed and priority with the engine itself (Huge Power, Choice Scarf, Levitate...). Same 25,000 × 100 training run, evaluated on 400 new matchups × 1,000 simulations: mean absolute error **0.083**, correlation **0.94**, cross-entropy 0.317 against a floor of 0.244. The floor went up from 0.227: entry abilities, berries, Focus Sash and crits on Life Orb sets make single matchups less predictable. The previous model, run on the same evaluation set, scores 0.080, so the retrained model is about even with it there.
+
 During the fight, the battle screen re-estimates the chance each turn by simulating the rest of the battle 600 times in the browser; at the first turn the two estimates now agree closely (e.g. Charizard vs Venusaur: model 97%, simulation 94%).
 
 ```bash

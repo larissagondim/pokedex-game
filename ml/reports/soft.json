@@ -31,47 +31,47 @@
   "models": {
     "logistic": {
       "cv": {
-        "cross_entropy": 0.2964737477985249,
-        "entropy_floor": 0.22664364398643527,
-        "mae": 0.08418181304983202,
-        "rmse": 0.14304812209778572,
-        "correlation": 0.9413177188011561,
-        "mean_label_noise": 0.019616449737210658,
-        "within_label_95_interval": 0.47064
+        "cross_entropy": 0.3346618653896722,
+        "entropy_floor": 0.2440673049953847,
+        "mae": 0.10322431934854076,
+        "rmse": 0.16671116384869486,
+        "correlation": 0.9168489999224132,
+        "mean_label_noise": 0.02114047770635435,
+        "within_label_95_interval": 0.41132
       }
     },
     "boosting": {
       "cv": {
-        "cross_entropy": 0.2767425409611174,
-        "entropy_floor": 0.22664364398643527,
-        "mae": 0.06895544371042911,
-        "rmse": 0.12514980991262142,
-        "correlation": 0.9554103442540022,
-        "mean_label_noise": 0.019616449737210658,
-        "within_label_95_interval": 0.59168
+        "cross_entropy": 0.31732088785843576,
+        "entropy_floor": 0.2440673049953847,
+        "mae": 0.09126580152333237,
+        "rmse": 0.15359343459998334,
+        "correlation": 0.9298946674599174,
+        "mean_label_noise": 0.02114047770635435,
+        "within_label_95_interval": 0.46508
       },
       "eval": {
-        "cross_entropy": 0.27765063802582934,
-        "entropy_floor": 0.23223741343921983,
-        "mae": 0.06529260200036213,
-        "rmse": 0.11905574523113374,
-        "correlation": 0.9596263954259912,
-        "mean_label_noise": 0.006554400077815377,
-        "within_label_95_interval": 0.4775
+        "cross_entropy": 0.31356371358343865,
+        "entropy_floor": 0.25298304342240746,
+        "mae": 0.08273412299404709,
+        "rmse": 0.1396904373735245,
+        "correlation": 0.9413566236038156,
+        "mean_label_noise": 0.007029138031755046,
+        "within_label_95_interval": 0.35
       }
     }
   },
   "previous_model_on_eval": {
-    "cross_entropy": 0.2890987672272674,
-    "entropy_floor": 0.23223741343921983,
-    "mae": 0.07724334893289532,
-    "rmse": 0.13345804256176214,
-    "correlation": 0.9490074262338479,
-    "mean_label_noise": 0.006554400077815377,
-    "within_label_95_interval": 0.42375
+    "cross_entropy": 0.3165840573128583,
+    "entropy_floor": 0.25298304342240746,
+    "mae": 0.08035501168352958,
+    "rmse": 0.14070041407176442,
+    "correlation": 0.9408224984900608,
+    "mean_label_noise": 0.007029138031755046,
+    "within_label_95_interval": 0.4
   },
   "chosen": {
     "name": "boosting-soft",
-    "version": "20261103195842"
+    "version": "20261111200650"
   }
 }

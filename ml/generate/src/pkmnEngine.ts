@@ -109,6 +109,9 @@ export function startingCombatant(set: PokemonSet): BattlePokemon {
     name: p.species.name,
     moves: p.moveSlots.map((slot) => battleMove(slot.id)),
     weight: p.species.weightkg,
+    ability: p.getAbility().name,
+    ...(p.item ? { item: p.getItem().name } : {}),
+    ...(p.species.nfe ? { nfe: true } : {}),
   };
 }
 
