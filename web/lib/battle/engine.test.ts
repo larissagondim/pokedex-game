@@ -528,3 +528,105 @@ test("the AI sends out its best matchup and switches out of a bad one", () => {
   st.b.hp = 0;
   assert.equal(replaceFainted(st).b.types[0], "grass");
 });
+
+// --- The field: hazards, screens, weather, Trick Room, Wish ---
+
+test("hazards hurt whoever switches in; Rapid Spin clears them", () => {
+  const rocks = status("stealthrock", "Stealth Rock", { type: "rock" });
+  const spikes = status("spikes", "Spikes", { type: "ground" });
+  const tspikes = status("toxicspikes", "Toxic Spikes", { type: "poison" });
+  const web = status("stickyweb", "Sticky Web", { type: "bug" });
+  let st = createTeamBattle(team({ moves: [rocks, spikes, tspikes, web], stats: fast }), team({ moves: splashOnly }, { types: ["fire", "flying"] }, {}));
+  for (const i of [0, 1, 2, 3]) st = runTurn(st, i, 0, seq([], 0.99)).state;
+  assert.deepEqual([st.field.b.stealthRock, st.field.b.spikes, st.field.b.toxicSpikes, st.field.b.stickyWeb], [true, 1, 1, true]);
+  // Fire/Flying: Stealth Rock ×4 = half its HP, and it floats over the rest.
+  const flyer = runTurn(st, 0, { switchTo: 0 }, seq([], 0.99));
+  assert.equal(flyer.state.b.hp, 75);
+  assert.equal(flyer.state.b.status, null);
+  // A grounded Normal type: rocks 1/8, one layer of spikes 1/8, poison, -1 Speed.
+  const walker = runTurn(st, 0, { switchTo: 1 }, seq([], 0.99));
+  assert.equal(walker.state.b.hp, 150 - 18 - 18 - 18);
+  assert.equal(walker.state.b.status, "psn");
+  assert.equal(walker.state.b.boosts.spe, -1);
+  // Rapid Spin clears the user's side.
+  const spin = move({ id: "rapidspin", name: "Rapid Spin", power: 50, secondary: [{ chance: 100, selfBoosts: { spe: 1 } }] });
+  const swept = createTeamBattle(team({ moves: [spin] }), team({ moves: splashOnly }));
+  swept.field.a.spikes = 2;
+  assert.equal(runTurn(swept, 0, 0, seq([], 0.99)).state.field.a.spikes, 0);
+});
+
+test("Reflect halves physical damage until Brick Break shatters it", () => {
+  const reflect = status("reflect", "Reflect", { type: "psychic" });
+  const open = runTurn(battle({ moves: [splash], stats: fast }, {}), 0, 0, seq([], 0.99));
+  const shielded = runTurn(battle({ moves: [reflect], stats: fast }, {}), 0, 0, seq([], 0.99));
+  const dmg = (r: typeof open) => r.events.find((e) => e.kind === "damage" && e.side === "a");
+  assert.ok(dmg(open)?.kind === "damage" && dmg(shielded)?.kind === "damage");
+  assert.equal((dmg(shielded) as { amount: number }).amount, Math.floor((dmg(open) as { amount: number }).amount / 2));
+  const brick = move({ id: "brickbreak", name: "Brick Break", type: "fighting", power: 75 });
+  const st = battle({ moves: [splash] }, { moves: [brick] });
+  st.field.a.reflect = 3;
+  const r = runTurn(st, 0, 0, seq([], 0.99));
+  assert.equal(r.state.field.a.reflect, 0);
+  assert.ok(r.events.some((e) => e.kind === "effect" && e.effect === "screens-broken"));
+});
+
+test("weather: sun powers Fire, sand chips, rain makes Thunder sure, and it ends after 5 turns", () => {
+  const ember = move({ id: "ember", name: "Ember", type: "fire", category: "special", power: 40 });
+  const st = battle({}, {});
+  const plain = calcDamage(st.a, st.b, { ...ember, ppLeft: 1 }, seq([0.99]), false);
+  const sunny = calcDamage(st.a, st.b, { ...ember, ppLeft: 1 }, seq([0.99]), false, { weather: "sun" });
+  assert.ok(sunny > plain * 1.4);
+
+  const sand = status("sandstorm", "Sandstorm", { type: "rock" });
+  let sandy = battle({ moves: [sand], types: ["rock"] }, { moves: [splash] });
+  const t1 = runTurn(sandy, 0, 0, seq([], 0.99));
+  assert.ok(t1.events.some((e) => e.kind === "hurt" && e.cause === "sandstorm" && e.side === "b"));
+  assert.ok(!t1.events.some((e) => e.kind === "hurt" && e.side === "a"), "Rock types don't mind");
+  sandy = t1.state;
+  sandy.a.moves[0] = { ...sandy.a.moves[0], id: "splash2" };
+  for (let i = 0; i < 4; i++) sandy = runTurn(sandy, 0, 0, seq([], 0.99)).state;
+  assert.equal(sandy.weather, null);
+
+  const thunder = move({ id: "thunder", name: "Thunder", type: "electric", category: "special", power: 110, accuracy: 0.7 });
+  const rainy = battle({ moves: [thunder], stats: fast }, { moves: [splash] });
+  rainy.weather = { kind: "rain", turns: 5 };
+  // A 0.95 roll misses a 70% move, but not in rain.
+  assert.ok(runTurn(rainy, 0, 0, seq([0.95], 0.99)).events.some((e) => e.kind === "damage" && e.side === "b"));
+});
+
+test("Trick Room lets the slower Pokémon move first", () => {
+  const st = battle({ stats: slow }, {});
+  st.trickRoom = 3;
+  assert.deepEqual(turnOrder(st, st.a.moves[0], st.b.moves[0], seq([])), ["a", "b"]);
+});
+
+test("Wish heals half the user's HP at the end of the next turn", () => {
+  const wish = status("wish", "Wish");
+  const st = battle({ moves: [wish, splash], stats: fast }, { moves: [splash] });
+  st.a.hp = 10;
+  const t1 = runTurn(st, 0, 0, seq([], 0.99));
+  assert.equal(t1.state.a.hp, 10);
+  const t2 = runTurn(t1.state, 1, 0, seq([], 0.99));
+  assert.equal(t2.state.a.hp, 85);
+});
+
+test("Healing Wish faints the user and fully heals the next one; Roar drags out a random foe", () => {
+  const wish = status("healingwish", "Healing Wish", { type: "psychic" });
+  const st = createTeamBattle(team({ moves: [wish] }, {}), team({ moves: splashOnly }));
+  st.bench.a[0].hp = 30;
+  st.bench.a[0].status = "brn";
+  const r = runTurn(st, 0, 0, seq([], 0.99));
+  assert.equal(r.state.a.hp, 0);
+  const next = switchIn(r.state, "a", 0);
+  assert.equal(next.state.a.hp, 150);
+  assert.equal(next.state.a.status, null);
+  // Alone, it fails.
+  assert.ok(runTurn(battle({ moves: [wish] }, { moves: [splash] }), 0, 0, seq([], 0.99)).events.some((e) => e.kind === "fail"));
+
+  const roar = status("roar", "Roar", { priority: -6, flags: ["sound", "bypasssub"] });
+  const foes = createTeamBattle(team({ moves: [roar] }), team({ moves: splashOnly }, {}, {}));
+  const dragged = runTurn(foes, 0, 0, seq([], 0.99));
+  assert.ok(dragged.events.some((e) => e.kind === "switch" && e.side === "b" && e.dragged));
+  assert.equal(dragged.state.b.name, "M2");
+  assert.ok(runTurn(battle({ moves: [roar] }, { moves: [splash] }), 0, 0, seq([], 0.99)).events.some((e) => e.kind === "fail"));
+});

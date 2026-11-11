@@ -16,6 +16,9 @@ import {
   type Side,
   stageMultiplier,
   switchIn,
+  type Weather,
+  weatherAccuracy,
+  weatherFactor,
 } from "./engine.ts";
 
 /** Chance of a random move instead of the best one, so the foe isn't predictable. */
@@ -46,8 +49,19 @@ const view = (f: Fighter): Combatant => ({
 
 const isAttack = (m: FighterMove) => m.category !== "status" || m.fixedDamage !== undefined;
 
+/** What the AI knows beyond the two Pokémon out: the rest of the battle and which side it plays. */
+export interface AiContext {
+  st: BattleState;
+  side: Side;
+}
+
+const weatherOf = (ctx?: AiContext): Weather | null => ctx?.st.weather?.kind ?? null;
+
+/** Accuracy the move will have right now. */
+const accuracyOf = (m: FighterMove, ctx?: AiContext) => weatherAccuracy(m, weatherOf(ctx));
+
 /** Average damage if it hits (accuracy not included). */
-function damageIfHits(m: FighterMove, me: Fighter, foe: Fighter): number {
+function damageIfHits(m: FighterMove, me: Fighter, foe: Fighter, ctx?: AiContext): number {
   if (FIRST_TURN_ONLY.has(m.id) && me.turnsActive > 0) return 0;
   if (m.id === "superfang" || m.id === "ruination" || m.id === "naturesmadness") {
     return effectiveness(m.type, foe.types) === 0 ? 0 : Math.floor(foe.hp / 2);
@@ -57,7 +71,7 @@ function damageIfHits(m: FighterMove, me: Fighter, foe: Fighter): number {
     return m.fixedDamage === "level" ? me.level : m.fixedDamage;
   }
   const move: MoveInfo = { ...m, power: m.power > 0 ? m.power : FALLBACK_POWER, accuracy: 1 };
-  return expectedDamage(move, view(me), view(foe));
+  return expectedDamage(move, view(me), view(foe)) * weatherFactor(weatherOf(ctx), m.type);
 }
 
 const HALF_HEALS = new Set(["synthesis", "moonlight", "morningsun", "shoreup"]);
@@ -65,13 +79,61 @@ const HALF_HEALS = new Set(["synthesis", "moonlight", "morningsun", "shoreup"]);
 const AIMED = new Set(["encore", "taunt", "yawn", "strengthsap", "transform"]);
 const statusOf = (m: FighterMove) => m.category === "status" && m.fixedDamage === undefined;
 
+const HAZARDS = new Set(["stealthrock", "spikes", "toxicspikes", "stickyweb"]);
+const WEATHER_OF: Record<string, Weather> = { sunnyday: "sun", raindance: "rain", sandstorm: "sand", snowscape: "snow", hail: "snow" };
+
+/** Whether the weather move helps `me` more than the foe. */
+function weatherHelps(weather: Weather, me: Fighter, foe: Fighter): boolean {
+  const gain = (f: Fighter) => Math.max(0, ...f.moves.filter(isAttack).map((m) => weatherFactor(weather, m.type))) - 1;
+  if (weather === "sand") return me.types.some((t) => t === "rock" || t === "ground" || t === "steel") && !foe.types.some((t) => t === "rock" || t === "ground" || t === "steel");
+  if (weather === "snow") return me.types.includes("ice") && !foe.types.includes("ice");
+  return gain(me) > gain(foe);
+}
+
+/** Field moves need the whole battle to judge (hazards only matter with a bench, for example). */
+function fieldUseful(m: FighterMove, me: Fighter, foe: Fighter, ctx: AiContext): boolean {
+  const { st, side } = ctx;
+  const foeSide = side === "a" ? "b" : "a";
+  const mine = st.field[side];
+  const theirs = st.field[foeSide];
+  const foeBench = st.bench[foeSide].some((f) => f.hp > 0);
+  if (HAZARDS.has(m.id)) {
+    if (!foeBench) return false;
+    return m.id === "stealthrock" ? !theirs.stealthRock : m.id === "spikes" ? theirs.spikes < 3 : m.id === "toxicspikes" ? theirs.toxicSpikes < 2 : !theirs.stickyWeb;
+  }
+  if (m.id in WEATHER_OF) return st.weather?.kind !== WEATHER_OF[m.id] && weatherHelps(WEATHER_OF[m.id], me, foe);
+  const foeHits = foe.moves.filter(isAttack);
+  switch (m.id) {
+    case "defog":
+      return mine.stealthRock || mine.spikes > 0 || mine.toxicSpikes > 0 || mine.stickyWeb || theirs.reflect > 0 || theirs.lightScreen > 0;
+    case "reflect":
+      return mine.reflect === 0 && mine.auroraVeil === 0 && foeHits.some((x) => x.category === "physical");
+    case "lightscreen":
+      return mine.lightScreen === 0 && mine.auroraVeil === 0 && foeHits.some((x) => x.category === "special");
+    case "auroraveil":
+      return mine.auroraVeil === 0 && st.weather?.kind === "snow";
+    case "wish":
+      return !mine.wish && me.hp < me.maxHp * 0.7;
+    case "healingwish":
+    case "lunardance":
+      return me.hp < me.maxHp * 0.3 && st.bench[side].some((f) => f.hp > 0 && f.hp < f.maxHp * 0.6);
+    case "roar":
+    case "whirlwind":
+      return foeBench && (Object.values(foe.boosts).reduce((a, b) => a + b, 0) > 0 || theirs.stealthRock || theirs.spikes > 0);
+    case "trickroom":
+      return st.trickRoom === 0 && effectiveSpeed(me) < effectiveSpeed(foe);
+  }
+  return false;
+}
+
 /** Would this status move do anything to the foe right now? */
-function statusUseful(m: FighterMove, me: Fighter, foe: Fighter): boolean {
+function statusUseful(m: FighterMove, me: Fighter, foe: Fighter, ctx?: AiContext): boolean {
   if (moveImmune(m, foe)) return false;
   if (me.taunt > 0) return false;
   const aimed = AIMED.has(m.id) || !!m.status || m.volatile === "confusion" || m.volatile === "leechseed" || m.boosts?.target === "foe";
   if (aimed && foe.substitute > 0 && !bypassesSub(m)) return false;
   if (HALF_HEALS.has(m.id)) return me.hp < me.maxHp / 2;
+  if (ctx && fieldUseful(m, me, foe, ctx)) return true;
   switch (m.id) {
     case "substitute":
       return me.substitute === 0 && me.hp > me.maxHp / 2;
@@ -147,25 +209,25 @@ const STATUS_VALUE = (m: FighterMove) =>
  * expected damage, with status moves scored when they'd actually work, a
  * little noise between close options and 15% random moves.
  */
-export function chooseMove(me: Fighter, foe: Fighter, rng: Rng = Math.random): number {
+export function chooseMove(me: Fighter, foe: Fighter, rng: Rng = Math.random, ctx?: AiContext): number {
   const usable = me.moves.map((m, i) => ({ m, i })).filter(({ m }) => m.ppLeft > 0);
   if (usable.length === 0) return 0;
   if (rng() < RANDOMNESS) return usable[Math.floor(rng() * usable.length)].i;
 
   // Finish it off with the most reliable KO.
-  const kos = usable.filter(({ m }) => isAttack(m) && damageIfHits(m, me, foe) >= foe.hp);
+  const kos = usable.filter(({ m }) => isAttack(m) && damageIfHits(m, me, foe, ctx) >= foe.hp);
   if (kos.length) {
     const foeFaster = effectiveSpeed(foe) > effectiveSpeed(me);
-    kos.sort((x, y) => y.m.accuracy - x.m.accuracy || (foeFaster ? y.m.priority - x.m.priority : 0));
+    kos.sort((x, y) => accuracyOf(y.m, ctx) - accuracyOf(x.m, ctx) || (foeFaster ? y.m.priority - x.m.priority : 0));
     return kos[0].i;
   }
 
-  const bestHit = Math.max(1, ...usable.filter(({ m }) => isAttack(m)).map(({ m }) => damageIfHits(m, me, foe) * m.accuracy));
+  const bestHit = Math.max(1, ...usable.filter(({ m }) => isAttack(m)).map(({ m }) => damageIfHits(m, me, foe, ctx) * accuracyOf(m, ctx)));
   let best = usable[0].i;
   let bestScore = -1;
   for (const { m, i } of usable) {
     const score =
-      (isAttack(m) ? damageIfHits(m, me, foe) * m.accuracy : statusUseful(m, me, foe) ? bestHit * STATUS_VALUE(m) : 0) *
+      (isAttack(m) ? damageIfHits(m, me, foe, ctx) * accuracyOf(m, ctx) : statusUseful(m, me, foe, ctx) ? bestHit * STATUS_VALUE(m) : 0) *
       (0.9 + rng() * 0.2); // a little noise between similar options
     if (score > bestScore) {
       best = i;
@@ -226,7 +288,7 @@ export function chooseAction(st: BattleState, side: Side, rng: Rng = Math.random
   // Revival Blessing is worth a turn whenever a teammate is down.
   const revive = me.moves.findIndex((m) => m.id === "revivalblessing" && m.ppLeft > 0);
   if (revive >= 0 && me.taunt === 0 && st.bench[side].some((f) => f.hp <= 0)) return revive;
-  return chooseMove(me, foe, rng);
+  return chooseMove(me, foe, rng, { st, side });
 }
 
 /** Sends out the best replacement for every fainted Pokémon (both sides). */

@@ -1,4 +1,4 @@
-import { type BattleEvent, type Effect, type HurtCause, ITEMS, type Side } from "@/lib/battle/engine";
+import { type BattleEvent, type Effect, type HurtCause, ITEMS, type Side, type Weather } from "@/lib/battle/engine";
 import type { StatName, Status } from "@/lib/battle/types";
 
 const STAT_NAMES: Record<StatName, string> = {
@@ -17,13 +17,13 @@ const STATUS_GAINED: Record<Status, string> = {
   slp: "fell asleep!",
 };
 
-/** Lines for text-only effects; `move` is the move involved (Taunt blocks). */
-const EFFECT_TEXT: Record<Effect, (who: string, move?: string) => string> = {
+/** Lines for text-only effects: `who` is the Pokémon, `team` "your team" / "the foe's team", `move` the move involved (Taunt blocks). */
+const EFFECT_TEXT: Record<Effect, (who: string, team: string, move?: string) => string> = {
   substitute: (who) => `${who} put in a SUBSTITUTE!`,
   "substitute-fail": (who) => `${who} already has a SUBSTITUTE!`,
   taunt: (who) => `${who} fell for the taunt!`,
   "taunt-end": (who) => `${who} shook off the taunt!`,
-  "taunt-block": (who, move) => `${who} can't use ${move ?? "that move"} after the taunt!`,
+  "taunt-block": (who, _team, move) => `${who} can't use ${move ?? "that move"} after the taunt!`,
   encore: (who) => `${who} received an encore!`,
   "encore-end": (who) => `${who}'s encore ended!`,
   drowsy: (who) => `${who} grew drowsy!`,
@@ -33,11 +33,43 @@ const EFFECT_TEXT: Record<Effect, (who: string, move?: string) => string> = {
   "magnet-rise-end": (who) => `${who}'s electromagnetism wore off!`,
   "heal-bell": () => "A bell chimed! The team's status problems were cured.",
   "tidy-up": () => "Tidying up complete!",
+  "stealth-rock": (_who, team) => `Pointed stones float in the air around ${team}!`,
+  spikes: (_who, team) => `Spikes were scattered on the ground around ${team}!`,
+  "toxic-spikes": (_who, team) => `Poison spikes were scattered on the ground around ${team}!`,
+  "sticky-web": (_who, team) => `A sticky web spreads out on the ground around ${team}!`,
+  "sticky-web-caught": (who) => `${who} was caught in a sticky web!`,
+  "toxic-spikes-absorbed": (_who, team) => `The poison spikes disappeared from the ground around ${team}!`,
+  "hazards-gone": () => "The hazards were blown away!",
+  reflect: (_who, team) => `Reflect made ${team} stronger against physical moves!`,
+  "light-screen": (_who, team) => `Light Screen made ${team} stronger against special moves!`,
+  "aurora-veil": (_who, team) => `Aurora Veil made ${team} stronger against physical and special moves!`,
+  "reflect-end": (_who, team) => `${cap(team)}'s Reflect wore off!`,
+  "light-screen-end": (_who, team) => `${cap(team)}'s Light Screen wore off!`,
+  "aurora-veil-end": (_who, team) => `${cap(team)}'s Aurora Veil wore off!`,
+  "screens-broken": () => "The screens shattered!",
+  wish: (who) => `${who} made a wish!`,
+  "wish-came-true": () => "The wish came true!",
+  "healing-wish": (who) => `The healing wish came true for ${who}!`,
+  "trick-room": () => "The dimensions were twisted!",
+  "trick-room-end": () => "The twisted dimensions returned to normal!",
+  "no-target": () => "But there was no target...",
+};
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const WEATHER_TEXT: Record<Weather, [start: string, end: string]> = {
+  sun: ["The sunlight turned harsh!", "The harsh sunlight faded."],
+  rain: ["It started to rain!", "The rain stopped."],
+  sand: ["A sandstorm kicked up!", "The sandstorm subsided."],
+  snow: ["It started to snow!", "The snow stopped."],
 };
 
 const HURT_TEXT: Record<HurtCause, (who: string) => string> = {
   curse: (who) => `${who} is afflicted by the curse!`,
   "destiny-bond": (who) => `${who} took its attacker down with it!`,
+  stealthrock: (who) => `Pointed stones dug into ${who}!`,
+  spikes: (who) => `${who} was hurt by the spikes!`,
+  sandstorm: (who) => `${who} is buffeted by the sandstorm!`,
 };
 
 const boostWord = (n: number) => (Math.abs(n) >= 3 ? "drastically " : Math.abs(n) === 2 ? (n > 0 ? "sharply " : "harshly ") : "");
@@ -113,6 +145,7 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
       return `${name(event.side)} fainted!`;
     case "switch": {
       const to = event.to.toUpperCase();
+      if (event.dragged) return `${event.side === "a" ? to : `Foe ${to}`} was dragged out!`;
       if (event.side === "a") return event.forced ? `Go! ${to}!` : `${event.from.toUpperCase()}, come back! Go! ${to}!`;
       return event.forced ? `The foe sent out ${to}!` : `The foe withdrew ${event.from.toUpperCase()} and sent out ${to}!`;
     }
@@ -137,6 +170,8 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
     case "revive":
       return `${event.name.toUpperCase()} was revived and is ready to fight again!`;
     case "effect":
-      return EFFECT_TEXT[event.effect](name(event.side), event.move?.toUpperCase());
+      return EFFECT_TEXT[event.effect](name(event.side), event.side === "a" ? "your team" : "the foe's team", event.move?.toUpperCase());
+    case "weather":
+      return WEATHER_TEXT[event.weather][event.ended ? 1 : 0];
   }
 }

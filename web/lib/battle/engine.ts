@@ -14,7 +14,11 @@ import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./type
  * Pain Split, Belly Drum, Haze, Substitute, Encore, Taunt, Yawn, Curse,
  * Destiny Bond, Sleep Talk, Transform, Strength Sap, Synthesis and the other
  * half-HP heals, Heal Bell, Take Heart, Tidy Up, Magnet Rise and Revival
- * Blessing. Other effects (hazards, weather...) just fail.
+ * Blessing. The field: entry hazards (Stealth Rock, Spikes, Toxic Spikes,
+ * Sticky Web) and the moves that clear them, Reflect / Light Screen / Aurora
+ * Veil, Wish, Healing Wish, Roar / Whirlwind / Dragon Tail, Trick Room and
+ * weather (sun, rain, sand, snow) with its effects on damage, accuracy,
+ * healing and Weather Ball. Other effects just fail.
  *
  * Teams: each side has one Pokémon out (`a` / `b`) and the rest on its
  * `bench`. Switching and using an item take the whole turn and go before any
@@ -91,6 +95,26 @@ export const ITEMS: Record<ItemId, { name: string; count: number }> = {
 };
 const POTION_HP = 60;
 
+export type Weather = "sun" | "rain" | "sand" | "snow";
+
+/** What lies on one side of the field. */
+export interface SideField {
+  stealthRock: boolean;
+  /** Layers (0-3). */
+  spikes: number;
+  /** Layers (0-2): 1 poisons, 2 badly poisons. */
+  toxicSpikes: number;
+  stickyWeb: boolean;
+  /** Turns left of each screen. */
+  reflect: number;
+  lightScreen: number;
+  auroraVeil: number;
+  /** Wish: heals whoever is out when `turns` reaches 0. */
+  wish: { turns: number; hp: number } | null;
+  /** Healing Wish: the next Pokémon to come in is fully healed. */
+  healingWish: boolean;
+}
+
 export interface BattleState {
   turn: number;
   /** The Pokémon out on each side. */
@@ -100,6 +124,10 @@ export interface BattleState {
   bench: Record<Side, Fighter[]>;
   /** Items left on each side. */
   bag: Record<Side, Record<ItemId, number>>;
+  field: Record<Side, SideField>;
+  weather: { kind: Weather; turns: number } | null;
+  /** Turns of Trick Room left (slower Pokémon move first). */
+  trickRoom: number;
   winner: Side | null;
 }
 
@@ -131,17 +159,30 @@ export type BattleEvent =
   | { kind: "wake"; side: Side }
   | { kind: "residual"; side: Side; status: Status; amount: number; hp: number }
   | { kind: "faint"; side: Side }
-  | { kind: "switch"; side: Side; from: string; to: string; dexId: number; hp: number; maxHp: number; status: Status | null; forced: boolean }
+  | {
+      kind: "switch";
+      side: Side;
+      from: string;
+      to: string;
+      dexId: number;
+      hp: number;
+      maxHp: number;
+      status: Status | null;
+      forced: boolean;
+      /** Roar, Whirlwind, Dragon Tail... */
+      dragged?: boolean;
+    }
   | { kind: "item"; side: Side; item: ItemId }
   | { kind: "cure"; side: Side }
   | { kind: "sub-damage"; side: Side; effectiveness: number; crit: boolean; broke: boolean }
   | { kind: "hurt"; side: Side; amount: number; hp: number; cause: HurtCause }
   | { kind: "transform"; side: Side; dexId: number }
   | { kind: "revive"; side: Side; name: string }
-  | { kind: "effect"; side: Side; effect: Effect; move?: string };
+  | { kind: "effect"; side: Side; effect: Effect; move?: string }
+  | { kind: "weather"; side: Side; weather: Weather; ended: boolean };
 
 /** HP lost to something other than a hit or a status (each has its own message). */
-export type HurtCause = "curse" | "destiny-bond";
+export type HurtCause = "curse" | "destiny-bond" | "stealthrock" | "spikes" | "sandstorm";
 
 /** Text-only events: what changed is in the state, the screen just says it. */
 export type Effect =
@@ -158,7 +199,27 @@ export type Effect =
   | "magnet-rise"
   | "magnet-rise-end"
   | "heal-bell"
-  | "tidy-up";
+  | "tidy-up"
+  | "stealth-rock"
+  | "spikes"
+  | "toxic-spikes"
+  | "sticky-web"
+  | "sticky-web-caught"
+  | "toxic-spikes-absorbed"
+  | "hazards-gone"
+  | "reflect"
+  | "light-screen"
+  | "aurora-veil"
+  | "reflect-end"
+  | "light-screen-end"
+  | "aurora-veil-end"
+  | "screens-broken"
+  | "wish"
+  | "wish-came-true"
+  | "healing-wish"
+  | "trick-room"
+  | "trick-room-end"
+  | "no-target";
 
 const STATS: StatName[] = ["atk", "def", "spa", "spd", "spe"];
 const STAB = 1.5;
@@ -221,6 +282,18 @@ export function createFighter(p: BattlePokemon): Fighter {
   };
 }
 
+const emptyField = (): SideField => ({
+  stealthRock: false,
+  spikes: 0,
+  toxicSpikes: 0,
+  stickyWeb: false,
+  reflect: 0,
+  lightScreen: 0,
+  auroraVeil: 0,
+  wish: null,
+  healingWish: false,
+});
+
 const fullBag = (): Record<ItemId, number> => ({ potion: ITEMS.potion.count, fullheal: ITEMS.fullheal.count });
 
 export const createBattle = (a: BattlePokemon, b: BattlePokemon): BattleState => createTeamBattle([a], [b]);
@@ -232,6 +305,9 @@ export const createTeamBattle = (a: BattlePokemon[], b: BattlePokemon[]): Battle
   b: createFighter(b[0]),
   bench: { a: a.slice(1).map(createFighter), b: b.slice(1).map(createFighter) },
   bag: { a: fullBag(), b: fullBag() },
+  field: { a: emptyField(), b: emptyField() },
+  weather: null,
+  trickRoom: 0,
   winner: null,
 });
 
@@ -254,19 +330,34 @@ export function resolveMove(f: Fighter, index: number): FighterMove {
   return f.moves.find((m) => m.ppLeft > 0) ?? STRUGGLE;
 }
 
-/** Who acts first: higher priority, then higher speed, ties at random. */
+/** Who acts first: higher priority, then higher speed (lower under Trick Room), ties at random. */
 export function turnOrder(state: BattleState, moveA: FighterMove, moveB: FighterMove, rng: Rng): Side[] {
   if (moveA.priority !== moveB.priority) return moveA.priority > moveB.priority ? ["a", "b"] : ["b", "a"];
   const sa = effectiveSpeed(state.a);
   const sb = effectiveSpeed(state.b);
-  if (sa !== sb) return sa > sb ? ["a", "b"] : ["b", "a"];
+  if (sa !== sb) return sa > sb !== state.trickRoom > 0 ? ["a", "b"] : ["b", "a"];
   return rng() < 0.5 ? ["a", "b"] : ["b", "a"];
 }
 
 const critChance = (ratio = 1) => (ratio >= 4 ? 1 : ratio === 3 ? 0.5 : ratio === 2 ? 1 / 8 : 1 / 24);
 
+/** What the field adds to a hit: the weather and a screen on the target's side. */
+export interface DamageMods {
+  weather?: Weather | null;
+  screen?: boolean;
+}
+
+/** Modifiers for a hit from `side` right now. */
+const modsFor = (st: BattleState, targetSide: Side, move: FighterMove): DamageMods => {
+  const f = st.field[targetSide];
+  return {
+    weather: st.weather?.kind ?? null,
+    screen: f.auroraVeil > 0 || (move.category === "physical" ? f.reflect > 0 : f.lightScreen > 0),
+  };
+};
+
 /** Damage of one hit (gen 5+ formula, applied in the games' order with floors). */
-export function calcDamage(user: Fighter, target: Fighter, move: FighterMove, rng: Rng, crit: boolean): number {
+export function calcDamage(user: Fighter, target: Fighter, move: FighterMove, rng: Rng, crit: boolean, mods: DamageMods = {}): number {
   const physical = move.category === "physical";
   const atkStat: StatName = physical ? "atk" : "spa";
   const defStat: StatName = physical ? "def" : "spd";
@@ -274,17 +365,50 @@ export function calcDamage(user: Fighter, target: Fighter, move: FighterMove, rn
   const atkStage = crit ? Math.max(0, user.boosts[atkStat]) : user.boosts[atkStat];
   const defStage = crit ? Math.min(0, target.boosts[defStat]) : target.boosts[defStat];
   const attack = Math.max(1, Math.floor(user.stats[atkStat] * stageMultiplier(atkStage)));
-  const defense = Math.max(1, Math.floor(target.stats[defStat] * stageMultiplier(defStage)));
+  // Sand raises Rock types' Sp. Def, snow raises Ice types' Defense.
+  const weatherDef =
+    (mods.weather === "sand" && defStat === "spd" && target.types.includes("rock")) ||
+    (mods.weather === "snow" && defStat === "def" && target.types.includes("ice"))
+      ? 1.5
+      : 1;
+  const defense = Math.max(1, Math.floor(target.stats[defStat] * stageMultiplier(defStage) * weatherDef));
   const power = move.power > 0 ? move.power : FALLBACK_POWER;
 
   let damage = Math.floor(Math.floor((Math.floor((2 * user.level) / 5 + 2) * power * attack) / defense) / 50) + 2;
+  const weather = weatherFactor(mods.weather, move.type);
+  if (weather !== 1) damage = Math.floor(damage * weather);
   if (crit) damage = Math.floor(damage * CRIT_MULTIPLIER);
   damage = Math.floor((damage * (85 + Math.floor(rng() * 16))) / 100);
   if (user.types.includes(move.type)) damage = Math.floor(damage * STAB);
-  damage = Math.floor(damage * effectiveness(move.type, target.types));
+  damage = Math.floor(damage * effectivenessOn(move.type, target));
   if (physical && user.status === "brn") damage = Math.floor(damage / 2);
+  // Screens halve the damage (critical hits go through them).
+  if (mods.screen && !crit) damage = Math.floor(damage / 2);
   return Math.max(1, damage);
 }
+
+/** Sun boosts Fire and weakens Water; rain does the opposite. */
+export function weatherFactor(weather: Weather | null | undefined, type: string): number {
+  if (weather === "sun") return type === "fire" ? 1.5 : type === "water" ? 0.5 : 1;
+  if (weather === "rain") return type === "water" ? 1.5 : type === "fire" ? 0.5 : 1;
+  return 1;
+}
+
+/** Accuracy after the weather: Thunder and Hurricane never miss in rain (50% in sun), Blizzard never misses in snow. */
+export function weatherAccuracy(move: Pick<FighterMove, "id" | "accuracy">, weather: Weather | null | undefined): number {
+  if (move.id === "thunder" || move.id === "hurricane" || move.id === "bleakwindstorm" || move.id === "wildboltstorm" || move.id === "sandsearstorm") {
+    if (weather === "rain") return 1;
+    if (weather === "sun" && (move.id === "thunder" || move.id === "hurricane")) return 0.5;
+  }
+  if (move.id === "blizzard" && weather === "snow") return 1;
+  return move.accuracy;
+}
+
+/** Weather Ball: type and doubled power from the weather. */
+const WEATHER_BALL: Record<Weather, string> = { sun: "fire", rain: "water", sand: "rock", snow: "ice" };
+
+/** On the ground: hit by Spikes, Toxic Spikes, Sticky Web and Ground moves. */
+export const grounded = (f: Pick<Fighter, "types" | "magnetRise">) => !f.types.includes("flying") && f.magnetRise === 0;
 
 function hitCount(move: FighterMove, rng: Rng): number {
   if (typeof move.multihit === "number") return move.multihit;
@@ -495,17 +619,23 @@ function executeMove(
     user.locked = null;
     return;
   }
-  if (performSpecial(st, side, move, events)) return;
+  if (performSpecial(st, side, move, rng, events)) return;
 
   const targetsFoe = move.category !== "status" || move.fixedDamage !== undefined || move.status || move.volatile === "confusion" ||
     move.volatile === "leechseed" || move.boosts?.target === "foe" || FOE_STATUS.has(move.id);
+  if (targetsFoe && foe.hp <= 0) {
+    events.push({ kind: "effect", side, effect: "no-target" });
+    user.locked = null;
+    return;
+  }
   if (targetsFoe && foe.protected) {
     events.push({ kind: "protected", side: foeSide });
     user.locked = null;
     return;
   }
 
-  if (move.accuracy < 1 && rng() >= move.accuracy) {
+  const accuracy = weatherAccuracy(move, st.weather?.kind);
+  if (accuracy < 1 && rng() >= accuracy) {
     events.push({ kind: "miss", side });
     user.locked = null;
     return;
@@ -554,11 +684,20 @@ function executeMove(
     return;
   }
 
-  const eff = effectivenessOn(move.type, foe);
+  // Weather Ball takes the weather's type at double power.
+  const hit = move.id === "weatherball" && st.weather ? { ...move, type: WEATHER_BALL[st.weather.kind], power: move.power * 2 } : move;
+  const eff = effectivenessOn(hit.type, foe);
   if (eff === 0) {
     events.push({ kind: "no-effect", side: foeSide });
     user.locked = null;
     return;
+  }
+  if (SCREEN_BREAKERS.has(move.id)) {
+    const field = st.field[foeSide];
+    if (field.reflect || field.lightScreen || field.auroraVeil) {
+      Object.assign(field, { reflect: 0, lightScreen: 0, auroraVeil: 0 });
+      events.push({ kind: "effect", side: foeSide, effect: "screens-broken" });
+    }
   }
 
   const hits = hitCount(move, rng);
@@ -579,7 +718,7 @@ function executeMove(
       damage = move.fixedDamage === "level" ? user.level : move.fixedDamage;
     } else {
       isCrit = rng() < critChance(move.critRatio);
-      damage = calcDamage(user, foe, move, rng, isCrit);
+      damage = calcDamage(user, foe, hit, rng, isCrit, modsFor(st, foeSide, hit));
     }
     if (foe.substitute > 0 && !throughSub) {
       // The Substitute takes the hit (and only as much as it has left).
@@ -631,6 +770,8 @@ function executeMove(
     if (sec.volatile === "confusion" && reaches && foe.confusion === 0) confuse(foe, foeSide, rng, events, false);
   }
 
+  afterHit(st, side, move, hitSub, rng, events);
+
   if (move.recharge) user.mustRecharge = true;
   if (move.locked) {
     if (!user.locked) user.locked = { index: user.moves.indexOf(move), turnsLeft: 1 + Math.floor(rng() * 2) };
@@ -639,6 +780,88 @@ function executeMove(
       user.locked = null;
       if (user.confusion === 0 && user.hp > 0) confuse(user, side, rng, events, true);
     }
+  }
+}
+
+/** Brick Break and Psychic Fangs shatter screens before they hit. */
+const SCREEN_BREAKERS = new Set(["brickbreak", "psychicfangs", "ragingbull"]);
+/** Damaging moves that drag the target out (Dragon Tail...). */
+const DRAGGERS = new Set(["dragontail", "circlethrow"]);
+
+/** Field effects of damaging moves, once they hit. */
+function afterHit(st: BattleState, side: Side, move: FighterMove, hitSub: boolean, rng: Rng, events: BattleEvent[]) {
+  const user = st[side];
+  const foeSide = other(side);
+  if ((move.id === "rapidspin" || move.id === "mortalspin") && user.hp > 0) {
+    if (clearHazards(st.field[side])) events.push({ kind: "effect", side, effect: "hazards-gone" });
+    user.seeded = false;
+  }
+  if (move.id === "ceaselessedge" && st.field[foeSide].spikes < 3) {
+    st.field[foeSide].spikes++;
+    events.push({ kind: "effect", side: foeSide, effect: "spikes" });
+  }
+  if (move.id === "stoneaxe" && !st.field[foeSide].stealthRock) {
+    st.field[foeSide].stealthRock = true;
+    events.push({ kind: "effect", side: foeSide, effect: "stealth-rock" });
+  }
+  if (DRAGGERS.has(move.id) && !hitSub && st[foeSide].hp > 0 && user.hp > 0) drag(st, foeSide, rng, events);
+}
+
+/** Removes the hazards on one side; true if there were any. */
+function clearHazards(field: SideField): boolean {
+  const had = field.stealthRock || field.spikes > 0 || field.toxicSpikes > 0 || field.stickyWeb;
+  Object.assign(field, { stealthRock: false, spikes: 0, toxicSpikes: 0, stickyWeb: false });
+  return had;
+}
+
+/** Forces a random healthy bench Pokémon in (Roar, Whirlwind, Dragon Tail). False if there is none. */
+function drag(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]): boolean {
+  const options = st.bench[side].map((f, i) => ({ f, i })).filter(({ f }) => f.hp > 0);
+  if (options.length === 0) return false;
+  const { i } = options[Math.floor(rng() * options.length)];
+  doSwitch(st, side, i, true, events, true);
+  enterField(st, side, rng, events);
+  return true;
+}
+
+/** What greets a Pokémon coming in: Healing Wish, then the hazards on its side. */
+function enterField(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]) {
+  const f = st[side];
+  const field = st.field[side];
+  if (field.healingWish && (f.hp < f.maxHp || f.status)) {
+    field.healingWish = false;
+    events.push({ kind: "effect", side, effect: "healing-wish" });
+    heal(st, side, f.maxHp, events);
+    if (f.status) {
+      f.status = null;
+      f.sleepTurns = 0;
+      f.toxicTurns = 0;
+      events.push({ kind: "cure", side });
+    }
+  }
+  if (field.stealthRock && f.hp > 0) {
+    // 1/8 of the max HP, scaled by how well Rock hits it.
+    const amount = Math.min(f.hp, Math.max(1, Math.floor((f.maxHp * effectiveness("rock", f.types)) / 8)));
+    f.hp -= amount;
+    events.push({ kind: "hurt", side, amount, hp: f.hp, cause: "stealthrock" });
+  }
+  if (!grounded(f)) return;
+  if (field.spikes > 0 && f.hp > 0) {
+    const amount = Math.min(f.hp, Math.max(1, Math.floor(f.maxHp / [8, 6, 4][field.spikes - 1])));
+    f.hp -= amount;
+    events.push({ kind: "hurt", side, amount, hp: f.hp, cause: "spikes" });
+  }
+  if (field.toxicSpikes > 0 && f.hp > 0) {
+    if (f.types.includes("poison")) {
+      field.toxicSpikes = 0;
+      events.push({ kind: "effect", side, effect: "toxic-spikes-absorbed" });
+    } else {
+      tryStatus(st, side, field.toxicSpikes >= 2 ? "tox" : "psn", rng, events, false);
+    }
+  }
+  if (field.stickyWeb && f.hp > 0) {
+    events.push({ kind: "effect", side, effect: "sticky-web-caught" });
+    applyBoosts(st, side, { spe: -1 }, events);
   }
 }
 
@@ -695,12 +918,17 @@ function foeStatusMove(st: BattleState, side: Side, move: FighterMove, events: B
 }
 
 const TAUNT_TURNS = 3;
+const SCREEN_TURNS = 5;
+const WEATHER_TURNS = 5;
+/** Counts the turn it's set up on. */
+const TRICK_ROOM_TURNS = 5;
+const WEATHER_MOVES: Record<string, Weather> = { sunnyday: "sun", raindance: "rain", sandstorm: "sand", snowscape: "snow", hail: "snow" };
 const ENCORE_TURNS = 3;
 const MAGNET_RISE_TURNS = 5;
 const TRANSFORM_PP = 5;
 
 /** Status moves with their own rules that don't need to get past the foe. Returns true if handled. */
-function performSpecial(st: BattleState, side: Side, move: FighterMove, events: BattleEvent[]): boolean {
+function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng, events: BattleEvent[]): boolean {
   const user = st[side];
   const foeSide = other(side);
   const foe = st[foeSide];
@@ -759,10 +987,88 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, events: 
     case "synthesis":
     case "moonlight":
     case "morningsun":
-    case "shoreup":
+    case "shoreup": {
+      // Sun makes the plant/moon heals stronger and other weather weaker; sand powers Shore Up.
+      const w = st.weather?.kind;
+      const fraction = move.id === "shoreup" ? (w === "sand" ? 2 / 3 : 1 / 2) : w === "sun" ? 2 / 3 : w ? 1 / 4 : 1 / 2;
       if (user.hp >= user.maxHp) fail();
-      else heal(st, side, Math.floor(user.maxHp / 2), events);
+      else heal(st, side, Math.floor(user.maxHp * fraction), events);
       return true;
+    }
+    case "stealthrock":
+    case "spikes":
+    case "toxicspikes":
+    case "stickyweb": {
+      const field = st.field[foeSide];
+      const effect = ({ stealthrock: "stealth-rock", spikes: "spikes", toxicspikes: "toxic-spikes", stickyweb: "sticky-web" } as const)[move.id];
+      const full =
+        move.id === "stealthrock" ? field.stealthRock : move.id === "spikes" ? field.spikes >= 3 : move.id === "toxicspikes" ? field.toxicSpikes >= 2 : field.stickyWeb;
+      if (full) return fail(), true;
+      if (move.id === "stealthrock") field.stealthRock = true;
+      else if (move.id === "spikes") field.spikes++;
+      else if (move.id === "toxicspikes") field.toxicSpikes++;
+      else field.stickyWeb = true;
+      events.push({ kind: "effect", side: foeSide, effect });
+      return true;
+    }
+    case "defog": {
+      // Clears hazards on both sides and the foe's screens.
+      const foeField = st.field[foeSide];
+      const screens = foeField.reflect || foeField.lightScreen || foeField.auroraVeil;
+      Object.assign(foeField, { reflect: 0, lightScreen: 0, auroraVeil: 0 });
+      const cleared = clearHazards(st.field[side]) || clearHazards(foeField);
+      if (cleared || screens) events.push({ kind: "effect", side, effect: "hazards-gone" });
+      else fail();
+      return true;
+    }
+    case "reflect":
+    case "lightscreen":
+    case "auroraveil": {
+      const field = st.field[side];
+      const key = move.id === "reflect" ? "reflect" : move.id === "lightscreen" ? "lightScreen" : "auroraVeil";
+      // Aurora Veil only works in snow.
+      if (field[key] > 0 || (move.id === "auroraveil" && st.weather?.kind !== "snow")) return fail(), true;
+      field[key] = SCREEN_TURNS;
+      events.push({ kind: "effect", side, effect: move.id === "reflect" ? "reflect" : move.id === "lightscreen" ? "light-screen" : "aurora-veil" });
+      return true;
+    }
+    case "wish":
+      if (st.field[side].wish) return fail(), true;
+      st.field[side].wish = { turns: 2, hp: Math.floor(user.maxHp / 2) };
+      events.push({ kind: "effect", side, effect: "wish" });
+      return true;
+    case "healingwish":
+    case "lunardance":
+      // The user faints so the next Pokémon comes in fully healed.
+      if (!st.bench[side].some((f) => f.hp > 0)) return fail(), true;
+      events.push({ kind: "hp-cost", side, amount: user.hp, hp: 0 });
+      user.hp = 0;
+      st.field[side].healingWish = true;
+      return true;
+    case "roar":
+    case "whirlwind":
+      if (!drag(st, foeSide, rng, events)) fail();
+      return true;
+    case "trickroom":
+      if (st.trickRoom > 0) {
+        st.trickRoom = 0;
+        events.push({ kind: "effect", side, effect: "trick-room-end" });
+      } else {
+        st.trickRoom = TRICK_ROOM_TURNS;
+        events.push({ kind: "effect", side, effect: "trick-room" });
+      }
+      return true;
+    case "sunnyday":
+    case "raindance":
+    case "sandstorm":
+    case "snowscape":
+    case "hail": {
+      const kind = WEATHER_MOVES[move.id];
+      if (st.weather?.kind === kind) return fail(), true;
+      st.weather = { kind, turns: WEATHER_TURNS };
+      events.push({ kind: "weather", side, weather: kind, ended: false });
+      return true;
+    }
     case "healbell":
     case "aromatherapy": {
       events.push({ kind: "effect", side, effect: "heal-bell" });
@@ -862,6 +1168,40 @@ function residual(st: BattleState, side: Side, events: BattleEvent[]) {
   }
 }
 
+/** Sandstorm hurts everything but Rock, Ground and Steel types (1/16). */
+function weatherDamage(st: BattleState, side: Side, events: BattleEvent[]) {
+  const f = st[side];
+  if (st.weather?.kind !== "sand" || f.hp <= 0 || f.types.some((t) => t === "rock" || t === "ground" || t === "steel")) return;
+  const amount = Math.min(f.hp, Math.max(1, Math.floor(f.maxHp / 16)));
+  f.hp -= amount;
+  events.push({ kind: "hurt", side, amount, hp: f.hp, cause: "sandstorm" });
+}
+
+function wish(st: BattleState, side: Side, events: BattleEvent[]) {
+  const pending = st.field[side].wish;
+  if (!pending || --pending.turns > 0) return;
+  st.field[side].wish = null;
+  const f = st[side];
+  if (f.hp <= 0) return;
+  events.push({ kind: "effect", side, effect: "wish-came-true" });
+  if (f.hp < f.maxHp) heal(st, side, pending.hp, events);
+}
+
+/** Weather, screens and Trick Room wear off. */
+function fieldCountdowns(st: BattleState, events: BattleEvent[]) {
+  if (st.weather && --st.weather.turns <= 0) {
+    events.push({ kind: "weather", side: "a", weather: st.weather.kind, ended: true });
+    st.weather = null;
+  }
+  for (const side of ["a", "b"] as Side[]) {
+    const field = st.field[side];
+    if (field.reflect > 0 && --field.reflect === 0) events.push({ kind: "effect", side, effect: "reflect-end" });
+    if (field.lightScreen > 0 && --field.lightScreen === 0) events.push({ kind: "effect", side, effect: "light-screen-end" });
+    if (field.auroraVeil > 0 && --field.auroraVeil === 0) events.push({ kind: "effect", side, effect: "aurora-veil-end" });
+  }
+  if (st.trickRoom > 0 && --st.trickRoom === 0) events.push({ kind: "effect", side: "a", effect: "trick-room-end" });
+}
+
 /** Effects that wear off or kick in at the very end of the turn. */
 function countdowns(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]) {
   const f = st[side];
@@ -888,7 +1228,7 @@ function checkFaints(st: BattleState, events: BattleEvent[], order: Side[]): boo
 }
 
 /** Swaps the active Pokémon with bench slot `index`. Leaving clears stat changes and volatile effects. */
-function doSwitch(st: BattleState, side: Side, index: number, forced: boolean, events: BattleEvent[]) {
+function doSwitch(st: BattleState, side: Side, index: number, forced: boolean, events: BattleEvent[], dragged = false) {
   const out = st[side];
   const incoming = st.bench[side][index];
   if (out.transformed) Object.assign(out, { types: out.transformed.types, stats: out.transformed.stats, moves: out.transformed.moves });
@@ -925,6 +1265,7 @@ function doSwitch(st: BattleState, side: Side, index: number, forced: boolean, e
     maxHp: incoming.maxHp,
     status: incoming.status,
     forced,
+    ...(dragged ? { dragged } : {}),
   });
 }
 
@@ -951,10 +1292,15 @@ function applyItem(st: BattleState, side: Side, item: ItemId, events: BattleEven
  * Sends out bench slot `index` in place of a fainted Pokémon (between turns).
  * Doesn't mutate `state`.
  */
-export function switchIn(state: BattleState, side: Side, index: number): { state: BattleState; events: BattleEvent[] } {
+export function switchIn(state: BattleState, side: Side, index: number, rng: Rng = Math.random): { state: BattleState; events: BattleEvent[] } {
   const st: BattleState = structuredClone(state);
   const events: BattleEvent[] = [];
-  if (st.bench[side][index]?.hp > 0) doSwitch(st, side, index, true, events);
+  if (st.bench[side][index]?.hp > 0) {
+    doSwitch(st, side, index, true, events);
+    // Hazards can knock the newcomer out before it does anything.
+    enterField(st, side, rng, events);
+    checkFaints(st, events, [side]);
+  }
   return { state: st, events };
 }
 
@@ -994,11 +1340,14 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
     if (typeof choice === "number") continue;
     if ("switchTo" in choice) {
       doSwitch(st, side, choice.switchTo, false, events);
+      enterField(st, side, rng, events);
       fresh.add(side);
     } else {
       applyItem(st, side, choice.item, events);
     }
   }
+
+  if (checkFaints(st, events, speedOrder)) return { state: st, events };
 
   const movers = (["a", "b"] as Side[]).filter((side) => moves[side]);
   const order = movers.length === 2 ? turnOrder(st, moves.a!, moves.b!, rng) : movers;
@@ -1009,8 +1358,13 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
     if (checkFaints(st, events, [other(side), side])) return { state: st, events };
   }
   const endOrder = order.length === 2 ? order : speedOrder;
+  for (const side of endOrder) weatherDamage(st, side, events);
+  for (const side of endOrder) wish(st, side, events);
   for (const side of endOrder) residual(st, side, events);
-  if (!checkFaints(st, events, endOrder)) for (const side of endOrder) countdowns(st, side, rng, events);
+  if (!checkFaints(st, events, endOrder)) {
+    for (const side of endOrder) countdowns(st, side, rng, events);
+    fieldCountdowns(st, events);
+  }
   // A Pokémon that came in this turn hasn't had its first turn yet (Fake Out still works).
   for (const side of ["a", "b"] as Side[]) if (!fresh.has(side)) st[side].turnsActive++;
   st.turn++;
