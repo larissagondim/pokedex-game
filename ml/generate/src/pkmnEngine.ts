@@ -1,6 +1,6 @@
 import { Battle, Dex, type Pokemon, type PokemonSet, Teams } from "@pkmn/sim";
 import type { BattleSnapshot, Combatant, MoveInfo } from "../../../web/lib/battleFeatures.ts";
-import type { BattleMove, BattlePokemon, Boosts } from "../../../web/lib/battle/types.ts";
+import type { BattleMove, BattlePokemon, Boosts, MoveFlag } from "../../../web/lib/battle/types.ts";
 import { chooseMove } from "./agent.ts";
 import type { BattleEngine, BattleResult } from "./engine.ts";
 import { battleSeed, makeRng } from "./rng.ts";
@@ -61,6 +61,9 @@ function choice(battle: Battle, side: "p1" | "p2", me: Combatant, foe: Combatant
   return `move ${legal[index].slot}`;
 }
 
+/** Flags exported with each move (the rest only matter to the simulator). */
+const MOVE_FLAGS: MoveFlag[] = ["contact", "sound", "punch", "bite", "pulse", "slicing", "bullet", "powder", "wind", "bypasssub"];
+
 /** Everything the app's battle engine needs about a move. */
 function battleMove(id: string): BattleMove {
   const m = dex.moves.get(id);
@@ -88,6 +91,8 @@ function battleMove(id: string): BattleMove {
   if (m.volatileStatus === "confusion" || m.volatileStatus === "protect" || m.volatileStatus === "leechseed") out.volatile = m.volatileStatus;
   if (m.self?.volatileStatus === "lockedmove") out.locked = true;
   if (m.flags.recharge) out.recharge = true;
+  const flags = MOVE_FLAGS.filter((f) => m.flags[f]);
+  if (flags.length) out.flags = flags;
   return out;
 }
 
@@ -99,7 +104,12 @@ export function startingCombatant(set: PokemonSet): BattlePokemon {
   battle.choose("p1", "team 1");
   battle.choose("p2", "team 1");
   const p = battle.p1.active[0];
-  return { ...combatant(p), name: p.species.name, moves: p.moveSlots.map((slot) => battleMove(slot.id)) };
+  return {
+    ...combatant(p),
+    name: p.species.name,
+    moves: p.moveSlots.map((slot) => battleMove(slot.id)),
+    weight: p.species.weightkg,
+  };
 }
 
 /** Adapter: Pokémon Showdown's engine (@pkmn/sim), gen 9 mechanics, 1v1. */

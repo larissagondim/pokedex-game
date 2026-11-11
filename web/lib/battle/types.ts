@@ -41,10 +41,16 @@ export interface BattleMove extends MoveInfo {
   locked?: boolean;
   /** The user must rest next turn (Hyper Beam, Giga Impact...). */
   recharge?: boolean;
+  /** Move flags the engine cares about (see MOVE_FLAGS in ml/generate). */
+  flags?: MoveFlag[];
 }
+
+export type MoveFlag = "contact" | "sound" | "punch" | "bite" | "pulse" | "slicing" | "bullet" | "powder" | "wind" | "bypasssub";
 
 /** A species as it enters battle: Combatant data plus full move details. */
 export interface BattlePokemon extends Combatant {
   name: string;
   moves: BattleMove[];
+  /** Kilograms (Low Kick, Grass Knot, Heavy Slam...). */
+  weight?: number;
 }
