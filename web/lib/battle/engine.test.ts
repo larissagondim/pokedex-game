@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chooseAction, chooseMove, chooseReplacement, replaceFainted } from "./ai.ts";
 import {
+  beginBattle,
   type BattleEvent,
   type BattleState,
   calcDamage,
+  canSwitch,
+  effectiveSpeed,
   createBattle,
   createTeamBattle,
   type Fighter,
@@ -752,4 +755,115 @@ test("freeze: can't move, thaws 20% of the time, and Fire moves thaw it", () => 
   const beam = move({ id: "icebeam", name: "Ice Beam", type: "ice", category: "special", power: 90, secondary: [{ chance: 100, status: "frz" }] });
   assert.equal(runTurn(battle({ moves: [beam] }, { types: ["ice"], moves: [splash] }), 0, 0, seq([], 0.99)).state.b.status, null);
   assert.equal(runTurn(battle({ moves: [beam] }, { hp: 999, maxHp: 999, moves: [splash] }), 0, 0, seq([], 0.99)).state.b.status, "frz");
+});
+
+// --- Abilities ---
+
+const earthquake = move({ id: "earthquake", name: "Earthquake", type: "ground", power: 100 });
+
+test("Intimidate on entry; Clear Body blocks it and Defiant answers it", () => {
+  const begun = beginBattle(battle({ ability: "Intimidate" }, {}));
+  assert.equal(begun.state.b.boosts.atk, -1);
+  assert.ok(begun.events.some((e) => e.kind === "ability" && e.side === "a" && e.ability === "Intimidate"));
+  assert.equal(beginBattle(battle({ ability: "Intimidate" }, { ability: "Clear Body" })).state.b.boosts.atk, 0);
+  assert.equal(beginBattle(battle({ ability: "Intimidate" }, { ability: "Defiant" })).state.b.boosts.atk, 1);
+  // runTurn does it on the first turn if the screen didn't.
+  assert.equal(runTurn(battle({ ability: "Intimidate", moves: [splash] }, { moves: [splash] }), 0, 0, seq([], 0.99)).state.b.boosts.atk, -1);
+});
+
+test("Levitate, Volt Absorb and Flash Fire; Mold Breaker ignores them", () => {
+  const lev = runTurn(battle({ moves: [earthquake] }, { ability: "Levitate", moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.ok(lev.events.some((e) => e.kind === "no-effect" && e.side === "b"));
+  assert.ok(runTurn(battle({ ability: "Mold Breaker", moves: [earthquake] }, { ability: "Levitate", moves: [splash] }), 0, 0, seq([], 0.99)).state.b.hp < 150);
+  const bolt = move({ id: "thunderbolt", name: "Thunderbolt", type: "electric", category: "special", power: 90 });
+  const absorb = battle({ moves: [bolt] }, { ability: "Volt Absorb", moves: [splash] });
+  absorb.b.hp = 100;
+  assert.equal(runTurn(absorb, 0, 0, seq([], 0.99)).state.b.hp, 137);
+  const ember = move({ id: "ember", name: "Ember", type: "fire", category: "special", power: 40 });
+  const ff = runTurn(battle({ moves: [ember] }, { ability: "Flash Fire", moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(ff.state.b.hp, 150);
+  assert.ok(ff.state.b.flashFire);
+});
+
+test("damage abilities: Huge Power, Thick Fat, Multiscale, Adaptability", () => {
+  const ember = move({ id: "ember", name: "Ember", type: "fire", category: "special", power: 40 });
+  const d = (a: Partial<BattlePokemon>, b: Partial<BattlePokemon>, m: BattleMove = move({})) => {
+    const st = battle(a, b);
+    return calcDamage(st.a, st.b, { ...m, ppLeft: 1 }, seq([0.99]), false);
+  };
+  assert.ok(d({ ability: "Huge Power" }, {}) > 1.9 * d({}, {}));
+  assert.ok(d({}, { ability: "Thick Fat" }, ember) < 0.6 * d({}, {}, ember));
+  assert.ok(d({}, { ability: "Multiscale" }) < 0.6 * d({}, {}));
+  assert.ok(d({ ability: "Adaptability" }, {}) > 1.3 * d({}, {}));
+});
+
+test("Sturdy survives a knockout blow from full HP", () => {
+  const r = runTurn(battle({ moves: [move({ power: 250 })] }, { ability: "Sturdy", moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(r.state.b.hp, 1);
+  assert.ok(r.events.some((e) => e.kind === "effect" && e.effect === "sturdy"));
+});
+
+test("contact: Static paralyzes (30%), Rough Skin hurts the attacker", () => {
+  // Order roll, then crit and damage rolls, then Static's 30% roll.
+  const st = battle({ moves: [move({ flags: ["contact"] })], stats: fast }, { ability: "Static", hp: 999, maxHp: 999, moves: [splash] });
+  assert.equal(runTurn(st, 0, 0, seq([0.99, 0.99, 0.1], 0.99)).state.a.status, "par");
+  assert.equal(runTurn(st, 0, 0, seq([0.99, 0.99, 0.5], 0.99)).state.a.status, null);
+  const rough = runTurn(battle({ moves: [move({ flags: ["contact"] })], stats: fast }, { ability: "Rough Skin", hp: 999, maxHp: 999, moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(rough.state.a.hp, 150 - 18);
+});
+
+test("Drizzle sets rain on entry and Swift Swim doubles Speed in it", () => {
+  const st = beginBattle(battle({ ability: "Drizzle" }, { ability: "Swift Swim" })).state;
+  assert.equal(st.weather?.kind, "rain");
+  assert.equal(effectiveSpeed(st.b, "rain"), 200);
+});
+
+test("Speed Boost, Regenerator and Natural Cure", () => {
+  let st = createTeamBattle(team({ ability: "Speed Boost", moves: splashOnly }, {}), team({ moves: splashOnly }));
+  st = runTurn(st, 0, 0, seq([], 0.99)).state;
+  assert.equal(st.a.boosts.spe, 1);
+  const regen = createTeamBattle(team({ ability: "Regenerator" }, {}), team({ moves: splashOnly }));
+  regen.a.hp = 50;
+  regen.a.status = "par";
+  assert.equal(runTurn(regen, { switchTo: 0 }, 0, seq([], 0.99)).state.bench.a[0].hp, 100);
+  const cure = createTeamBattle(team({ ability: "Natural Cure" }, {}), team({ moves: splashOnly }));
+  cure.a.status = "tox";
+  assert.equal(runTurn(cure, { switchTo: 0 }, 0, seq([], 0.99)).state.bench.a[0].status, null);
+});
+
+test("Truant skips every other turn", () => {
+  let st = battle({ ability: "Truant", hp: 999, maxHp: 999 }, { hp: 999, maxHp: 999, moves: [splash] });
+  const moved: boolean[] = [];
+  for (let i = 0; i < 4; i++) {
+    const r = runTurn(st, 0, 0, seq([], 0.99));
+    moved.push(r.events.some((e) => e.kind === "move" && e.side === "a"));
+    st = r.state;
+  }
+  assert.deepEqual(moved, [true, false, true, false]);
+});
+
+test("Magic Guard, Insomnia, Contrary and Prankster", () => {
+  const recoil = move({ id: "doubleedge", name: "Double-Edge", power: 120, recoil: [33, 100] });
+  const guard = battle({ ability: "Magic Guard", moves: [recoil] }, { hp: 999, maxHp: 999, moves: [splash] });
+  guard.a.status = "psn";
+  assert.equal(runTurn(guard, 0, 0, seq([], 0.99)).state.a.hp, 150);
+  const spore = move({ id: "spore", name: "Spore", type: "grass", power: 0, category: "status", status: "slp" });
+  assert.equal(runTurn(battle({ moves: [spore] }, { ability: "Insomnia", moves: [splash] }), 0, 0, seq([], 0.99)).state.b.status, null);
+  const growl = status("growl", "Growl", { boosts: { target: "foe", stats: { atk: -1 } } });
+  assert.equal(runTurn(battle({ moves: [growl] }, { ability: "Contrary", moves: [splash] }), 0, 0, seq([], 0.99)).state.b.boosts.atk, 1);
+  // Prankster: the slower user's status move goes first, but not against a Dark type.
+  const wave = status("thunderwave", "Thunder Wave", { type: "electric", status: "par" });
+  const pr = runTurn(battle({ ability: "Prankster", moves: [wave], stats: slow }, { hp: 999, maxHp: 999 }), 0, 0, seq([], 0.99));
+  assert.equal(pr.events.find((e) => e.kind === "move")?.side, "a");
+  assert.equal(runTurn(battle({ ability: "Prankster", moves: [wave] }, { types: ["dark"], moves: [splash] }), 0, 0, seq([], 0.99)).state.b.status, null);
+});
+
+test("Shadow Tag traps the foe; Imposter transforms on entry; Disguise takes the first hit", () => {
+  const trap = createTeamBattle(team({}, {}), team({ ability: "Shadow Tag" }));
+  assert.equal(canSwitch(trap, "a"), false);
+  const ditto = beginBattle(battle({ ability: "Imposter", moves: [status("transform", "Transform")] }, { types: ["dragon"], stats: fast }));
+  assert.deepEqual(ditto.state.a.types, ["dragon"]);
+  const mimikyu = runTurn(battle({ moves: [move({ power: 250 })] }, { ability: "Disguise", moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(mimikyu.state.b.hp, 150 - 18);
+  assert.equal(mimikyu.state.b.disguised, false);
 });

@@ -9,6 +9,7 @@ import { effectiveness } from "@/lib/typeChart";
 import {
   type BattleEvent,
   type BattleState,
+  beginBattle,
   canSwitch,
   type Choice,
   createTeamBattle,
@@ -265,10 +266,18 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     setView(viewOf(st));
     setFainted({ a: false, b: false });
     setCursor({ command: 0, fight: 0, bag: 0, party: 0 });
-    setPhase("command");
     const go = trainerName ? `${trainerName} sent out ${name("a")}!` : `Go, ${name("a")}!`;
-    onNotice(single ? `${go} What will it do?` : `The foe sent out ${nameOf(st.b.dexId)}! ${go}`);
     usePokedex.getState().playCry(st.a.dexId);
+    // Entry abilities (Intimidate, Drizzle...) play after the send-out line.
+    const begun = beginBattle(st);
+    if (begun.events.length > 0) {
+      setPhase("playing");
+      onNotice(single ? go : `The foe sent out ${nameOf(st.b.dexId)}! ${go}`);
+      timer.current = setTimeout(() => play(begun.events, begun.state), EVENT_MS);
+      return;
+    }
+    setPhase("command");
+    onNotice(single ? `${go} What will it do?` : `The foe sent out ${nameOf(st.b.dexId)}! ${go}`);
   };
 
   /** Applies one event to the screen; returns how long to show it. */

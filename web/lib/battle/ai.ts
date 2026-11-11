@@ -1,30 +1,36 @@
-import { type Combatant, expectedDamage, type MoveInfo } from "../battleFeatures.ts";
 import { effectiveness } from "../typeChart.ts";
+import { abilityBlock, moveType, statusBlocked } from "./abilities.ts";
 import {
   type BattleState,
   bypassesSub,
+  calcDamage,
   CHARGE,
   canInflict,
   COUNTERS,
   canSwitch,
   type Choice,
   effectiveSpeed,
+  effectivenessAgainst,
   type Fighter,
   FIRST_TURN_ONLY,
   type FighterMove,
   moveImmune,
   needsReplacement,
   powerAgainst,
+  priorityOf,
   resolvePivot,
   type Rng,
   SELF_KO,
   type Side,
-  stageMultiplier,
   switchIn,
   type Weather,
   weatherAccuracy,
   weatherFactor,
+  weatherOf as engineWeather,
 } from "./engine.ts";
+import type { Status } from "./types.ts";
+
+const isStatusName = (s: string): s is Status => ["brn", "par", "psn", "tox", "slp", "frz"].includes(s);
 
 /** Chance of a random move instead of the best one, so the foe isn't predictable. */
 const RANDOMNESS = 0.15;
@@ -34,25 +40,14 @@ const SWITCH_CHANCE = 0.7;
 /** Same stand-in power the engine uses for variable-power moves. */
 const FALLBACK_POWER = 60;
 
-/** The fighter as the damage estimate sees it (current stats with stages). */
-const view = (f: Fighter): Combatant => ({
-  dexId: f.dexId,
-  level: f.level,
-  types: f.types,
-  hp: f.hp,
-  maxHp: f.maxHp,
-  stats: {
-    atk: f.stats.atk * stageMultiplier(f.boosts.atk),
-    def: f.stats.def * stageMultiplier(f.boosts.def),
-    spa: f.stats.spa * stageMultiplier(f.boosts.spa),
-    spd: f.stats.spd * stageMultiplier(f.boosts.spd),
-    spe: effectiveSpeed(f),
-  },
-  status: f.status,
-  moves: f.moves,
-});
-
 const isAttack = (m: FighterMove) => m.category !== "status" || m.fixedDamage !== undefined;
+
+/** rng value that gives the 92% roll, about the average of 85-100%. */
+const AVERAGE_ROLL = 0.47;
+
+/** Average number of hits (2-5 hit moves: 3.1, or 5 with Skill Link). */
+const expectedHits = (m: FighterMove, me: Fighter) =>
+  typeof m.multihit === "number" ? m.multihit : !m.multihit ? 1 : me.ability === "skilllink" ? m.multihit[1] : m.multihit[0] === 2 && m.multihit[1] === 5 ? 3.1 : (m.multihit[0] + m.multihit[1]) / 2;
 
 /** What the AI knows beyond the two Pokémon out: the rest of the battle and which side it plays. */
 export interface AiContext {
@@ -60,7 +55,7 @@ export interface AiContext {
   side: Side;
 }
 
-const weatherOf = (ctx?: AiContext): Weather | null => ctx?.st.weather?.kind ?? null;
+const weatherOf = (ctx?: AiContext): Weather | null => (ctx ? engineWeather(ctx.st) : null);
 
 /** Accuracy the move will have right now. */
 const accuracyOf = (m: FighterMove, ctx?: AiContext) => weatherAccuracy(m, weatherOf(ctx));
@@ -82,9 +77,17 @@ function damageIfHits(m: FighterMove, me: Fighter, foe: Fighter, ctx?: AiContext
     if (answered.length === 0 || effectiveness(m.type, foe.types) === 0) return 0;
     return multiplier * 0.5 * Math.max(...answered.map((x) => damageIfHits(x, foe, me, ctx)));
   }
+  const weather = weatherOf(ctx);
+  const type = moveType(me, m);
+  const eff = type === "typeless" ? 1 : effectivenessAgainst(me, type, foe);
+  if (eff === 0 || abilityBlock(me, foe, m, priorityOf(me, m), eff)) return 0;
   const power = powerAgainst(m, me, foe);
-  const move: MoveInfo = { ...m, power: power > 0 ? power : FALLBACK_POWER, accuracy: 1 };
-  let damage = expectedDamage(move, view(me), view(foe)) * weatherFactor(weatherOf(ctx), m.type);
+  const move = { ...m, power: power > 0 ? power : FALLBACK_POWER };
+  // The engine's own formula at an average roll, times the expected number of hits.
+  const foeSide: Side = ctx?.side === "a" ? "b" : "a";
+  const field = ctx?.st.field[foeSide];
+  const screen = !!field && me.ability !== "infiltrator" && (field.auroraVeil > 0 || (m.category === "physical" ? field.reflect > 0 : field.lightScreen > 0));
+  let damage = calcDamage(me, foe, move, () => AVERAGE_ROLL, false, { weather, screen }) * expectedHits(m, me);
   // Two turns for one hit (Solar moves are instant in sun).
   const instant = (m.id === "solarbeam" || m.id === "solarblade") && weatherOf(ctx) === "sun";
   if (CHARGE.has(m.id) && !instant && me.charging === null) damage /= 2;
@@ -154,6 +157,9 @@ function statusUseful(m: FighterMove, me: Fighter, foe: Fighter, ctx?: AiContext
   if (me.taunt > 0) return false;
   const aimed = AIMED.has(m.id) || !!m.status || m.volatile === "confusion" || m.volatile === "leechseed" || m.boosts?.target === "foe";
   if (aimed && foe.substitute > 0 && !bypassesSub(m)) return false;
+  // Volt Absorb, Good as Gold, Prankster into a Dark type...
+  if (aimed && (abilityBlock(me, foe, m, priorityOf(me, m), 1) || (me.ability === "prankster" && foe.types.includes("dark")))) return false;
+  if (m.status && isStatusName(m.status) && statusBlocked(foe, m.status, weatherOf(ctx))) return false;
   if (HALF_HEALS.has(m.id)) return me.hp < me.maxHp / 2;
   if (ctx && fieldUseful(m, me, foe, ctx)) return true;
   switch (m.id) {

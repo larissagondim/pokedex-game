@@ -53,4 +53,6 @@ export interface BattlePokemon extends Combatant {
   moves: BattleMove[];
   /** Kilograms (Low Kick, Grass Knot, Heavy Slam...). */
   weight?: number;
+  /** Ability name ("Intimidate"). */
+  ability?: string;
 }

@@ -1,4 +1,24 @@
 import { effectiveness } from "../typeChart.ts";
+import {
+  abilityBlock,
+  attackModifier,
+  blocksDrop,
+  CONTACT_STATUS,
+  defenseModifier,
+  finalModifier,
+  INTIMIDATE_PROOF,
+  MOLD_BREAKERS,
+  moveType,
+  ON_KO,
+  powerModifier,
+  priorityBonus,
+  speedModifier,
+  stab,
+  statusBlocked,
+  typeEffectiveness,
+  WEATHER_NEGATORS,
+  WEATHER_SETTERS,
+} from "./abilities.ts";
 import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./types.ts";
 
 /**
@@ -25,7 +45,13 @@ import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./type
  * Counter / Mirror Coat, variable power (Eruption, Facade, Hex, Low Kick,
  * Heavy Slam, Stored Power, Rage Fist, Triple Axel...), Psyshock, Body Press,
  * Foul Play and Clear Smog. Freeze: can't move, 20% to thaw each turn, Fire
- * moves thaw it. Other effects just fail.
+ * moves thaw it. Abilities (see abilities.ts for the modifiers): entry
+ * effects (Intimidate, weather setters, Download, Trace, Imposter...),
+ * immunities and absorbers, contact punishment, stat-drop guards, Defiant,
+ * end-of-turn effects (Speed Boost, Poison Heal...), Regenerator / Natural
+ * Cure on switching out, Sturdy, Disguise, Truant, Slow Start, trapping,
+ * Mold Breaker, Magic Guard, Sheer Force, Serene Grace and more. Other
+ * effects just fail.
  *
  * Teams: each side has one Pokémon out (`a` / `b`) and the rest on its
  * `bench`. Switching and using an item take the whole turn and go before any
@@ -96,6 +122,21 @@ export interface Fighter {
   timesHit: number;
   /** Its last move failed or missed (Stomping Tantrum). */
   moveFailed: boolean;
+  /** Ability id ("intimidate"; "" for none) and its display name. */
+  ability: string;
+  abilityName: string;
+  /** Its own ability (Trace can change `ability` until it switches out). */
+  baseAbility: { id: string; name: string };
+  /** Flash Fire powered up its Fire moves. */
+  flashFire: boolean;
+  /** Turns of Slow Start left. */
+  slowStart: number;
+  /** Truant: skips its next turn. */
+  loafing: boolean;
+  /** Disguise / Ice Face still up. */
+  disguised: boolean;
+  /** Booster Energy powered up Protosynthesis / Quark Drive. */
+  boosterEnergy: boolean;
   /** Per-turn flags. */
   protected: boolean;
   flinched: boolean;
@@ -147,6 +188,8 @@ export interface BattleState {
   trickRoom: number;
   /** A turn paused by a pivot move: `side` picks who comes in (`resolvePivot`). */
   pending: { side: Side; plan: TurnPlan } | null;
+  /** The leads' entry abilities have kicked in (`beginBattle`). */
+  started: boolean;
   winner: Side | null;
 }
 
@@ -175,7 +218,7 @@ export type BattleEvent =
   | { kind: "recoil"; side: Side; amount: number; hp: number }
   | { kind: "boost"; side: Side; stat: StatName; change: number; requested: number }
   | { kind: "status"; side: Side; status: Status }
-  | { kind: "cant-move"; side: Side; reason: "par" | "slp" | "frz" | "flinch" | "recharge" }
+  | { kind: "cant-move"; side: Side; reason: "par" | "slp" | "frz" | "flinch" | "recharge" | "truant" }
   | { kind: "confused"; side: Side; fatigue: boolean }
   | { kind: "confusion"; side: Side }
   | { kind: "confusion-end"; side: Side }
@@ -210,10 +253,23 @@ export type BattleEvent =
   | { kind: "transform"; side: Side; dexId: number }
   | { kind: "revive"; side: Side; name: string }
   | { kind: "effect"; side: Side; effect: Effect; move?: string }
+  /** An ability kicks in (shown before what it does). */
+  | { kind: "ability"; side: Side; ability: string }
   | { kind: "weather"; side: Side; weather: Weather; ended: boolean };
 
 /** HP lost to something other than a hit or a status (each has its own message). */
-export type HurtCause = "curse" | "destiny-bond" | "stealthrock" | "spikes" | "sandstorm";
+export type HurtCause =
+  | "curse"
+  | "destiny-bond"
+  | "stealthrock"
+  | "spikes"
+  | "sandstorm"
+  | "contact"
+  | "aftermath"
+  | "sun"
+  | "bad-dreams"
+  | "liquid-ooze"
+  | "disguise";
 
 /** Text-only events: what changed is in the state, the screen just says it. */
 export type Effect =
@@ -253,10 +309,19 @@ export type Effect =
   | "no-target"
   | "thaw"
   | "charging"
-  | "stats-reset";
+  | "stats-reset"
+  | "sturdy"
+  | "disguise"
+  | "flash-fire"
+  | "stats-protected"
+  | "slow-start"
+  | "slow-start-end"
+  | "pressure"
+  | "trace"
+  | "weather-negated"
+  | "immune";
 
 const STATS: StatName[] = ["atk", "def", "spa", "spd", "spe"];
-const STAB = 1.5;
 const CRIT_MULTIPLIER = 1.5;
 /** Variable-power moves (Low Kick, Gyro Ball...) use this base power. */
 const FALLBACK_POWER = 60;
@@ -315,11 +380,22 @@ export function createFighter(p: BattlePokemon): Fighter {
     hurtBy: null,
     timesHit: 0,
     moveFailed: false,
+    ability: toId(p.ability ?? ""),
+    abilityName: p.ability ?? "",
+    baseAbility: { id: toId(p.ability ?? ""), name: p.ability ?? "" },
+    flashFire: false,
+    slowStart: 0,
+    loafing: false,
+    disguised: toId(p.ability ?? "") === "disguise" || toId(p.ability ?? "") === "iceface",
+    boosterEnergy: false,
     protected: false,
     flinched: false,
     moves: p.moves.map((m) => ({ ...m, ppLeft: m.pp })),
   };
 }
+
+/** "Huge Power" → "hugepower". */
+export const toId = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const emptyField = (): SideField => ({
   stealthRock: false,
@@ -348,6 +424,7 @@ export const createTeamBattle = (a: BattlePokemon[], b: BattlePokemon[]): Battle
   weather: null,
   trickRoom: 0,
   pending: null,
+  started: false,
   winner: null,
 });
 
@@ -359,9 +436,28 @@ export const needsReplacement = (st: BattleState, side: Side) => st[side].hp <= 
 
 /** Whether the active Pokémon may switch out by choice (not locked into a move or recharging). */
 export const canSwitch = (st: BattleState, side: Side) =>
-  !st[side].locked && !st[side].mustRecharge && st[side].charging === null && st.bench[side].some((f) => f.hp > 0);
+  !st[side].locked && !st[side].mustRecharge && st[side].charging === null && !trapped(st, side) && st.bench[side].some((f) => f.hp > 0);
 
-export const effectiveSpeed = (f: Fighter) => f.stats.spe * stageMultiplier(f.boosts.spe) * (f.status === "par" ? 0.5 : 1);
+/** Shadow Tag, Arena Trap (grounded foes) and Magnet Pull (Steel foes) keep the foe from switching; Ghosts slip out. */
+export function trapped(st: BattleState, side: Side): boolean {
+  const me = st[side];
+  const foe = st[other(side)];
+  if (foe.hp <= 0 || me.types.includes("ghost")) return false;
+  if (foe.ability === "shadowtag") return me.ability !== "shadowtag";
+  if (foe.ability === "arenatrap") return grounded(me);
+  return foe.ability === "magnetpull" && me.types.includes("steel");
+}
+
+/** The weather in effect (Air Lock and Cloud Nine switch its effects off). */
+export const weatherOf = (st: BattleState): Weather | null =>
+  st.weather && !WEATHER_NEGATORS.has(st.a.ability) && !WEATHER_NEGATORS.has(st.b.ability) ? st.weather.kind : null;
+
+/** Speed for turn order: stages, paralysis (Quick Feet ignores it) and the ability (Swift Swim...). */
+export const effectiveSpeed = (f: Fighter, weather: Weather | null = null) =>
+  f.stats.spe * stageMultiplier(f.boosts.spe) * (f.status === "par" && f.ability !== "quickfeet" ? 0.5 : 1) * speedModifier(f, weather);
+
+/** Move priority with the user's ability (Prankster, Gale Wings, Triage). */
+export const priorityOf = (f: Fighter, move: FighterMove) => move.priority + priorityBonus(f, move);
 
 /** The move that will actually be used (Struggle when out of PP). */
 export function resolveMove(f: Fighter, index: number): FighterMove {
@@ -372,27 +468,47 @@ export function resolveMove(f: Fighter, index: number): FighterMove {
 
 /** Who acts first: higher priority, then higher speed (lower under Trick Room), ties at random. */
 export function turnOrder(state: BattleState, moveA: FighterMove, moveB: FighterMove, rng: Rng): Side[] {
-  if (moveA.priority !== moveB.priority) return moveA.priority > moveB.priority ? ["a", "b"] : ["b", "a"];
-  const sa = effectiveSpeed(state.a);
-  const sb = effectiveSpeed(state.b);
+  const pa = priorityOf(state.a, moveA);
+  const pb = priorityOf(state.b, moveB);
+  if (pa !== pb) return pa > pb ? ["a", "b"] : ["b", "a"];
+  const weather = weatherOf(state);
+  const sa = effectiveSpeed(state.a, weather);
+  const sb = effectiveSpeed(state.b, weather);
   if (sa !== sb) return sa > sb !== state.trickRoom > 0 ? ["a", "b"] : ["b", "a"];
   return rng() < 0.5 ? ["a", "b"] : ["b", "a"];
 }
 
 const critChance = (ratio = 1) => (ratio >= 4 ? 1 : ratio === 3 ? 0.5 : ratio === 2 ? 1 / 8 : 1 / 24);
 
-/** What the field adds to a hit: the weather and a screen on the target's side. */
+/** Crit odds for this hit: Super Luck raises the stage, Battle Armor / Shell Armor stop crits. */
+const critFor = (user: Fighter, target: Fighter, move: FighterMove) =>
+  (target.ability === "battlearmor" || target.ability === "shellarmor") && !MOLD_BREAKERS.has(user.ability)
+    ? 0
+    : critChance((move.critRatio ?? 1) + (user.ability === "superluck" ? 1 : 0));
+
+/** What the field and the turn add to a hit: weather, a screen on the target's side, and what some abilities check. */
 export interface DamageMods {
   weather?: Weather | null;
   screen?: boolean;
+  /** The user moves after the target this turn (Analytic). */
+  movesLast?: boolean;
+  /** The target came in this turn (Stakeout). */
+  targetFresh?: boolean;
+  /** Fainted teammates of the user (Supreme Overlord). */
+  faintedAllies?: number;
 }
 
-/** Modifiers for a hit from `side` right now. */
-const modsFor = (st: BattleState, targetSide: Side, move: FighterMove): DamageMods => {
+/** Modifiers for a hit on `targetSide` right now. */
+const modsFor = (st: BattleState, targetSide: Side, move: FighterMove, events: BattleEvent[]): DamageMods => {
   const f = st.field[targetSide];
+  const userSide = other(targetSide);
   return {
-    weather: st.weather?.kind ?? null,
-    screen: f.auroraVeil > 0 || (move.category === "physical" ? f.reflect > 0 : f.lightScreen > 0),
+    weather: weatherOf(st),
+    // Infiltrator slips past screens.
+    screen: st[userSide].ability !== "infiltrator" && (f.auroraVeil > 0 || (move.category === "physical" ? f.reflect > 0 : f.lightScreen > 0)),
+    movesLast: events.some((e) => e.kind === "move" && e.side === targetSide),
+    targetFresh: events.some((e) => e.kind === "switch" && e.side === targetSide),
+    faintedAllies: st.bench[userSide].filter((x) => x.hp <= 0).length,
   };
 };
 
@@ -403,30 +519,47 @@ export function calcDamage(user: Fighter, target: Fighter, move: FighterMove, rn
   const atkStat: StatName = move.id === "bodypress" ? "def" : physical ? "atk" : "spa";
   const defStat: StatName = physical || PSYSHOCK.has(move.id) ? "def" : "spd";
   const attacker = move.id === "foulplay" ? target : user;
+  const weatherNow = mods.weather ?? null;
+  // Mold Breaker ignores the target's ability; Unaware ignores the other side's stat stages.
+  const ignoreTarget = MOLD_BREAKERS.has(user.ability);
+  const targetUnaware = target.ability === "unaware" && !ignoreTarget;
   // Critical hits ignore the attacker's drops and the defender's raises.
-  const atkStage = crit ? Math.max(0, attacker.boosts[atkStat]) : attacker.boosts[atkStat];
-  const defStage = crit ? Math.min(0, target.boosts[defStat]) : target.boosts[defStat];
-  const attack = Math.max(1, Math.floor(attacker.stats[atkStat] * stageMultiplier(atkStage)));
+  let atkStage = crit ? Math.max(0, attacker.boosts[atkStat]) : attacker.boosts[atkStat];
+  let defStage = crit ? Math.min(0, target.boosts[defStat]) : target.boosts[defStat];
+  if (targetUnaware) atkStage = 0;
+  if (user.ability === "unaware") defStage = 0;
+  const attack = Math.max(
+    1,
+    Math.floor(attacker.stats[atkStat] * stageMultiplier(atkStage) * attackModifier(user, target, move, weatherNow, ignoreTarget)),
+  );
   // Sand raises Rock types' Sp. Def, snow raises Ice types' Defense.
   const weatherDef =
-    (mods.weather === "sand" && defStat === "spd" && target.types.includes("rock")) ||
-    (mods.weather === "snow" && defStat === "def" && target.types.includes("ice"))
+    (weatherNow === "sand" && defStat === "spd" && target.types.includes("rock")) ||
+    (weatherNow === "snow" && defStat === "def" && target.types.includes("ice"))
       ? 1.5
       : 1;
-  const defense = Math.max(1, Math.floor(target.stats[defStat] * stageMultiplier(defStage) * weatherDef));
-  const power = move.power > 0 ? move.power : FALLBACK_POWER;
+  const defense = Math.max(
+    1,
+    Math.floor(target.stats[defStat] * stageMultiplier(defStage) * weatherDef * defenseModifier(user, target, weatherNow, ignoreTarget, defStat)),
+  );
+  const basePower = move.power > 0 ? move.power : FALLBACK_POWER;
+  const power = Math.max(1, Math.floor(basePower * powerModifier(user, target, move, { ...mods, weather: weatherNow, ignoreTarget })));
+  const type = moveType(user, move);
 
   let damage = Math.floor(Math.floor((Math.floor((2 * user.level) / 5 + 2) * power * attack) / defense) / 50) + 2;
-  const weather = weatherFactor(mods.weather, move.type);
+  const weather = weatherFactor(weatherNow, type);
   if (weather !== 1) damage = Math.floor(damage * weather);
-  if (crit) damage = Math.floor(damage * CRIT_MULTIPLIER);
+  // Sniper makes critical hits hit even harder.
+  if (crit) damage = Math.floor(damage * CRIT_MULTIPLIER * (user.ability === "sniper" ? 1.5 : 1));
   damage = Math.floor((damage * (85 + Math.floor(rng() * 16))) / 100);
-  if (user.types.includes(move.type)) damage = Math.floor(damage * STAB);
-  damage = Math.floor(damage * effectivenessOn(move.type, target));
-  // Burn halves physical damage (Facade ignores it).
-  if (physical && user.status === "brn" && move.id !== "facade") damage = Math.floor(damage / 2);
+  if (type !== "typeless") damage = Math.floor(damage * stab(user, type));
+  const eff = type === "typeless" ? 1 : effectivenessAgainst(user, type, target);
+  damage = Math.floor(damage * eff);
+  // Burn halves physical damage (Facade and Guts ignore it).
+  if (physical && user.status === "brn" && move.id !== "facade" && user.ability !== "guts") damage = Math.floor(damage / 2);
   // Screens halve the damage (critical hits go through them).
   if (mods.screen && !crit) damage = Math.floor(damage / 2);
+  damage = Math.floor(damage * finalModifier(user, target, move, eff, ignoreTarget));
   return Math.max(1, damage);
 }
 
@@ -481,6 +614,10 @@ const IMMUNE: Record<Status, string[]> = {
 export const effectivenessOn = (type: string, target: Pick<Fighter, "types" | "magnetRise">) =>
   type === "typeless" ? 1 : type === "ground" && target.magnetRise > 0 ? 0 : effectiveness(type, target.types);
 
+/** Effectiveness of the user's move (Scrappy lets Normal and Fighting hit Ghosts). */
+export const effectivenessAgainst = (user: Pick<Fighter, "ability">, type: string, target: Pick<Fighter, "types" | "magnetRise">) =>
+  type === "ground" && target.magnetRise > 0 ? 0 : typeEffectiveness(user, type, target.types);
+
 /** Sound moves and a few others go through a Substitute. */
 export const bypassesSub = (move: Pick<FighterMove, "flags">) => !!move.flags?.some((f) => f === "bypasssub" || f === "sound");
 
@@ -512,33 +649,93 @@ export function canInflict(status: string, target: Pick<Fighter, "types" | "stat
 const isStatus = (s: string | undefined): s is Status =>
   s === "brn" || s === "par" || s === "psn" || s === "tox" || s === "slp" || s === "frz";
 
-/** Inflicts a status if possible. `announceFailure` for status moves (not chance effects). */
-function tryStatus(st: BattleState, side: Side, status: string, rng: Rng, events: BattleEvent[], announceFailure: boolean) {
+/**
+ * Inflicts a status if possible. `announceFailure` for status moves (not
+ * chance effects); `source` is the side causing it (Corrosion, Synchronize).
+ */
+function tryStatus(st: BattleState, side: Side, status: string, rng: Rng, events: BattleEvent[], announceFailure: boolean, source?: Side) {
   const target = st[side];
-  if (!isStatus(status) || !canInflict(status, target) || (status === "frz" && st.weather?.kind === "sun")) {
+  const weather = weatherOf(st);
+  // Corrosion poisons Poison and Steel types.
+  const corrosive = source !== undefined && st[source].ability === "corrosion" && (status === "psn" || status === "tox");
+  const typeOk = corrosive ? isStatus(status) && target.status === null && target.hp > 0 : canInflict(status, target);
+  if (!isStatus(status) || !typeOk || (status === "frz" && weather === "sun")) {
     if (announceFailure) events.push({ kind: "fail", side: other(side) });
     return;
   }
+  const moldBroken = source !== undefined && source !== side && MOLD_BREAKERS.has(st[source].ability);
+  if (statusBlocked(target, status, weather) && !moldBroken) {
+    if (announceFailure) {
+      reveal(st, side, events);
+      events.push({ kind: "no-effect", side });
+    }
+    return;
+  }
   target.status = status;
+  target.drowsy = 0;
   if (status === "slp") target.sleepTurns = 1 + Math.floor(rng() * 3);
   if (status === "tox") target.toxicTurns = 0;
   events.push({ kind: "status", side, status });
+  // Synchronize passes burn, paralysis and poison back.
+  if (source !== undefined && source !== side && target.ability === "synchronize" && status !== "slp" && status !== "frz") {
+    reveal(st, side, events);
+    tryStatus(st, source, status, rng, events, false);
+  }
 }
 
-function applyBoosts(st: BattleState, side: Side, boosts: Boosts, events: BattleEvent[]) {
+/** Shows the ability that's about to act. */
+function reveal(st: BattleState, side: Side, events: BattleEvent[]) {
   const f = st[side];
+  if (f.abilityName) events.push({ kind: "ability", side, ability: f.abilityName });
+}
+
+/** Magic Guard: no damage except from attacks. */
+const indirectOk = (f: Fighter) => f.ability !== "magicguard";
+
+/** Takes `amount` (capped by the HP left) for a reason other than a hit. Returns what it took. */
+function hurt(st: BattleState, side: Side, amount: number, cause: HurtCause, events: BattleEvent[]): number {
+  const f = st[side];
+  if (f.hp <= 0 || !indirectOk(f)) return 0;
+  const taken = Math.min(f.hp, Math.max(1, Math.floor(amount)));
+  f.hp -= taken;
+  events.push({ kind: "hurt", side, amount: taken, hp: f.hp, cause });
+  return taken;
+}
+
+/**
+ * Changes stat stages. `by` is the side causing it: drops from the foe are
+ * stopped by Clear Body and the like and set off Defiant / Competitive.
+ * Contrary flips the changes, Simple doubles them.
+ */
+function applyBoosts(st: BattleState, side: Side, boosts: Boosts, events: BattleEvent[], by: Side = side) {
+  const f = st[side];
+  const fromFoe = by !== side;
+  const moldBroken = fromFoe && MOLD_BREAKERS.has(st[by].ability);
+  let dropped = false;
   for (const stat of STATS) {
-    const requested = boosts[stat];
+    let requested = boosts[stat];
     if (!requested) continue;
+    if (f.ability === "contrary" && !moldBroken) requested = -requested;
+    if (f.ability === "simple" && !moldBroken) requested *= 2;
+    if (requested < 0 && fromFoe && blocksDrop(f, stat) && !moldBroken) {
+      reveal(st, side, events);
+      events.push({ kind: "effect", side, effect: "stats-protected" });
+      continue;
+    }
     const before = f.boosts[stat];
     f.boosts[stat] = Math.max(-6, Math.min(6, before + requested));
     events.push({ kind: "boost", side, stat, change: f.boosts[stat] - before, requested });
+    if (requested < 0 && fromFoe && f.boosts[stat] < before) dropped = true;
+  }
+  if (dropped && (f.ability === "defiant" || f.ability === "competitive") && f.hp > 0) {
+    reveal(st, side, events);
+    applyBoosts(st, side, f.ability === "defiant" ? { atk: 2 } : { spa: 2 }, events);
   }
 }
 
 function heal(st: BattleState, side: Side, amount: number, events: BattleEvent[]) {
   const f = st[side];
-  const healed = Math.min(f.maxHp - f.hp, Math.max(1, amount));
+  const healed = Math.min(f.maxHp - f.hp, Math.max(1, Math.floor(amount)));
   if (healed <= 0) return;
   f.hp += healed;
   events.push({ kind: "heal", side, amount: healed, hp: f.hp });
@@ -555,7 +752,9 @@ function canMove(st: BattleState, side: Side, move: FighterMove, rng: Rng, event
       f.status = null;
       events.push({ kind: "wake", side });
     } else {
-      f.sleepTurns--;
+      // Early Bird wakes up twice as fast.
+      f.sleepTurns -= f.ability === "earlybird" ? 2 : 1;
+      if (f.sleepTurns < 0) f.sleepTurns = 0;
       events.push({ kind: "cant-move", side, reason: "slp" });
       if (move.id !== "sleeptalk") return false;
     }
@@ -628,6 +827,12 @@ function attemptMove(
   foeMove: FighterMove | null,
 ) {
   const user = st[side];
+  // Truant: every other turn, it just loafs around.
+  if (user.ability === "truant" && user.loafing) {
+    user.loafing = false;
+    events.push({ kind: "cant-move", side, reason: "truant" });
+    return;
+  }
   if (!canMove(st, side, move, rng, events)) {
     user.locked = null;
     user.charging = null;
@@ -637,6 +842,10 @@ function attemptMove(
     user.locked = null;
     user.charging = null;
     events.push({ kind: "cant-move", side, reason: "flinch" });
+    if (user.ability === "steadfast") {
+      reveal(st, side, events);
+      applyBoosts(st, side, { spe: 1 }, events);
+    }
     return;
   }
   if (user.confusion > 0) {
@@ -663,7 +872,12 @@ function attemptMove(
 
   // PP is only spent on the first turn of a locked or two-turn move.
   const continuing = user.locked !== null || user.charging !== null;
-  if (move !== STRUGGLE && !continuing) move.ppLeft--;
+  if (move !== STRUGGLE && !continuing) {
+    move.ppLeft--;
+    // Pressure: moves cost one more PP.
+    if (st[other(side)].ability === "pressure" && st[other(side)].hp > 0 && move.ppLeft > 0) move.ppLeft--;
+  }
+  if (user.ability === "truant") user.loafing = true;
   if (move.volatile !== "protect") user.protectStreak = 0;
   const index = user.moves.indexOf(move);
   // Destiny Bond can't be used twice in a row.
@@ -676,7 +890,7 @@ function attemptMove(
   }
   // Two-turn moves: this turn charges (unless the sun powers a Solar move up right away).
   if (CHARGE.has(move.id)) {
-    const instant = (move.id === "solarbeam" || move.id === "solarblade") && st.weather?.kind === "sun";
+    const instant = (move.id === "solarbeam" || move.id === "solarblade") && weatherOf(st) === "sun";
     if (user.charging === null && !instant) {
       user.charging = index;
       events.push({ kind: "effect", side, effect: "charging", move: move.name });
@@ -743,8 +957,21 @@ function executeMove(
     user.locked = null;
     return;
   }
+  const weather = weatherOf(st);
+  // Prankster-boosted status moves don't work on Dark types.
+  if (targetsFoe && user.ability === "prankster" && move.category === "status" && foe.types.includes("dark")) {
+    events.push({ kind: "no-effect", side: foeSide });
+    return;
+  }
+  // Weather Ball takes the weather's type at double power.
+  const typed = move.id === "weatherball" && weather ? { ...move, type: WEATHER_BALL[weather], power: move.power * 2 } : move;
+  const typeNow = moveType(user, typed);
+  if (targetsFoe && absorbedBy(st, side, typed, typeNow, events)) {
+    user.locked = null;
+    return;
+  }
 
-  const accuracy = weatherAccuracy(move, st.weather?.kind);
+  const accuracy = accuracyOf(st, side, move);
   if (accuracy < 1 && rng() >= accuracy) {
     events.push({ kind: "miss", side });
     user.locked = null;
@@ -765,9 +992,9 @@ function executeMove(
       if (user.hp >= user.maxHp) events.push({ kind: "fail", side });
       else heal(st, side, Math.floor((user.maxHp * move.heal[0]) / move.heal[1]), events);
     } else if (move.boosts) {
-      applyBoosts(st, move.boosts.target === "self" ? side : foeSide, move.boosts.stats, events);
+      applyBoosts(st, move.boosts.target === "self" ? side : foeSide, move.boosts.stats, events, side);
     } else if (move.status) {
-      tryStatus(st, foeSide, move.status, rng, events, true);
+      tryStatus(st, foeSide, move.status, rng, events, true, side);
     } else if (move.volatile === "protect") {
       // Each Protect in a row is three times less likely to work.
       if (rng() < 1 / 3 ** user.protectStreak) {
@@ -780,7 +1007,10 @@ function executeMove(
       }
     } else if (move.volatile === "confusion") {
       if (foe.confusion > 0) events.push({ kind: "fail", side });
-      else confuse(foe, foeSide, rng, events, false);
+      else if (foe.ability === "owntempo" && !MOLD_BREAKERS.has(user.ability)) {
+        reveal(st, foeSide, events);
+        events.push({ kind: "no-effect", side: foeSide });
+      } else confuse(foe, foeSide, rng, events, false);
     } else if (move.volatile === "leechseed") {
       if (foe.types.includes("grass")) events.push({ kind: "no-effect", side: foeSide });
       else if (foe.seeded) events.push({ kind: "fail", side });
@@ -794,9 +1024,7 @@ function executeMove(
     return;
   }
 
-  // Weather Ball takes the weather's type at double power.
-  const typed = move.id === "weatherball" && st.weather ? { ...move, type: WEATHER_BALL[st.weather.kind], power: move.power * 2 } : move;
-  const eff = effectivenessOn(typed.type, foe);
+  const eff = typeNow === "typeless" ? 1 : effectivenessAgainst(user, typeNow, foe);
   if (eff === 0) {
     events.push({ kind: "no-effect", side: foeSide });
     user.locked = null;
@@ -824,8 +1052,14 @@ function executeMove(
     }
   }
 
-  const hits = hitCount(move, rng);
-  const throughSub = bypassesSub(move);
+  const hits = user.ability === "skilllink" && Array.isArray(move.multihit) ? move.multihit[1] : hitCount(move, rng);
+  // Infiltrator gets past a Substitute too.
+  const throughSub = bypassesSub(move) || user.ability === "infiltrator";
+  const moldBreaker = MOLD_BREAKERS.has(user.ability);
+  const fullBefore = foe.hp >= foe.maxHp;
+  const hpBefore = foe.hp;
+  let endured = false;
+  let busted = false;
   let total = 0;
   let toBody = 0;
   let crit = false;
@@ -845,8 +1079,20 @@ function executeMove(
     } else {
       // Triple Axel / Triple Kick get stronger with each hit.
       const step = ESCALATING.has(move.id) ? { ...hit, power: hit.power * (i + 1) } : hit;
-      isCrit = rng() < critChance(move.critRatio);
-      damage = calcDamage(user, foe, step, rng, isCrit, modsFor(st, foeSide, step));
+      isCrit = rng() < critFor(user, foe, move);
+      damage = calcDamage(user, foe, step, rng, isCrit, modsFor(st, foeSide, step, events));
+    }
+    if (foe.substitute > 0 && !throughSub) {
+      // (the Substitute takes it below)
+    } else if (foe.disguised && !moldBreaker && (foe.ability === "disguise" || hit.category === "physical")) {
+      // Disguise / Ice Face takes the first hit for it.
+      foe.disguised = false;
+      busted = true;
+      damage = 0;
+    } else if (foe.ability === "sturdy" && !moldBreaker && fullBefore && damage >= foe.hp && foe.hp === hpBefore) {
+      // Sturdy: a hit from full HP leaves it at 1.
+      damage = foe.hp - 1;
+      endured = true;
     }
     if (foe.substitute > 0 && !throughSub) {
       // The Substitute takes the hit (and only as much as it has left).
@@ -873,6 +1119,22 @@ function executeMove(
   if (landed > 0 || !hitSub) {
     events.push({ kind: "damage", side: foeSide, amount: toBody, hp: foe.hp, effectiveness: shownEff, crit, hits: landed });
   }
+  if (busted) {
+    reveal(st, foeSide, events);
+    events.push({ kind: "effect", side: foeSide, effect: "disguise" });
+    if (foe.ability === "disguise") hurt(st, foeSide, foe.maxHp / 8, "disguise", events);
+  }
+  if (endured) {
+    reveal(st, foeSide, events);
+    events.push({ kind: "effect", side: foeSide, effect: "sturdy" });
+  }
+  // Moxie, Beast Boost...: a knockout powers the user up.
+  if (foe.hp <= 0 && user.hp > 0 && ON_KO[user.ability]) {
+    const stat = ON_KO[user.ability];
+    const best = stat === "best" ? STATS.reduce((a, b) => (user.stats[b] > user.stats[a] ? b : a)) : stat;
+    reveal(st, side, events);
+    applyBoosts(st, side, { [best]: 1 }, events);
+  }
   // Destiny Bond: knocking it out takes the attacker down too.
   if (foe.hp <= 0 && foe.destinyBond && user.hp > 0) {
     const amount = user.hp;
@@ -880,28 +1142,40 @@ function executeMove(
     events.push({ kind: "hurt", side, amount, hp: 0, cause: "destiny-bond" });
   }
 
-  if (move.drain) heal(st, side, Math.floor((total * move.drain[0]) / move.drain[1]), events);
+  if (move.drain && total > 0) {
+    const amount = Math.floor((total * move.drain[0]) / move.drain[1]);
+    // Liquid Ooze hurts whoever drains it.
+    if (foe.ability === "liquidooze") {
+      reveal(st, foeSide, events);
+      hurt(st, side, amount, "liquid-ooze", events);
+    } else heal(st, side, amount, events);
+  }
   const recoil =
     move === STRUGGLE ? Math.floor(user.maxHp / 4) : move.recoil ? Math.floor((total * move.recoil[0]) / move.recoil[1]) : 0;
-  if ((recoil > 0 || move.recoil) && user.hp > 0) {
+  const noRecoil = move !== STRUGGLE && (user.ability === "rockhead" || !indirectOk(user));
+  if ((recoil > 0 || move.recoil) && user.hp > 0 && !noRecoil) {
     const amount = Math.min(user.hp, Math.max(1, recoil));
     user.hp -= amount;
     events.push({ kind: "recoil", side, amount, hp: user.hp });
   }
   if (move.selfBoosts && user.hp > 0) applyBoosts(st, side, move.selfBoosts, events);
 
-  for (const sec of move.secondary ?? []) {
-    if (rng() * 100 >= sec.chance) continue;
+  // Sheer Force trades the extra effects for power; Serene Grace doubles their odds; Shield Dust keeps them off the target.
+  const secondaries = user.ability === "sheerforce" ? [] : (move.secondary ?? []);
+  const shielded = foe.ability === "shielddust" && !moldBreaker;
+  for (const sec of secondaries) {
+    if (rng() * 100 >= sec.chance * (user.ability === "serenegrace" ? 2 : 1)) continue;
     // A Substitute shields the target from the move's extra effects.
-    const reaches = foe.hp > 0 && !hitSub;
-    if (sec.status && reaches) tryStatus(st, foeSide, sec.status, rng, events, false);
-    if (sec.boosts && reaches) applyBoosts(st, foeSide, sec.boosts, events);
+    const reaches = foe.hp > 0 && !hitSub && !shielded;
+    if (sec.status && reaches) tryStatus(st, foeSide, sec.status, rng, events, false, side);
+    if (sec.boosts && reaches) applyBoosts(st, foeSide, sec.boosts, events, side);
     if (sec.selfBoosts && user.hp > 0) applyBoosts(st, side, sec.selfBoosts, events);
     // Flinching only matters if the foe hasn't moved yet this turn.
-    if (sec.volatile === "flinch" && foeMovesLater && !hitSub) foe.flinched = true;
-    if (sec.volatile === "confusion" && reaches && foe.confusion === 0) confuse(foe, foeSide, rng, events, false);
+    if (sec.volatile === "flinch" && foeMovesLater && !hitSub && !shielded && (foe.ability !== "innerfocus" || moldBreaker)) foe.flinched = true;
+    if (sec.volatile === "confusion" && reaches && foe.confusion === 0 && (foe.ability !== "owntempo" || moldBreaker)) confuse(foe, foeSide, rng, events, false);
   }
 
+  if (landed > 0 && !hitSub) onHitAbilities(st, side, hit, typeNow, hpBefore, rng, events);
   afterHit(st, side, move, hitSub, rng, events);
 
   if (move.recharge) user.mustRecharge = true;
@@ -912,6 +1186,121 @@ function executeMove(
       user.locked = null;
       if (user.confusion === 0 && user.hp > 0) confuse(user, side, rng, events, true);
     }
+  }
+}
+
+/**
+ * The target's ability stopping the move (Levitate, Volt Absorb, Flash
+ * Fire...). Handles what it does instead and returns true if the move stops.
+ */
+function absorbedBy(st: BattleState, side: Side, move: FighterMove, type: string, events: BattleEvent[]): boolean {
+  const user = st[side];
+  const foeSide = other(side);
+  const foe = st[foeSide];
+  const eff = type === "typeless" ? 1 : effectivenessAgainst(user, type, foe);
+  const block = abilityBlock(user, foe, move, priorityOf(user, move), eff);
+  if (!block) return false;
+  reveal(st, foeSide, events);
+  if (block.kind === "heal") {
+    if (foe.hp < foe.maxHp) heal(st, foeSide, Math.floor(foe.maxHp / 4), events);
+    else events.push({ kind: "no-effect", side: foeSide });
+  } else if (block.kind === "boost") {
+    applyBoosts(st, foeSide, { [block.stat]: block.amount }, events);
+  } else if (block.kind === "flashfire") {
+    foe.flashFire = true;
+    events.push({ kind: "effect", side: foeSide, effect: "flash-fire" });
+  } else {
+    events.push({ kind: "no-effect", side: foeSide });
+  }
+  return true;
+}
+
+/** Accuracy with the weather and abilities (No Guard always hits, Compound Eyes +30%, Hustle −20% on physical moves). */
+function accuracyOf(st: BattleState, side: Side, move: FighterMove): number {
+  const user = st[side];
+  if (user.ability === "noguard" || st[other(side)].ability === "noguard") return 1;
+  let accuracy = weatherAccuracy(move, weatherOf(st));
+  if (accuracy >= 1) return 1;
+  if (user.ability === "compoundeyes") accuracy *= 1.3;
+  if (user.ability === "hustle" && move.category === "physical") accuracy *= 0.8;
+  return Math.min(1, accuracy);
+}
+
+/** Abilities that react to a hit landing: contact punishment, the target's reactions, Poison Touch. */
+function onHitAbilities(st: BattleState, side: Side, move: FighterMove, type: string, hpBefore: number, rng: Rng, events: BattleEvent[]) {
+  const user = st[side];
+  const foeSide = other(side);
+  const foe = st[foeSide];
+  const contact = !!move.flags?.includes("contact");
+  if (contact && user.hp > 0) {
+    const status = CONTACT_STATUS[foe.ability];
+    if (status && rng() < 0.3 && canInflict(status, user) && !statusBlocked(user, status, weatherOf(st))) {
+      reveal(st, foeSide, events);
+      tryStatus(st, side, status, rng, events, false, foeSide);
+    }
+    if (foe.ability === "effectspore" && rng() < 0.3 && !user.types.includes("grass") && user.ability !== "overcoat") {
+      const roll = rng();
+      const spore = roll < 1 / 3 ? "psn" : roll < 2 / 3 ? "par" : "slp";
+      if (canInflict(spore, user)) {
+        reveal(st, foeSide, events);
+        tryStatus(st, side, spore, rng, events, false, foeSide);
+      }
+    }
+    if (foe.ability === "roughskin" || foe.ability === "ironbarbs") {
+      reveal(st, foeSide, events);
+      hurt(st, side, user.maxHp / 8, "contact", events);
+    }
+    if ((foe.ability === "gooey" || foe.ability === "tanglinghair") && user.hp > 0) {
+      reveal(st, foeSide, events);
+      applyBoosts(st, side, { spe: -1 }, events, foeSide);
+    }
+    if (foe.ability === "aftermath" && foe.hp <= 0) {
+      reveal(st, foeSide, events);
+      hurt(st, side, user.maxHp / 4, "aftermath", events);
+    }
+    if (user.ability === "poisontouch" && foe.hp > 0 && rng() < 0.3 && canInflict("psn", foe)) {
+      reveal(st, side, events);
+      tryStatus(st, foeSide, "psn", rng, events, false, side);
+    }
+  }
+  if (user.ability === "toxicchain" && foe.hp > 0 && rng() < 0.3 && canInflict("tox", foe)) {
+    reveal(st, side, events);
+    tryStatus(st, foeSide, "tox", rng, events, false, side);
+  }
+  if (foe.hp <= 0) return;
+  const react = (boosts: Boosts) => {
+    reveal(st, foeSide, events);
+    applyBoosts(st, foeSide, boosts, events);
+  };
+  switch (foe.ability) {
+    case "weakarmor":
+      if (move.category === "physical") react({ def: -1, spe: 2 });
+      break;
+    case "stamina":
+      react({ def: 1 });
+      break;
+    case "justified":
+      if (type === "dark") react({ atk: 1 });
+      break;
+    case "thermalexchange":
+      if (type === "fire") react({ atk: 1 });
+      break;
+    case "steamengine":
+      if (type === "fire" || type === "water") react({ spe: 6 });
+      break;
+    case "berserk":
+      if (hpBefore * 2 > foe.maxHp && foe.hp * 2 <= foe.maxHp) react({ spa: 1 });
+      break;
+    case "angershell":
+      if (hpBefore * 2 > foe.maxHp && foe.hp * 2 <= foe.maxHp) react({ atk: 1, spa: 1, spe: 1, def: -1, spd: -1 });
+      break;
+    case "toxicdebris":
+      if (move.category === "physical" && st.field[side].toxicSpikes < 2) {
+        reveal(st, foeSide, events);
+        st.field[side].toxicSpikes++;
+        events.push({ kind: "effect", side, effect: "toxic-spikes" });
+      }
+      break;
   }
 }
 
@@ -1072,30 +1461,125 @@ function enterField(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]
       events.push({ kind: "cure", side });
     }
   }
-  if (field.stealthRock && f.hp > 0) {
-    // 1/8 of the max HP, scaled by how well Rock hits it.
-    const amount = Math.min(f.hp, Math.max(1, Math.floor((f.maxHp * effectiveness("rock", f.types)) / 8)));
-    f.hp -= amount;
-    events.push({ kind: "hurt", side, amount, hp: f.hp, cause: "stealthrock" });
-  }
-  if (!grounded(f)) return;
-  if (field.spikes > 0 && f.hp > 0) {
-    const amount = Math.min(f.hp, Math.max(1, Math.floor(f.maxHp / [8, 6, 4][field.spikes - 1])));
-    f.hp -= amount;
-    events.push({ kind: "hurt", side, amount, hp: f.hp, cause: "spikes" });
-  }
-  if (field.toxicSpikes > 0 && f.hp > 0) {
-    if (f.types.includes("poison")) {
-      field.toxicSpikes = 0;
-      events.push({ kind: "effect", side, effect: "toxic-spikes-absorbed" });
-    } else {
-      tryStatus(st, side, field.toxicSpikes >= 2 ? "tox" : "psn", rng, events, false);
+  // 1/8 of the max HP, scaled by how well Rock hits it.
+  if (field.stealthRock && f.hp > 0) hurt(st, side, (f.maxHp * effectiveness("rock", f.types)) / 8, "stealthrock", events);
+  if (grounded(f)) {
+    if (field.spikes > 0 && f.hp > 0) hurt(st, side, f.maxHp / [8, 6, 4][field.spikes - 1], "spikes", events);
+    if (field.toxicSpikes > 0 && f.hp > 0) {
+      if (f.types.includes("poison")) {
+        field.toxicSpikes = 0;
+        events.push({ kind: "effect", side, effect: "toxic-spikes-absorbed" });
+      } else {
+        tryStatus(st, side, field.toxicSpikes >= 2 ? "tox" : "psn", rng, events, false);
+      }
+    }
+    if (field.stickyWeb && f.hp > 0) {
+      events.push({ kind: "effect", side, effect: "sticky-web-caught" });
+      applyBoosts(st, side, { spe: -1 }, events, other(side));
     }
   }
-  if (field.stickyWeb && f.hp > 0) {
-    events.push({ kind: "effect", side, effect: "sticky-web-caught" });
-    applyBoosts(st, side, { spe: -1 }, events);
+  onEntry(st, side, events);
+}
+
+/** Abilities that can't be copied by Trace. */
+const UNTRACEABLE = new Set(["trace", "imposter", "multitype", "disguise", "iceface", "illusion", "comatose", "zenmode", "powerconstruct", "schooling", "shieldsdown", "rkssystem", "commander", "zerotohero", "protosynthesis", "quarkdrive", ""]);
+
+/** Abilities that act as the Pokémon comes in. */
+function onEntry(st: BattleState, side: Side, events: BattleEvent[]) {
+  const f = st[side];
+  const foeSide = other(side);
+  const foe = st[foeSide];
+  if (f.hp <= 0) return;
+  switch (f.ability) {
+    case "intimidate":
+      if (foe.hp <= 0) break;
+      reveal(st, side, events);
+      if (INTIMIDATE_PROOF.has(foe.ability)) {
+        reveal(st, foeSide, events);
+        if (foe.ability === "guarddog") applyBoosts(st, foeSide, { atk: 1 }, events);
+        else events.push({ kind: "effect", side: foeSide, effect: "stats-protected" });
+      } else {
+        applyBoosts(st, foeSide, { atk: -1 }, events, side);
+        if (foe.ability === "rattled") applyBoosts(st, foeSide, { spe: 1 }, events);
+      }
+      break;
+    case "download": {
+      if (foe.hp <= 0) break;
+      // Raises Attack if the foe's Defense is the weaker side, Sp. Atk otherwise.
+      const def = foe.stats.def * stageMultiplier(foe.boosts.def);
+      const spd = foe.stats.spd * stageMultiplier(foe.boosts.spd);
+      reveal(st, side, events);
+      applyBoosts(st, side, def < spd ? { atk: 1 } : { spa: 1 }, events);
+      break;
+    }
+    case "intrepidsword":
+      reveal(st, side, events);
+      applyBoosts(st, side, { atk: 1 }, events);
+      break;
+    case "dauntlessshield":
+      reveal(st, side, events);
+      applyBoosts(st, side, { def: 1 }, events);
+      break;
+    case "trace":
+      if (foe.hp > 0 && !UNTRACEABLE.has(foe.ability)) {
+        reveal(st, side, events);
+        f.ability = foe.ability;
+        f.abilityName = foe.abilityName;
+        events.push({ kind: "effect", side, effect: "trace", move: foe.abilityName });
+        onEntry(st, side, events);
+      }
+      break;
+    case "imposter":
+      if (foe.hp > 0 && foe.substitute === 0) {
+        reveal(st, side, events);
+        transform(st, side, events);
+      }
+      break;
+    case "slowstart":
+      f.slowStart = SLOW_START_TURNS;
+      reveal(st, side, events);
+      events.push({ kind: "effect", side, effect: "slow-start" });
+      break;
+    case "pressure":
+      reveal(st, side, events);
+      events.push({ kind: "effect", side, effect: "pressure" });
+      break;
+    case "airlock":
+    case "cloudnine":
+      if (st.weather) {
+        reveal(st, side, events);
+        events.push({ kind: "effect", side, effect: "weather-negated" });
+      }
+      break;
   }
+  const weather = WEATHER_SETTERS[f.ability];
+  if (weather && st.weather?.kind !== weather) {
+    reveal(st, side, events);
+    st.weather = { kind: weather, turns: WEATHER_TURNS };
+    events.push({ kind: "weather", side, weather, ended: false });
+  }
+}
+
+const SLOW_START_TURNS = 5;
+
+/**
+ * The leads' entry abilities (Intimidate, Drizzle...), the faster one first.
+ * `runTurn` does this on the first turn if it wasn't done; the battle screen
+ * calls it right away so the messages show before the first command.
+ */
+export function beginBattle(state: BattleState): { state: BattleState; events: BattleEvent[] } {
+  const st: BattleState = structuredClone(state);
+  const events: BattleEvent[] = [];
+  startEntries(st, events);
+  return { state: st, events };
+}
+
+function startEntries(st: BattleState, events: BattleEvent[]) {
+  if (st.started) return;
+  st.started = true;
+  const weather = weatherOf(st);
+  const order: Side[] = effectiveSpeed(st.b, weather) > effectiveSpeed(st.a, weather) ? ["b", "a"] : ["a", "b"];
+  for (const side of order) onEntry(st, side, events);
 }
 
 function confuse(f: Fighter, side: Side, rng: Rng, events: BattleEvent[], fatigue: boolean) {
@@ -1110,6 +1594,14 @@ function foeStatusMove(st: BattleState, side: Side, move: FighterMove, events: B
   const foeSide = other(side);
   const foe = st[foeSide];
   const fail = () => events.push({ kind: "fail", side });
+  // Oblivious and Aroma Veil shrug off Taunt (and Aroma Veil Encore).
+  const guarded = !MOLD_BREAKERS.has(user.ability) &&
+    ((move.id === "taunt" && (foe.ability === "oblivious" || foe.ability === "aromaveil")) || (move.id === "encore" && foe.ability === "aromaveil"));
+  if (guarded) {
+    reveal(st, foeSide, events);
+    events.push({ kind: "no-effect", side: foeSide });
+    return;
+  }
   switch (move.id) {
     case "taunt":
       if (foe.taunt > 0) return fail();
@@ -1124,7 +1616,7 @@ function foeStatusMove(st: BattleState, side: Side, move: FighterMove, events: B
       return;
     }
     case "yawn":
-      if (foe.status || foe.drowsy > 0) return fail();
+      if (foe.status || foe.drowsy > 0 || statusBlocked(foe, "slp", weatherOf(st))) return fail();
       foe.drowsy = 2;
       events.push({ kind: "effect", side: foeSide, effect: "drowsy" });
       return;
@@ -1132,27 +1624,34 @@ function foeStatusMove(st: BattleState, side: Side, move: FighterMove, events: B
       // Heals as much as the foe's current Attack, then lowers it.
       if (foe.boosts.atk <= -6) return fail();
       const attack = Math.floor(foe.stats.atk * stageMultiplier(foe.boosts.atk));
-      applyBoosts(st, foeSide, { atk: -1 }, events);
+      applyBoosts(st, foeSide, { atk: -1 }, events, side);
       if (user.hp < user.maxHp) heal(st, side, attack, events);
       return;
     }
     case "partingshot":
       // Lowers the foe's attacking stats, then the user switches out.
-      applyBoosts(st, foeSide, { atk: -1, spa: -1 }, events);
+      applyBoosts(st, foeSide, { atk: -1, spa: -1 }, events, side);
       requestPivot(st, side);
       return;
-    case "transform": {
-      if (user.transformed || foe.transformed) return fail();
-      user.transformed = { dexId: foe.dexId, types: user.types, stats: user.stats, moves: user.moves };
-      user.types = [...foe.types];
-      user.stats = { ...foe.stats };
-      user.boosts = { ...foe.boosts };
-      user.moves = foe.moves.map((m) => ({ ...m, pp: TRANSFORM_PP, ppLeft: TRANSFORM_PP }));
-      user.lastMove = null;
-      events.push({ kind: "transform", side, dexId: foe.dexId });
+    case "transform":
+      if (!transform(st, side, events)) fail();
       return;
-    }
   }
+}
+
+/** Transform / Imposter: becomes a copy of the foe (types, stats, stages, moves with 5 PP). */
+function transform(st: BattleState, side: Side, events: BattleEvent[]): boolean {
+  const user = st[side];
+  const foe = st[other(side)];
+  if (user.transformed || foe.transformed || foe.hp <= 0) return false;
+  user.transformed = { dexId: foe.dexId, types: user.types, stats: user.stats, moves: user.moves };
+  user.types = [...foe.types];
+  user.stats = { ...foe.stats };
+  user.boosts = { ...foe.boosts };
+  user.moves = foe.moves.map((m) => ({ ...m, pp: TRANSFORM_PP, ppLeft: TRANSFORM_PP }));
+  user.lastMove = null;
+  events.push({ kind: "transform", side, dexId: foe.dexId });
+  return true;
 }
 
 const TAUNT_TURNS = 3;
@@ -1227,7 +1726,7 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
     case "morningsun":
     case "shoreup": {
       // Sun makes the plant/moon heals stronger and other weather weaker; sand powers Shore Up.
-      const w = st.weather?.kind;
+      const w = weatherOf(st);
       const fraction = move.id === "shoreup" ? (w === "sand" ? 2 / 3 : 1 / 2) : w === "sun" ? 2 / 3 : w ? 1 / 4 : 1 / 2;
       if (user.hp >= user.maxHp) fail();
       else heal(st, side, Math.floor(user.maxHp * fraction), events);
@@ -1265,7 +1764,7 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
       const field = st.field[side];
       const key = move.id === "reflect" ? "reflect" : move.id === "lightscreen" ? "lightScreen" : "auroraVeil";
       // Aurora Veil only works in snow.
-      if (field[key] > 0 || (move.id === "auroraveil" && st.weather?.kind !== "snow")) return fail(), true;
+      if (field[key] > 0 || (move.id === "auroraveil" && weatherOf(st) !== "snow")) return fail(), true;
       field[key] = SCREEN_TURNS;
       events.push({ kind: "effect", side, effect: move.id === "reflect" ? "reflect" : move.id === "lightscreen" ? "light-screen" : "aurora-veil" });
       return true;
@@ -1399,13 +1898,19 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
 function residual(st: BattleState, side: Side, events: BattleEvent[]) {
   const f = st[side];
   const healer = st[other(side)];
-  if (f.hp > 0 && f.seeded && healer.hp > 0) {
+  if (f.hp > 0 && f.seeded && healer.hp > 0 && indirectOk(f)) {
     const amount = Math.min(f.hp, Math.max(1, Math.floor(f.maxHp / 8)));
     f.hp -= amount;
     healer.hp = Math.min(healer.maxHp, healer.hp + amount);
     events.push({ kind: "leech", side, amount, hp: f.hp, healerHp: healer.hp });
   }
-  if (f.hp > 0 && (f.status === "brn" || f.status === "psn" || f.status === "tox")) {
+  // Poison Heal: poison restores 1/8 instead.
+  if (f.hp > 0 && f.ability === "poisonheal" && (f.status === "psn" || f.status === "tox")) {
+    if (f.hp < f.maxHp) {
+      reveal(st, side, events);
+      heal(st, side, f.maxHp / 8, events);
+    }
+  } else if (f.hp > 0 && indirectOk(f) && (f.status === "brn" || f.status === "psn" || f.status === "tox")) {
     let fraction = f.status === "brn" ? 1 / 16 : f.status === "psn" ? 1 / 8 : 0;
     if (f.status === "tox") {
       f.toxicTurns++;
@@ -1415,20 +1920,87 @@ function residual(st: BattleState, side: Side, events: BattleEvent[]) {
     f.hp -= amount;
     events.push({ kind: "residual", side, status: f.status, amount, hp: f.hp });
   }
-  if (f.hp > 0 && f.cursed) {
-    const amount = Math.min(f.hp, Math.max(1, Math.floor(f.maxHp / 4)));
-    f.hp -= amount;
-    events.push({ kind: "hurt", side, amount, hp: f.hp, cause: "curse" });
+  if (f.hp > 0 && f.cursed) hurt(st, side, f.maxHp / 4, "curse", events);
+}
+
+/** End-of-turn abilities. `fresh`: it came in this turn (Speed Boost waits a turn). */
+function abilityEndOfTurn(st: BattleState, side: Side, fresh: boolean, rng: Rng, events: BattleEvent[]) {
+  const f = st[side];
+  const foe = st[other(side)];
+  if (f.hp <= 0) return;
+  const weather = weatherOf(st);
+  const cure = () => {
+    reveal(st, side, events);
+    f.status = null;
+    f.sleepTurns = 0;
+    f.toxicTurns = 0;
+    events.push({ kind: "cure", side });
+  };
+  switch (f.ability) {
+    case "speedboost":
+      if (!fresh && f.boosts.spe < 6) {
+        reveal(st, side, events);
+        applyBoosts(st, side, { spe: 1 }, events);
+      }
+      break;
+    case "shedskin":
+      if (f.status && rng() < 0.3) cure();
+      break;
+    case "hydration":
+      if (f.status && weather === "rain") cure();
+      break;
+    case "raindish":
+    case "icebody":
+      if (f.hp < f.maxHp && weather === (f.ability === "raindish" ? "rain" : "snow")) {
+        reveal(st, side, events);
+        heal(st, side, f.maxHp / 16, events);
+      }
+      break;
+    case "dryskin":
+      if (weather === "rain" && f.hp < f.maxHp) {
+        reveal(st, side, events);
+        heal(st, side, f.maxHp / 8, events);
+      } else if (weather === "sun") {
+        reveal(st, side, events);
+        hurt(st, side, f.maxHp / 8, "sun", events);
+      }
+      break;
+    case "solarpower":
+      if (weather === "sun") {
+        reveal(st, side, events);
+        hurt(st, side, f.maxHp / 8, "sun", events);
+      }
+      break;
+    case "baddreams":
+      if (foe.hp > 0 && foe.status === "slp") {
+        reveal(st, side, events);
+        hurt(st, other(side), foe.maxHp / 8, "bad-dreams", events);
+      }
+      break;
+    case "slowstart":
+      if (f.slowStart > 0 && --f.slowStart === 0) events.push({ kind: "effect", side, effect: "slow-start-end" });
+      break;
+    case "moody": {
+      // +2 to a random stat, −1 to another.
+      const up = STATS.filter((s) => f.boosts[s] < 6);
+      if (up.length === 0) break;
+      const raised = up[Math.floor(rng() * up.length)];
+      const down = STATS.filter((s) => s !== raised && f.boosts[s] > -6);
+      reveal(st, side, events);
+      applyBoosts(st, side, down.length ? { [raised]: 2, [down[Math.floor(rng() * down.length)]]: -1 } : { [raised]: 2 }, events);
+      break;
+    }
   }
 }
+
+const SAND_PROOF = new Set(["overcoat", "sandveil", "sandrush", "sandforce"]);
 
 /** Sandstorm hurts everything but Rock, Ground and Steel types (1/16). */
 function weatherDamage(st: BattleState, side: Side, events: BattleEvent[]) {
   const f = st[side];
-  if (st.weather?.kind !== "sand" || f.hp <= 0 || f.types.some((t) => t === "rock" || t === "ground" || t === "steel")) return;
-  const amount = Math.min(f.hp, Math.max(1, Math.floor(f.maxHp / 16)));
-  f.hp -= amount;
-  events.push({ kind: "hurt", side, amount, hp: f.hp, cause: "sandstorm" });
+  if (weatherOf(st) !== "sand" || f.hp <= 0 || f.types.some((t) => t === "rock" || t === "ground" || t === "steel")) return;
+  if (SAND_PROOF.has(f.ability)) return;
+  hurt(st, side, f.maxHp / 16, "sandstorm", events);
 }
 
 function wish(st: BattleState, side: Side, events: BattleEvent[]) {
@@ -1486,7 +2058,18 @@ function checkFaints(st: BattleState, events: BattleEvent[], order: Side[]): boo
 function doSwitch(st: BattleState, side: Side, index: number, forced: boolean, events: BattleEvent[], dragged = false) {
   const out = st[side];
   const incoming = st.bench[side][index];
+  if (out.hp > 0 && out.ability === "regenerator" && out.hp < out.maxHp) {
+    reveal(st, side, events);
+    heal(st, side, out.maxHp / 3, events);
+  }
+  if (out.hp > 0 && out.ability === "naturalcure" && out.status) {
+    reveal(st, side, events);
+    out.status = null;
+    out.sleepTurns = 0;
+    events.push({ kind: "cure", side });
+  }
   if (out.transformed) Object.assign(out, { types: out.transformed.types, stats: out.transformed.stats, moves: out.transformed.moves });
+  Object.assign(out, { ability: out.baseAbility.id, abilityName: out.baseAbility.name, flashFire: false, slowStart: 0, loafing: false });
   Object.assign(out, {
     boosts: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     toxicTurns: 0,
@@ -1580,6 +2163,7 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
   const st: BattleState = structuredClone(state);
   const events: BattleEvent[] = [];
   if (st.winner || st.pending) return { state: st, events };
+  startEntries(st, events);
 
   for (const f of [st.a, st.b]) {
     f.protected = false;
@@ -1599,7 +2183,8 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
   const moves = { a: pick(st.a, choices.a), b: pick(st.b, choices.b) };
 
   // Switches and items: before any move, the faster side first.
-  const speedOrder: Side[] = effectiveSpeed(st.b) > effectiveSpeed(st.a) ? ["b", "a"] : ["a", "b"];
+  const weather = weatherOf(st);
+  const speedOrder: Side[] = effectiveSpeed(st.b, weather) > effectiveSpeed(st.a, weather) ? ["b", "a"] : ["a", "b"];
   const fresh: Side[] = [];
   for (const side of speedOrder) {
     const choice = choices[side];
@@ -1649,12 +2234,13 @@ function continueTurn(st: BattleState, plan: TurnPlan, rng: Rng, events: BattleE
   for (const side of endOrder) weatherDamage(st, side, events);
   for (const side of endOrder) wish(st, side, events);
   for (const side of endOrder) residual(st, side, events);
+  const fresh = [...plan.fresh, ...switchedThisTurn(events)];
+  for (const side of endOrder) abilityEndOfTurn(st, side, fresh.includes(side), rng, events);
   if (!checkFaints(st, events, endOrder)) {
     for (const side of endOrder) countdowns(st, side, rng, events);
     fieldCountdowns(st, events);
   }
   // A Pokémon that came in this turn hasn't had its first turn yet (Fake Out still works).
-  const fresh = [...plan.fresh, ...switchedThisTurn(events)];
   for (const side of ["a", "b"] as Side[]) if (!fresh.includes(side)) st[side].turnsActive++;
   st.turn++;
   return { state: st, events };

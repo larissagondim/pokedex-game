@@ -57,6 +57,16 @@ const EFFECT_TEXT: Record<Effect, (who: string, team: string, move?: string) => 
   thaw: (who) => `${who} thawed out!`,
   charging: (who, _team, move) => `${who} is gathering power for ${move ?? "its attack"}!`,
   "stats-reset": (who) => `${who}'s stat changes were removed!`,
+  sturdy: (who) => `${who} endured the hit!`,
+  disguise: () => "Its disguise served it as a decoy!",
+  "flash-fire": (who) => `The power of ${who}'s Fire-type moves rose!`,
+  "stats-protected": (who) => `${who}'s stats were not lowered!`,
+  "slow-start": (who) => `${who} can't get it going!`,
+  "slow-start-end": (who) => `${who} finally got its act together!`,
+  pressure: (who) => `${who} is exerting its pressure!`,
+  trace: (who, _team, ability) => `${who} traced the foe's ${ability ?? "ability"}!`,
+  "weather-negated": () => "The effects of the weather disappeared.",
+  immune: (who) => `It doesn't affect ${who}...`,
 };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -74,6 +84,12 @@ const HURT_TEXT: Record<HurtCause, (who: string) => string> = {
   stealthrock: (who) => `Pointed stones dug into ${who}!`,
   spikes: (who) => `${who} was hurt by the spikes!`,
   sandstorm: (who) => `${who} is buffeted by the sandstorm!`,
+  contact: (who) => `${who} was hurt!`,
+  aftermath: (who) => `${who} was caught in the aftermath!`,
+  sun: (who) => `${who} was hurt by the harsh sunlight!`,
+  "bad-dreams": (who) => `${who} is tormented by bad dreams!`,
+  "liquid-ooze": (who) => `${who} sucked up the liquid ooze!`,
+  disguise: (who) => `${who}'s disguise was busted!`,
 };
 
 const boostWord = (n: number) => (Math.abs(n) >= 3 ? "drastically " : Math.abs(n) === 2 ? (n > 0 ? "sharply " : "harshly ") : "");
@@ -117,6 +133,7 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
         par: `${name(event.side)} is paralyzed! It can't move!`,
         slp: `${name(event.side)} is fast asleep.`,
         frz: `${name(event.side)} is frozen solid!`,
+        truant: `${name(event.side)} is loafing around!`,
         flinch: `${name(event.side)} flinched and couldn't move!`,
         recharge: `${name(event.side)} must recharge!`,
       }[event.reason];
@@ -178,5 +195,7 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
       return EFFECT_TEXT[event.effect](name(event.side), event.side === "a" ? "your team" : "the foe's team", event.move?.toUpperCase());
     case "weather":
       return WEATHER_TEXT[event.weather][event.ended ? 1 : 0];
+    case "ability":
+      return `[${name(event.side)}'s ${event.ability}]`;
   }
 }
