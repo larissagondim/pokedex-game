@@ -309,6 +309,141 @@ test("Rest, Super Fang, Pain Split, Belly Drum and Haze", () => {
   assert.equal(runTurn(hz, 0, 0, seq([0.1], 0.99)).state.b.boosts.atk, 0);
 });
 
+// --- Substitute and status moves with their own rules ---
+
+const status = (id: string, name: string, over: Partial<BattleMove> = {}) => move({ id, name, power: 0, category: "status", ...over });
+const fast = { atk: 100, def: 100, spa: 100, spd: 100, spe: 200 };
+const slow = { atk: 100, def: 100, spa: 100, spd: 100, spe: 50 };
+
+test("Substitute costs 1/4 HP, takes hits until it breaks and blocks status moves", () => {
+  const sub = status("substitute", "Substitute");
+  const t1 = runTurn(battle({ moves: [sub], stats: fast }, {}), 0, 0, seq([], 0.99));
+  assert.equal(t1.state.a.hp, 150 - 37);
+  // Tackle does 28 (max roll, STAB): the 37-HP decoy keeps 9.
+  assert.equal(t1.state.a.substitute, 9);
+  assert.ok(!t1.events.some((e) => e.kind === "damage" && e.side === "a"));
+  const t2 = runTurn(t1.state, 0, 0, seq([], 0.99));
+  assert.ok(t2.events.some((e) => e.kind === "sub-damage" && e.side === "a" && e.broke));
+  assert.equal(t2.state.a.hp, 113);
+  assert.ok(t2.events.some((e) => e.kind === "effect" && e.effect === "substitute-fail"), "only one at a time");
+
+  const wisp = status("willowisp", "Will-O-Wisp", { type: "fire", status: "brn" });
+  const shielded = battle({ moves: [sub], stats: fast }, { moves: [wisp] });
+  const r = runTurn(shielded, 0, 0, seq([], 0.99));
+  assert.equal(r.state.a.status, null);
+  assert.ok(r.events.some((e) => e.kind === "fail" && e.side === "b"));
+  // Sound moves go through it.
+  const voice = move({ id: "hypervoice", name: "Hyper Voice", category: "special", power: 90, flags: ["sound"] });
+  const v = runTurn(battle({ moves: [sub], stats: fast }, { moves: [voice] }), 0, 0, seq([], 0.99));
+  assert.ok(v.events.some((e) => e.kind === "damage" && e.side === "a" && e.amount > 0));
+});
+
+test("Taunt blocks status moves for 3 turns", () => {
+  let st = battle({ moves: [status("taunt", "Taunt", { type: "dark" })], stats: fast }, { moves: [splash] });
+  const blocked: boolean[] = [];
+  for (let i = 0; i < 4; i++) {
+    const r = runTurn(st, 0, 0, seq([], 0.99));
+    blocked.push(r.events.some((e) => e.kind === "effect" && e.effect === "taunt-block"));
+    st = r.state;
+    if (i === 0) st.a.moves[0] = { ...st.a.moves[0], id: "tackle", name: "Tackle", category: "physical", power: 1 };
+  }
+  assert.deepEqual(blocked, [true, true, true, false]);
+});
+
+test("Encore makes the foe repeat its last move", () => {
+  const encore = status("encore", "Encore");
+  const st = battle({ moves: [encore], stats: slow }, { moves: [splash, move({})] });
+  const t1 = runTurn(st, 0, 0, seq([], 0.99));
+  assert.ok(t1.state.b.encore);
+  // B picks Tackle but has to Splash.
+  const t2 = runTurn(t1.state, 0, 1, seq([], 0.99));
+  assert.ok(t2.events.some((e) => e.kind === "move" && e.side === "b" && e.move === "Splash"));
+});
+
+test("Yawn puts the foe to sleep at the end of the next turn", () => {
+  const st = battle({ moves: [status("yawn", "Yawn")], stats: fast }, { moves: [splash] });
+  const t1 = runTurn(st, 0, 0, seq([], 0.99));
+  assert.equal(t1.state.b.status, null);
+  const t2 = runTurn(t1.state, 0, 0, seq([], 0.99));
+  assert.equal(t2.state.b.status, "slp");
+});
+
+test("Destiny Bond takes the attacker down too", () => {
+  const bond = status("destinybond", "Destiny Bond", { type: "ghost" });
+  const r = runTurn(battle({ moves: [move({ power: 250 })] }, { moves: [bond], stats: fast }), 0, 0, seq([], 0.99));
+  assert.equal(r.state.a.hp, 0);
+  assert.equal(r.state.b.hp, 0);
+  assert.ok(r.events.some((e) => e.kind === "hurt" && e.cause === "destiny-bond" && e.side === "a"));
+  // Not twice in a row.
+  const twice = battle({ moves: [splash] }, { moves: [bond], stats: fast });
+  const t1 = runTurn(twice, 0, 0, seq([], 0.99));
+  assert.ok(runTurn(t1.state, 0, 0, seq([], 0.99)).events.some((e) => e.kind === "fail" && e.side === "b"));
+});
+
+test("Curse: a Ghost type halves its HP to curse the foe, others trade Speed for Attack and Defense", () => {
+  const curse = status("curse", "Curse", { type: "ghost" });
+  const r = runTurn(battle({ types: ["ghost"], moves: [curse] }, { moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(r.state.a.hp, 75);
+  assert.ok(r.events.some((e) => e.kind === "hurt" && e.side === "b" && e.cause === "curse" && e.amount === 37));
+  const plain = runTurn(battle({ moves: [curse] }, { moves: [splash] }), 0, 0, seq([], 0.99)).state.a.boosts;
+  assert.deepEqual([plain.atk, plain.def, plain.spe], [1, 1, -1]);
+});
+
+test("Sleep Talk uses another move while asleep and fails when awake", () => {
+  const talk = status("sleeptalk", "Sleep Talk");
+  const st = battle({ moves: [talk, move({})] }, { moves: [splash] });
+  st.a.status = "slp";
+  st.a.sleepTurns = 2;
+  const r = runTurn(st, 0, 0, seq([], 0.99));
+  assert.ok(r.events.some((e) => e.kind === "move" && e.side === "a" && e.move === "Tackle"));
+  assert.ok(r.events.some((e) => e.kind === "damage" && e.side === "b"));
+  const awake = runTurn(battle({ moves: [talk] }, { moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.ok(awake.events.some((e) => e.kind === "fail" && e.side === "a"));
+});
+
+test("Transform copies the foe until it switches out", () => {
+  const transform = status("transform", "Transform");
+  const st = createTeamBattle(team({ moves: [transform] }, {}), team({ types: ["fire"], stats: fast, moves: [move({ type: "fire" })] }));
+  const t1 = runTurn(st, 0, 0, seq([], 0.99));
+  assert.deepEqual(t1.state.a.types, ["fire"]);
+  assert.equal(t1.state.a.stats.spe, 200);
+  assert.equal(t1.state.a.moves[0].ppLeft, 5);
+  const t2 = runTurn(t1.state, { switchTo: 0 }, 0, seq([], 0.99));
+  assert.deepEqual(t2.state.bench.a[0].types, ["normal"]);
+  assert.equal(t2.state.bench.a[0].moves[0].id, "transform");
+});
+
+test("Strength Sap heals by the foe's Attack and lowers it; Magnet Rise dodges Ground moves", () => {
+  const sap = status("strengthsap", "Strength Sap", { type: "grass" });
+  const st = battle({ moves: [sap], stats: fast }, { moves: [splash] });
+  st.a.hp = 20;
+  const r = runTurn(st, 0, 0, seq([], 0.99));
+  assert.equal(r.state.a.hp, 120);
+  assert.equal(r.state.b.boosts.atk, -1);
+
+  const rise = status("magnetrise", "Magnet Rise", { type: "electric" });
+  const quake = move({ id: "earthquake", name: "Earthquake", type: "ground", power: 100 });
+  const m = runTurn(battle({ moves: [rise], stats: fast }, { moves: [quake] }), 0, 0, seq([], 0.99));
+  assert.ok(m.events.some((e) => e.kind === "no-effect" && e.side === "a"));
+});
+
+test("Heal Bell cures the whole team; Revival Blessing brings a teammate back", () => {
+  const bell = status("healbell", "Heal Bell", { flags: ["sound"] });
+  const st = createTeamBattle(team({ moves: [bell] }, {}), team({ moves: splashOnly }));
+  st.a.status = "par";
+  st.bench.a[0].status = "tox";
+  const r = runTurn(st, 0, 0, seq([0.9], 0.99));
+  assert.equal(r.state.a.status, null);
+  assert.equal(r.state.bench.a[0].status, null);
+
+  const blessing = status("revivalblessing", "Revival Blessing");
+  const down = createTeamBattle(team({ moves: [blessing] }, {}), team({ moves: splashOnly }));
+  down.bench.a[0].hp = 0;
+  assert.deepEqual(chooseAction(down, "a", seq([0.9])), 0);
+  const back = runTurn(down, 0, 0, seq([], 0.99));
+  assert.equal(back.state.bench.a[0].hp, 75);
+});
+
 // --- Teams, switching and items ---
 
 const team = (...mons: Partial<BattlePokemon>[]) => mons.map((m, i) => mon({ name: `M${i}`, dexId: i + 1, ...m }));

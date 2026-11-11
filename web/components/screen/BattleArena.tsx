@@ -119,7 +119,8 @@ interface Props {
 const team = (st: BattleState, side: Side) => [st[side], ...st.bench[side]];
 
 const sideView = (st: BattleState, side: Side): SideView => ({
-  dexId: st[side].dexId,
+  // A transformed Pokémon shows the sprite of what it turned into.
+  dexId: st[side].transformed?.dexId ?? st[side].dexId,
   hp: st[side].hp,
   maxHp: st[side].maxHp,
   status: st[side].status,
@@ -291,6 +292,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
         break;
       case "recoil":
       case "residual":
+      case "hurt":
       case "self-hit":
         setHp(event.side, event.hp);
         setHit({ side: event.side, key: Date.now() });
@@ -298,6 +300,13 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
         break;
       case "hp-cost":
         setHp(event.side, event.hp);
+        break;
+      case "sub-damage":
+        setHit({ side: event.side, key: Date.now() });
+        playSfx(event.effectiveness > 1 ? "superHit" : event.effectiveness < 1 ? "weakHit" : "hit");
+        break;
+      case "transform":
+        setView((v) => v && { ...v, [event.side]: { ...v[event.side], dexId: event.dexId } });
         break;
       case "pain-split":
         setHp("a", event.hp.a);

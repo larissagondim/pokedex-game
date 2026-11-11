@@ -11,8 +11,10 @@ import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./type
  * healing, multi-hit, fixed-damage moves, chance effects and PP. Abilities and
  * items are not modeled. Special moves handled: Fake Out / First Impression
  * (first turn only), Sucker Punch, Focus Punch, Rest, Super Fang / Ruination,
- * Pain Split, Belly Drum, Haze. Other effects (Substitute, hazards, weather,
- * Taunt...) just fail.
+ * Pain Split, Belly Drum, Haze, Substitute, Encore, Taunt, Yawn, Curse,
+ * Destiny Bond, Sleep Talk, Transform, Strength Sap, Synthesis and the other
+ * half-HP heals, Heal Bell, Take Heart, Tidy Up, Magnet Rise and Revival
+ * Blessing. Other effects (hazards, weather...) just fail.
  *
  * Teams: each side has one Pokémon out (`a` / `b`) and the rest on its
  * `bench`. Switching and using an item take the whole turn and go before any
@@ -54,6 +56,25 @@ export interface Fighter {
   protectStreak: number;
   /** Turns this Pokémon has been in battle (Fake Out only works on the first). */
   turnsActive: number;
+  /** HP left on its Substitute (0 = none). */
+  substitute: number;
+  /** Turns of Taunt left (no status moves). */
+  taunt: number;
+  /** Encore: must repeat this move for `turns` more turns. */
+  encore: { index: number; turns: number } | null;
+  /** Index of the last move it used (null: none yet, or Struggle). */
+  lastMove: number | null;
+  /** Yawn: falls asleep when this ticks down to 0 at the end of a turn. */
+  drowsy: number;
+  /** Destiny Bond is up until its next move. */
+  destinyBond: boolean;
+  /** Ghost-type Curse: loses 1/4 of its max HP every turn. */
+  cursed: boolean;
+  /** Turns of Magnet Rise left (Ground moves miss it). */
+  magnetRise: number;
+  /** Transform: the species it looks like and what it had before (restored on switching out). */
+  transformed: { dexId: number; types: string[]; stats: Record<StatName, number>; moves: FighterMove[] } | null;
+  weight: number;
   /** Per-turn flags. */
   protected: boolean;
   flinched: boolean;
@@ -112,7 +133,32 @@ export type BattleEvent =
   | { kind: "faint"; side: Side }
   | { kind: "switch"; side: Side; from: string; to: string; dexId: number; hp: number; maxHp: number; status: Status | null; forced: boolean }
   | { kind: "item"; side: Side; item: ItemId }
-  | { kind: "cure"; side: Side };
+  | { kind: "cure"; side: Side }
+  | { kind: "sub-damage"; side: Side; effectiveness: number; crit: boolean; broke: boolean }
+  | { kind: "hurt"; side: Side; amount: number; hp: number; cause: HurtCause }
+  | { kind: "transform"; side: Side; dexId: number }
+  | { kind: "revive"; side: Side; name: string }
+  | { kind: "effect"; side: Side; effect: Effect; move?: string };
+
+/** HP lost to something other than a hit or a status (each has its own message). */
+export type HurtCause = "curse" | "destiny-bond";
+
+/** Text-only events: what changed is in the state, the screen just says it. */
+export type Effect =
+  | "substitute"
+  | "substitute-fail"
+  | "taunt"
+  | "taunt-end"
+  | "taunt-block"
+  | "encore"
+  | "encore-end"
+  | "drowsy"
+  | "destiny-bond"
+  | "cursed"
+  | "magnet-rise"
+  | "magnet-rise-end"
+  | "heal-bell"
+  | "tidy-up";
 
 const STATS: StatName[] = ["atk", "def", "spa", "spd", "spe"];
 const STAB = 1.5;
@@ -159,6 +205,16 @@ export function createFighter(p: BattlePokemon): Fighter {
     seeded: false,
     protectStreak: 0,
     turnsActive: 0,
+    substitute: 0,
+    taunt: 0,
+    encore: null,
+    lastMove: null,
+    drowsy: 0,
+    destinyBond: false,
+    cursed: false,
+    magnetRise: 0,
+    transformed: null,
+    weight: p.weight ?? 50,
     protected: false,
     flinched: false,
     moves: p.moves.map((m) => ({ ...m, ppLeft: m.pp })),
@@ -250,6 +306,19 @@ const IMMUNE: Record<Status, string[]> = {
   slp: [],
 };
 
+/** Type effectiveness against this fighter right now (Magnet Rise lifts it off the ground). */
+export const effectivenessOn = (type: string, target: Pick<Fighter, "types" | "magnetRise">) =>
+  type === "typeless" ? 1 : type === "ground" && target.magnetRise > 0 ? 0 : effectiveness(type, target.types);
+
+/** Sound moves and a few others go through a Substitute. */
+export const bypassesSub = (move: Pick<FighterMove, "flags">) => !!move.flags?.some((f) => f === "bypasssub" || f === "sound");
+
+/** Status moves aimed at the foe that the generic effects below don't cover. */
+const FOE_STATUS = new Set(["encore", "taunt", "yawn", "strengthsap", "transform"]);
+
+/** Moves Sleep Talk can't call. */
+const NO_SLEEP_TALK = new Set(["sleeptalk", "rest", "bellydrum", "focuspunch", "uproar", "solarbeam", "solarblade", "skyattack", "meteorbeam"]);
+
 /** Moves that only work on the user's first turn out. */
 export const FIRST_TURN_ONLY = new Set(["fakeout", "firstimpression"]);
 /** Damage = half the target's current HP. */
@@ -303,8 +372,11 @@ function heal(st: BattleState, side: Side, amount: number, events: BattleEvent[]
   events.push({ kind: "heal", side, amount: healed, hp: f.hp });
 }
 
-/** Sleep / paralysis checks. Returns false if the Pokémon can't move this turn. */
-function canMove(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]): boolean {
+/**
+ * Sleep / paralysis checks. Returns false if the Pokémon can't move this turn.
+ * A sleeping Pokémon can still use Sleep Talk.
+ */
+function canMove(st: BattleState, side: Side, move: FighterMove, rng: Rng, events: BattleEvent[]): boolean {
   const f = st[side];
   if (f.status === "slp") {
     if (f.sleepTurns <= 0) {
@@ -313,7 +385,7 @@ function canMove(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]): 
     } else {
       f.sleepTurns--;
       events.push({ kind: "cant-move", side, reason: "slp" });
-      return false;
+      if (move.id !== "sleeptalk") return false;
     }
   }
   if (f.status === "par" && rng() < PARALYSIS_SKIP) {
@@ -334,14 +406,14 @@ function performMove(
   foeMove: FighterMove | null,
 ) {
   const user = st[side];
-  const foeSide = other(side);
-  const foe = st[foeSide];
   if (user.mustRecharge) {
     user.mustRecharge = false;
     events.push({ kind: "cant-move", side, reason: "recharge" });
     return;
   }
-  if (!canMove(st, side, rng, events)) {
+  // Destiny Bond lasts until the user tries to move again.
+  user.destinyBond = false;
+  if (!canMove(st, side, move, rng, events)) {
     user.locked = null;
     return;
   }
@@ -366,16 +438,55 @@ function performMove(
       }
     }
   }
+  if (user.taunt > 0 && move.category === "status") {
+    events.push({ kind: "effect", side, effect: "taunt-block", move: move.name });
+    return;
+  }
 
   // PP is only spent on the first turn of a locked move.
   const continuing = user.locked !== null;
   if (move !== STRUGGLE && !continuing) move.ppLeft--;
   if (move.volatile !== "protect") user.protectStreak = 0;
+  const index = user.moves.indexOf(move);
+  // Destiny Bond can't be used twice in a row.
+  const repeatedBond = move.id === "destinybond" && user.lastMove !== null && user.moves[user.lastMove]?.id === "destinybond";
+  user.lastMove = index >= 0 ? index : null;
   events.push({ kind: "move", side, move: move.name });
+  if (repeatedBond) {
+    events.push({ kind: "fail", side });
+    return;
+  }
 
+  if (move.id === "sleeptalk") {
+    const callable = user.moves.filter((m) => !NO_SLEEP_TALK.has(m.id));
+    if (user.status !== "slp" || callable.length === 0) {
+      events.push({ kind: "fail", side });
+      return;
+    }
+    const called = callable[Math.floor(rng() * callable.length)];
+    events.push({ kind: "move", side, move: called.name });
+    executeMove(st, side, called, rng, events, foeMovesLater, foeMove);
+    return;
+  }
+  executeMove(st, side, move, rng, events, foeMovesLater, foeMove);
+}
+
+/** The move's effect, once the user got to use it. */
+function executeMove(
+  st: BattleState,
+  side: Side,
+  move: FighterMove,
+  rng: Rng,
+  events: BattleEvent[],
+  foeMovesLater: boolean,
+  foeMove: FighterMove | null,
+) {
+  const user = st[side];
+  const foeSide = other(side);
+  const foe = st[foeSide];
   const failed =
     // Focus Punch fails if the user was hit earlier this turn.
-    (move.id === "focuspunch" && events.some((e) => e.kind === "damage" && e.side === side)) ||
+    (move.id === "focuspunch" && events.some((e) => (e.kind === "damage" || e.kind === "sub-damage") && e.side === side)) ||
     (FIRST_TURN_ONLY.has(move.id) && user.turnsActive > 0) ||
     // Sucker Punch only works if the target is about to attack.
     (move.id === "suckerpunch" && (!foeMovesLater || !foeMove || foeMove.category === "status"));
@@ -387,7 +498,7 @@ function performMove(
   if (performSpecial(st, side, move, events)) return;
 
   const targetsFoe = move.category !== "status" || move.fixedDamage !== undefined || move.status || move.volatile === "confusion" ||
-    move.volatile === "leechseed" || move.boosts?.target === "foe";
+    move.volatile === "leechseed" || move.boosts?.target === "foe" || FOE_STATUS.has(move.id);
   if (targetsFoe && foe.protected) {
     events.push({ kind: "protected", side: foeSide });
     user.locked = null;
@@ -406,7 +517,11 @@ function performMove(
     return;
   }
   if (!damaging) {
-    if (move.heal) {
+    if (targetsFoe && foe.substitute > 0 && !bypassesSub(move)) {
+      events.push({ kind: "fail", side });
+    } else if (FOE_STATUS.has(move.id)) {
+      foeStatusMove(st, side, move, events);
+    } else if (move.heal) {
       if (user.hp >= user.maxHp) events.push({ kind: "fail", side });
       else heal(st, side, Math.floor((user.maxHp * move.heal[0]) / move.heal[1]), events);
     } else if (move.boosts) {
@@ -439,7 +554,7 @@ function performMove(
     return;
   }
 
-  const eff = move.type === "typeless" ? 1 : effectiveness(move.type, foe.types);
+  const eff = effectivenessOn(move.type, foe);
   if (eff === 0) {
     events.push({ kind: "no-effect", side: foeSide });
     user.locked = null;
@@ -447,39 +562,57 @@ function performMove(
   }
 
   const hits = hitCount(move, rng);
+  const throughSub = bypassesSub(move);
   let total = 0;
+  let toBody = 0;
   let crit = false;
   let landed = 0;
+  let subCrit = false;
+  let hitSub = false;
+  let broke = false;
   for (let i = 0; i < hits && foe.hp > 0; i++) {
     let damage: number;
+    let isCrit = false;
     if (HALF_HP.has(move.id)) {
       damage = Math.max(1, Math.floor(foe.hp / 2));
     } else if (move.fixedDamage !== undefined) {
       damage = move.fixedDamage === "level" ? user.level : move.fixedDamage;
     } else {
-      const isCrit = rng() < critChance(move.critRatio);
-      crit ||= isCrit;
+      isCrit = rng() < critChance(move.critRatio);
       damage = calcDamage(user, foe, move, rng, isCrit);
     }
-    damage = Math.min(damage, foe.hp);
-    foe.hp -= damage;
+    if (foe.substitute > 0 && !throughSub) {
+      // The Substitute takes the hit (and only as much as it has left).
+      damage = Math.min(damage, foe.substitute);
+      foe.substitute -= damage;
+      hitSub = true;
+      subCrit ||= isCrit;
+      if (foe.substitute === 0) broke = true;
+    } else {
+      damage = Math.min(damage, foe.hp);
+      foe.hp -= damage;
+      toBody += damage;
+      crit ||= isCrit;
+      landed++;
+    }
     total += damage;
-    landed++;
   }
-  events.push({
-    kind: "damage",
-    side: foeSide,
-    amount: total,
-    hp: foe.hp,
-    effectiveness: move.fixedDamage !== undefined || HALF_HP.has(move.id) ? 1 : eff,
-    crit,
-    hits: landed,
-  });
+  const shownEff = move.fixedDamage !== undefined || HALF_HP.has(move.id) ? 1 : eff;
+  if (hitSub) events.push({ kind: "sub-damage", side: foeSide, effectiveness: shownEff, crit: subCrit, broke });
+  if (landed > 0 || !hitSub) {
+    events.push({ kind: "damage", side: foeSide, amount: toBody, hp: foe.hp, effectiveness: shownEff, crit, hits: landed });
+  }
+  // Destiny Bond: knocking it out takes the attacker down too.
+  if (foe.hp <= 0 && foe.destinyBond && user.hp > 0) {
+    const amount = user.hp;
+    user.hp = 0;
+    events.push({ kind: "hurt", side, amount, hp: 0, cause: "destiny-bond" });
+  }
 
   if (move.drain) heal(st, side, Math.floor((total * move.drain[0]) / move.drain[1]), events);
   const recoil =
     move === STRUGGLE ? Math.floor(user.maxHp / 4) : move.recoil ? Math.floor((total * move.recoil[0]) / move.recoil[1]) : 0;
-  if (recoil > 0 || move.recoil) {
+  if ((recoil > 0 || move.recoil) && user.hp > 0) {
     const amount = Math.min(user.hp, Math.max(1, recoil));
     user.hp -= amount;
     events.push({ kind: "recoil", side, amount, hp: user.hp });
@@ -488,12 +621,14 @@ function performMove(
 
   for (const sec of move.secondary ?? []) {
     if (rng() * 100 >= sec.chance) continue;
-    if (sec.status && foe.hp > 0) tryStatus(st, foeSide, sec.status, rng, events, false);
-    if (sec.boosts && foe.hp > 0) applyBoosts(st, foeSide, sec.boosts, events);
+    // A Substitute shields the target from the move's extra effects.
+    const reaches = foe.hp > 0 && !hitSub;
+    if (sec.status && reaches) tryStatus(st, foeSide, sec.status, rng, events, false);
+    if (sec.boosts && reaches) applyBoosts(st, foeSide, sec.boosts, events);
     if (sec.selfBoosts && user.hp > 0) applyBoosts(st, side, sec.selfBoosts, events);
     // Flinching only matters if the foe hasn't moved yet this turn.
-    if (sec.volatile === "flinch" && foeMovesLater) foe.flinched = true;
-    if (sec.volatile === "confusion" && foe.hp > 0 && foe.confusion === 0) confuse(foe, foeSide, rng, events, false);
+    if (sec.volatile === "flinch" && foeMovesLater && !hitSub) foe.flinched = true;
+    if (sec.volatile === "confusion" && reaches && foe.confusion === 0) confuse(foe, foeSide, rng, events, false);
   }
 
   if (move.recharge) user.mustRecharge = true;
@@ -513,23 +648,74 @@ function confuse(f: Fighter, side: Side, rng: Rng, events: BattleEvent[], fatigu
   events.push({ kind: "confused", side, fatigue });
 }
 
-/**
- * Status moves with their own rules. Returns true if the move was handled.
- */
+/** Status moves aimed at the foe with their own rules (it already got past Protect, accuracy and Substitute). */
+function foeStatusMove(st: BattleState, side: Side, move: FighterMove, events: BattleEvent[]) {
+  const user = st[side];
+  const foeSide = other(side);
+  const foe = st[foeSide];
+  const fail = () => events.push({ kind: "fail", side });
+  switch (move.id) {
+    case "taunt":
+      if (foe.taunt > 0) return fail();
+      foe.taunt = TAUNT_TURNS;
+      events.push({ kind: "effect", side: foeSide, effect: "taunt" });
+      return;
+    case "encore": {
+      const last = foe.lastMove === null ? null : foe.moves[foe.lastMove];
+      if (!last || foe.encore || last.ppLeft <= 0 || last.id === "encore" || last.id === "sleeptalk" || last.id === "transform") return fail();
+      foe.encore = { index: foe.lastMove!, turns: ENCORE_TURNS };
+      events.push({ kind: "effect", side: foeSide, effect: "encore" });
+      return;
+    }
+    case "yawn":
+      if (foe.status || foe.drowsy > 0) return fail();
+      foe.drowsy = 2;
+      events.push({ kind: "effect", side: foeSide, effect: "drowsy" });
+      return;
+    case "strengthsap": {
+      // Heals as much as the foe's current Attack, then lowers it.
+      if (foe.boosts.atk <= -6) return fail();
+      const attack = Math.floor(foe.stats.atk * stageMultiplier(foe.boosts.atk));
+      applyBoosts(st, foeSide, { atk: -1 }, events);
+      if (user.hp < user.maxHp) heal(st, side, attack, events);
+      return;
+    }
+    case "transform": {
+      if (user.transformed || foe.transformed) return fail();
+      user.transformed = { dexId: foe.dexId, types: user.types, stats: user.stats, moves: user.moves };
+      user.types = [...foe.types];
+      user.stats = { ...foe.stats };
+      user.boosts = { ...foe.boosts };
+      user.moves = foe.moves.map((m) => ({ ...m, pp: TRANSFORM_PP, ppLeft: TRANSFORM_PP }));
+      user.lastMove = null;
+      events.push({ kind: "transform", side, dexId: foe.dexId });
+      return;
+    }
+  }
+}
+
+const TAUNT_TURNS = 3;
+const ENCORE_TURNS = 3;
+const MAGNET_RISE_TURNS = 5;
+const TRANSFORM_PP = 5;
+
+/** Status moves with their own rules that don't need to get past the foe. Returns true if handled. */
 function performSpecial(st: BattleState, side: Side, move: FighterMove, events: BattleEvent[]): boolean {
   const user = st[side];
   const foeSide = other(side);
   const foe = st[foeSide];
+  const fail = () => events.push({ kind: "fail", side });
   switch (move.id) {
     case "rest":
       // Full heal, cures status, sleeps for 2 turns.
       if (user.hp >= user.maxHp) {
-        events.push({ kind: "fail", side });
+        fail();
       } else {
         heal(st, side, user.maxHp, events);
         user.status = "slp";
         user.sleepTurns = 2;
         user.toxicTurns = 0;
+        user.drowsy = 0;
         events.push({ kind: "status", side, status: "slp" });
       }
       return true;
@@ -543,7 +729,7 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, events: 
     case "bellydrum": {
       const cost = Math.floor(user.maxHp / 2);
       if (user.hp <= cost || user.boosts.atk >= 6) {
-        events.push({ kind: "fail", side });
+        fail();
       } else {
         user.hp -= cost;
         events.push({ kind: "hp-cost", side, amount: cost, hp: user.hp });
@@ -555,11 +741,101 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, events: 
       for (const f of [user, foe]) f.boosts = { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
       events.push({ kind: "haze", side });
       return true;
+    case "substitute": {
+      // A decoy with 1/4 of the max HP, paid for with the user's own HP.
+      const cost = Math.floor(user.maxHp / 4);
+      if (user.substitute > 0) {
+        events.push({ kind: "effect", side, effect: "substitute-fail" });
+      } else if (user.hp <= cost) {
+        fail();
+      } else {
+        user.hp -= cost;
+        user.substitute = cost;
+        events.push({ kind: "hp-cost", side, amount: cost, hp: user.hp });
+        events.push({ kind: "effect", side, effect: "substitute" });
+      }
+      return true;
+    }
+    case "synthesis":
+    case "moonlight":
+    case "morningsun":
+    case "shoreup":
+      if (user.hp >= user.maxHp) fail();
+      else heal(st, side, Math.floor(user.maxHp / 2), events);
+      return true;
+    case "healbell":
+    case "aromatherapy": {
+      events.push({ kind: "effect", side, effect: "heal-bell" });
+      for (const f of st.bench[side]) if (f.hp > 0) f.status = null;
+      if (user.status) {
+        user.status = null;
+        user.sleepTurns = 0;
+        user.toxicTurns = 0;
+        events.push({ kind: "cure", side });
+      }
+      return true;
+    }
+    case "takeheart":
+      if (user.status) {
+        user.status = null;
+        user.sleepTurns = 0;
+        user.toxicTurns = 0;
+        events.push({ kind: "cure", side });
+      }
+      applyBoosts(st, side, { spa: 1, spd: 1 }, events);
+      return true;
+    case "tidyup":
+      if (user.substitute > 0 || foe.substitute > 0) {
+        user.substitute = 0;
+        foe.substitute = 0;
+        events.push({ kind: "effect", side, effect: "tidy-up" });
+      }
+      applyBoosts(st, side, { atk: 1, spe: 1 }, events);
+      return true;
+    case "destinybond":
+      user.destinyBond = true;
+      events.push({ kind: "effect", side, effect: "destiny-bond" });
+      return true;
+    case "magnetrise":
+      if (user.magnetRise > 0) fail();
+      else {
+        user.magnetRise = MAGNET_RISE_TURNS;
+        events.push({ kind: "effect", side, effect: "magnet-rise" });
+      }
+      return true;
+    case "curse":
+      if (user.types.includes("ghost")) {
+        // Halves the user's HP to lay a curse on the foe.
+        if (foe.cursed) {
+          fail();
+        } else {
+          const cost = Math.min(user.hp, Math.floor(user.maxHp / 2));
+          user.hp -= cost;
+          foe.cursed = true;
+          events.push({ kind: "hp-cost", side, amount: cost, hp: user.hp });
+          events.push({ kind: "effect", side: foeSide, effect: "cursed" });
+        }
+      } else {
+        applyBoosts(st, side, { atk: 1, def: 1, spe: -1 }, events);
+      }
+      return true;
+    case "revivalblessing": {
+      // Brings back the first fainted teammate with half its HP.
+      const fallen = st.bench[side].find((f) => f.hp <= 0);
+      if (!fallen) {
+        fail();
+      } else {
+        fallen.hp = Math.floor(fallen.maxHp / 2);
+        fallen.status = null;
+        events.push({ kind: "revive", side, name: fallen.name });
+      }
+      return true;
+    }
   }
   return false;
 }
 
-/** Burn 1/16, poison 1/8, bad poison n/16, Leech Seed 1/8 at the end of the turn. */
+/** Burn 1/16, poison 1/8, bad poison n/16, Leech Seed 1/8, Curse 1/4 at the end of the turn. */
 function residual(st: BattleState, side: Side, events: BattleEvent[]) {
   const f = st[side];
   const healer = st[other(side)];
@@ -569,15 +845,34 @@ function residual(st: BattleState, side: Side, events: BattleEvent[]) {
     healer.hp = Math.min(healer.maxHp, healer.hp + amount);
     events.push({ kind: "leech", side, amount, hp: f.hp, healerHp: healer.hp });
   }
-  if (f.hp <= 0 || !f.status || f.status === "par" || f.status === "slp") return;
-  let fraction = f.status === "brn" ? 1 / 16 : f.status === "psn" ? 1 / 8 : 0;
-  if (f.status === "tox") {
-    f.toxicTurns++;
-    fraction = f.toxicTurns / 16;
+  if (f.hp > 0 && f.status && f.status !== "par" && f.status !== "slp") {
+    let fraction = f.status === "brn" ? 1 / 16 : f.status === "psn" ? 1 / 8 : 0;
+    if (f.status === "tox") {
+      f.toxicTurns++;
+      fraction = f.toxicTurns / 16;
+    }
+    const amount = Math.min(f.hp, Math.max(1, Math.floor(f.maxHp * fraction)));
+    f.hp -= amount;
+    events.push({ kind: "residual", side, status: f.status, amount, hp: f.hp });
   }
-  const amount = Math.min(f.hp, Math.max(1, Math.floor(f.maxHp * fraction)));
-  f.hp -= amount;
-  events.push({ kind: "residual", side, status: f.status, amount, hp: f.hp });
+  if (f.hp > 0 && f.cursed) {
+    const amount = Math.min(f.hp, Math.max(1, Math.floor(f.maxHp / 4)));
+    f.hp -= amount;
+    events.push({ kind: "hurt", side, amount, hp: f.hp, cause: "curse" });
+  }
+}
+
+/** Effects that wear off or kick in at the very end of the turn. */
+function countdowns(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]) {
+  const f = st[side];
+  if (f.hp <= 0) return;
+  if (f.taunt > 0 && --f.taunt === 0) events.push({ kind: "effect", side, effect: "taunt-end" });
+  if (f.encore && (--f.encore.turns <= 0 || f.moves[f.encore.index].ppLeft <= 0)) {
+    f.encore = null;
+    events.push({ kind: "effect", side, effect: "encore-end" });
+  }
+  if (f.magnetRise > 0 && --f.magnetRise === 0) events.push({ kind: "effect", side, effect: "magnet-rise-end" });
+  if (f.drowsy > 0 && --f.drowsy === 0) tryStatus(st, side, "slp", rng, events, false);
 }
 
 /** Records faints; returns true if the battle is over. */
@@ -596,6 +891,7 @@ function checkFaints(st: BattleState, events: BattleEvent[], order: Side[]): boo
 function doSwitch(st: BattleState, side: Side, index: number, forced: boolean, events: BattleEvent[]) {
   const out = st[side];
   const incoming = st.bench[side][index];
+  if (out.transformed) Object.assign(out, { types: out.transformed.types, stats: out.transformed.stats, moves: out.transformed.moves });
   Object.assign(out, {
     boosts: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     toxicTurns: 0,
@@ -605,6 +901,15 @@ function doSwitch(st: BattleState, side: Side, index: number, forced: boolean, e
     seeded: false,
     protectStreak: 0,
     turnsActive: 0,
+    substitute: 0,
+    taunt: 0,
+    encore: null,
+    lastMove: null,
+    drowsy: 0,
+    destinyBond: false,
+    cursed: false,
+    magnetRise: 0,
+    transformed: null,
     protected: false,
     flinched: false,
   });
@@ -676,9 +981,9 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
     f.flinched = false;
   }
   const choices = { a: legalChoice(st, "a", choiceA), b: legalChoice(st, "b", choiceB) };
-  // A locked-in Pokémon repeats its move whatever was chosen.
+  // A locked-in Pokémon repeats its move whatever was chosen; an encored one repeats its last move.
   const pick = (f: Fighter, choice: Choice) =>
-    f.locked ? f.moves[f.locked.index] : typeof choice === "number" ? resolveMove(f, choice) : null;
+    f.locked ? f.moves[f.locked.index] : typeof choice === "number" ? resolveMove(f, f.encore ? f.encore.index : choice) : null;
   const moves = { a: pick(st.a, choices.a), b: pick(st.b, choices.b) };
 
   // Switches and items: before any move, the faster side first.
@@ -705,7 +1010,7 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
   }
   const endOrder = order.length === 2 ? order : speedOrder;
   for (const side of endOrder) residual(st, side, events);
-  checkFaints(st, events, endOrder);
+  if (!checkFaints(st, events, endOrder)) for (const side of endOrder) countdowns(st, side, rng, events);
   // A Pokémon that came in this turn hasn't had its first turn yet (Fake Out still works).
   for (const side of ["a", "b"] as Side[]) if (!fresh.has(side)) st[side].turnsActive++;
   st.turn++;

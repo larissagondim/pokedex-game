@@ -1,4 +1,4 @@
-import { type BattleEvent, ITEMS, type Side } from "@/lib/battle/engine";
+import { type BattleEvent, type Effect, type HurtCause, ITEMS, type Side } from "@/lib/battle/engine";
 import type { StatName, Status } from "@/lib/battle/types";
 
 const STAT_NAMES: Record<StatName, string> = {
@@ -15,6 +15,29 @@ const STATUS_GAINED: Record<Status, string> = {
   psn: "was poisoned!",
   tox: "was badly poisoned!",
   slp: "fell asleep!",
+};
+
+/** Lines for text-only effects; `move` is the move involved (Taunt blocks). */
+const EFFECT_TEXT: Record<Effect, (who: string, move?: string) => string> = {
+  substitute: (who) => `${who} put in a SUBSTITUTE!`,
+  "substitute-fail": (who) => `${who} already has a SUBSTITUTE!`,
+  taunt: (who) => `${who} fell for the taunt!`,
+  "taunt-end": (who) => `${who} shook off the taunt!`,
+  "taunt-block": (who, move) => `${who} can't use ${move ?? "that move"} after the taunt!`,
+  encore: (who) => `${who} received an encore!`,
+  "encore-end": (who) => `${who}'s encore ended!`,
+  drowsy: (who) => `${who} grew drowsy!`,
+  "destiny-bond": (who) => `${who} is hoping to take its attacker down with it!`,
+  cursed: (who) => `${who} was cursed!`,
+  "magnet-rise": (who) => `${who} levitated with electromagnetism!`,
+  "magnet-rise-end": (who) => `${who}'s electromagnetism wore off!`,
+  "heal-bell": () => "A bell chimed! The team's status problems were cured.",
+  "tidy-up": () => "Tidying up complete!",
+};
+
+const HURT_TEXT: Record<HurtCause, (who: string) => string> = {
+  curse: (who) => `${who} is afflicted by the curse!`,
+  "destiny-bond": (who) => `${who} took its attacker down with it!`,
 };
 
 const boostWord = (n: number) => (Math.abs(n) >= 3 ? "drastically " : Math.abs(n) === 2 ? (n > 0 ? "sharply " : "harshly ") : "");
@@ -97,5 +120,23 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
       return `${event.side === "a" ? you : "The foe"} used a ${ITEMS[event.item].name.toUpperCase()}!`;
     case "cure":
       return `${name(event.side)} was cured!`;
+    case "sub-damage": {
+      const parts: string[] = [];
+      if (event.crit) parts.push("A critical hit!");
+      if (event.effectiveness > 1) parts.push("It's super effective!");
+      else if (event.effectiveness < 1) parts.push("It's not very effective...");
+      parts.push(`The SUBSTITUTE took damage for ${name(event.side)}!`);
+      if (event.broke) parts.push(`${name(event.side)}'s SUBSTITUTE faded!`);
+      return parts.join(" ");
+    }
+    case "hurt":
+      // Destiny Bond names the Pokémon that set it up (the one already down).
+      return HURT_TEXT[event.cause](name(event.cause === "destiny-bond" ? (event.side === "a" ? "b" : "a") : event.side));
+    case "transform":
+      return `${name(event.side)} transformed!`;
+    case "revive":
+      return `${event.name.toUpperCase()} was revived and is ready to fight again!`;
+    case "effect":
+      return EFFECT_TEXT[event.effect](name(event.side), event.move?.toUpperCase());
   }
 }

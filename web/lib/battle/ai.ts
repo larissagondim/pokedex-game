@@ -2,6 +2,7 @@ import { type Combatant, expectedDamage, type MoveInfo } from "../battleFeatures
 import { effectiveness } from "../typeChart.ts";
 import {
   type BattleState,
+  bypassesSub,
   canInflict,
   canSwitch,
   type Choice,
@@ -59,10 +60,52 @@ function damageIfHits(m: FighterMove, me: Fighter, foe: Fighter): number {
   return expectedDamage(move, view(me), view(foe));
 }
 
+const HALF_HEALS = new Set(["synthesis", "moonlight", "morningsun", "shoreup"]);
+/** Status moves aimed at the foe (a Substitute blocks them unless they go through it). */
+const AIMED = new Set(["encore", "taunt", "yawn", "strengthsap", "transform"]);
+const statusOf = (m: FighterMove) => m.category === "status" && m.fixedDamage === undefined;
+
 /** Would this status move do anything to the foe right now? */
 function statusUseful(m: FighterMove, me: Fighter, foe: Fighter): boolean {
   if (moveImmune(m, foe)) return false;
+  if (me.taunt > 0) return false;
+  const aimed = AIMED.has(m.id) || !!m.status || m.volatile === "confusion" || m.volatile === "leechseed" || m.boosts?.target === "foe";
+  if (aimed && foe.substitute > 0 && !bypassesSub(m)) return false;
+  if (HALF_HEALS.has(m.id)) return me.hp < me.maxHp / 2;
   switch (m.id) {
+    case "substitute":
+      return me.substitute === 0 && me.hp > me.maxHp / 2;
+    case "taunt":
+      return foe.taunt === 0 && foe.moves.some((x) => statusOf(x) && x.ppLeft > 0);
+    case "encore": {
+      // Lock the foe into a status move it just used.
+      const last = foe.lastMove === null ? null : foe.moves[foe.lastMove];
+      return !foe.encore && !!last && statusOf(last) && last.ppLeft > 0;
+    }
+    case "yawn":
+      return foe.drowsy === 0 && canInflict("slp", foe);
+    case "strengthsap":
+      return me.hp < me.maxHp * 0.6 && foe.boosts.atk > -6;
+    case "healbell":
+    case "aromatherapy":
+      return me.status !== null && me.status !== "slp";
+    case "takeheart":
+      return me.boosts.spa < 4 || (me.status !== null && me.status !== "slp");
+    case "tidyup":
+      return me.boosts.atk < 4 || foe.substitute > 0;
+    case "destinybond":
+      return me.hp < me.maxHp * 0.3 && effectiveSpeed(me) > effectiveSpeed(foe) && (me.lastMove === null || me.moves[me.lastMove].id !== "destinybond");
+    case "magnetrise":
+      return me.magnetRise === 0 && foe.moves.some((x) => x.type === "ground" && !statusOf(x));
+    case "curse":
+      return me.types.includes("ghost") ? !foe.cursed && me.hp > me.maxHp * 0.6 : me.boosts.atk < 4;
+    case "transform":
+      return !me.transformed;
+    case "sleeptalk":
+      return me.status === "slp" && me.sleepTurns > 0;
+    case "revivalblessing":
+      return false; // scored by the team-aware chooseAction
+
     case "rest":
       return me.hp < me.maxHp / 2 || (me.status !== null && me.status !== "slp");
     case "painsplit":
@@ -88,7 +131,15 @@ function statusUseful(m: FighterMove, me: Fighter, foe: Fighter): boolean {
 
 /** Status moves are worth this share of the best hit when useful. */
 const STATUS_VALUE = (m: FighterMove) =>
-  m.heal || m.id === "rest" || m.id === "painsplit" ? 0.9 : m.status ? 0.6 : m.volatile === "protect" ? 0.3 : 0.5;
+  m.id === "transform" || m.id === "sleeptalk"
+    ? 2
+    : m.heal || HALF_HEALS.has(m.id) || m.id === "rest" || m.id === "painsplit" || m.id === "strengthsap"
+      ? 0.9
+      : m.status || m.id === "yawn" || m.id === "destinybond"
+        ? 0.6
+        : m.volatile === "protect" || m.id === "substitute"
+          ? 0.3
+          : 0.5;
 
 /**
  * Foe AI. If an attack would knock you out, it takes the surest one (most
@@ -172,6 +223,9 @@ export function chooseAction(st: BattleState, side: Side, rng: Rng = Math.random
       return { switchTo: slot };
     }
   }
+  // Revival Blessing is worth a turn whenever a teammate is down.
+  const revive = me.moves.findIndex((m) => m.id === "revivalblessing" && m.ppLeft > 0);
+  if (revive >= 0 && me.taunt === 0 && st.bench[side].some((f) => f.hp <= 0)) return revive;
   return chooseMove(me, foe, rng);
 }
 
