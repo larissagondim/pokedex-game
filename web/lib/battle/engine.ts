@@ -198,6 +198,10 @@ export interface SideField {
   wish: { turns: number; hp: number } | null;
   /** Healing Wish: the next Pokémon to come in is fully healed. */
   healingWish: boolean;
+  /** Turns of Tailwind left (doubles the side's Speed). */
+  tailwind: number;
+  /** Shed Tail: HP of the Substitute waiting for the next Pokémon in. */
+  shedTail: number;
 }
 
 export interface BattleState {
@@ -373,7 +377,9 @@ export type Effect =
   | "trace"
   | "weather-negated"
   | "immune"
-  | "vest-block";
+  | "vest-block"
+  | "tailwind"
+  | "tailwind-end";
 
 const STATS: StatName[] = ["atk", "def", "spa", "spd", "spe"];
 const CRIT_MULTIPLIER = 1.5;
@@ -466,6 +472,8 @@ const emptyField = (): SideField => ({
   auroraVeil: 0,
   wish: null,
   healingWish: false,
+  tailwind: 0,
+  shedTail: 0,
 });
 
 const fullBag = (): Record<ItemId, number> => ({ potion: ITEMS.potion.count, fullheal: ITEMS.fullheal.count });
@@ -520,6 +528,9 @@ export const effectiveSpeed = (f: Fighter, weather: Weather | null = null) =>
   itemSpeedModifier(f) *
   (f.unburden ? 2 : 1);
 
+/** Speed of the Pokémon out on `side`, with the weather and Tailwind. */
+export const sideSpeed = (st: BattleState, side: Side) => effectiveSpeed(st[side], weatherOf(st)) * (st.field[side].tailwind > 0 ? 2 : 1);
+
 /** Move priority with the user's ability (Prankster, Gale Wings, Triage). */
 export const priorityOf = (f: Fighter, move: FighterMove) => move.priority + priorityBonus(f, move);
 
@@ -535,9 +546,8 @@ export function turnOrder(state: BattleState, moveA: FighterMove, moveB: Fighter
   const pa = priorityOf(state.a, moveA);
   const pb = priorityOf(state.b, moveB);
   if (pa !== pb) return pa > pb ? ["a", "b"] : ["b", "a"];
-  const weather = weatherOf(state);
-  const sa = effectiveSpeed(state.a, weather);
-  const sb = effectiveSpeed(state.b, weather);
+  const sa = sideSpeed(state, "a");
+  const sb = sideSpeed(state, "b");
   if (sa !== sb) return sa > sb !== state.trickRoom > 0 ? ["a", "b"] : ["b", "a"];
   return rng() < 0.5 ? ["a", "b"] : ["b", "a"];
 }
@@ -1510,7 +1520,7 @@ function onHitItems(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]
 }
 
 /** Moves that switch the user out afterwards. */
-export const PIVOTS = new Set(["uturn", "voltswitch", "flipturn", "partingshot", "chillyreception", "teleport"]);
+export const PIVOTS = new Set(["uturn", "voltswitch", "flipturn", "partingshot", "chillyreception", "teleport", "shedtail"]);
 
 /** Whether `side` can pivot out (it's still standing and has someone to send in). */
 const canPivot = (st: BattleState, side: Side) => st[side].hp > 0 && st.bench[side].some((f) => f.hp > 0);
@@ -1681,6 +1691,11 @@ function enterField(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]
       events.push({ kind: "cure", side });
     }
   }
+  if (field.shedTail > 0 && f.hp > 0) {
+    f.substitute = field.shedTail;
+    field.shedTail = 0;
+    events.push({ kind: "effect", side, effect: "substitute" });
+  }
   // Heavy-Duty Boots ignore hazards. Stealth Rock: 1/8 of the max HP, scaled by how well Rock hits it.
   const boots = f.item === "heavydutyboots";
   if (field.stealthRock && f.hp > 0 && !boots) hurt(st, side, (f.maxHp * effectiveness("rock", f.types)) / 8, "stealthrock", events);
@@ -1808,8 +1823,7 @@ export function beginBattle(state: BattleState): { state: BattleState; events: B
 function startEntries(st: BattleState, events: BattleEvent[]) {
   if (st.started) return;
   st.started = true;
-  const weather = weatherOf(st);
-  const order: Side[] = effectiveSpeed(st.b, weather) > effectiveSpeed(st.a, weather) ? ["b", "a"] : ["a", "b"];
+  const order: Side[] = sideSpeed(st, "b") > sideSpeed(st, "a") ? ["b", "a"] : ["a", "b"];
   for (const side of order) onEntry(st, side, events);
   checkItems(st, events);
 }
@@ -1899,6 +1913,8 @@ function transform(st: BattleState, side: Side, events: BattleEvent[]): boolean 
 }
 
 const TAUNT_TURNS = 3;
+/** Counts the turn it's set up on. */
+const TAILWIND_TURNS = 4;
 const SCREEN_TURNS = 5;
 const WEATHER_TURNS = 5;
 /** Counts the turn it's set up on. */
@@ -2033,6 +2049,21 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
     case "teleport":
       if (!canPivot(st, side)) fail();
       else requestPivot(st, side);
+      return true;
+    case "shedtail": {
+      // Pays half its HP for a Substitute that the next Pokémon in gets.
+      const cost = Math.ceil(user.maxHp / 2);
+      if (!canPivot(st, side) || user.hp <= cost) return fail(), true;
+      user.hp -= cost;
+      events.push({ kind: "hp-cost", side, amount: cost, hp: user.hp });
+      st.field[side].shedTail = Math.floor(user.maxHp / 4);
+      requestPivot(st, side);
+      return true;
+    }
+    case "tailwind":
+      if (st.field[side].tailwind > 0) return fail(), true;
+      st.field[side].tailwind = TAILWIND_TURNS;
+      events.push({ kind: "effect", side, effect: "tailwind" });
       return true;
     case "chillyreception":
       // Snow, then the user switches out.
@@ -2288,6 +2319,7 @@ function fieldCountdowns(st: BattleState, events: BattleEvent[]) {
     if (field.reflect > 0 && --field.reflect === 0) events.push({ kind: "effect", side, effect: "reflect-end" });
     if (field.lightScreen > 0 && --field.lightScreen === 0) events.push({ kind: "effect", side, effect: "light-screen-end" });
     if (field.auroraVeil > 0 && --field.auroraVeil === 0) events.push({ kind: "effect", side, effect: "aurora-veil-end" });
+    if (field.tailwind > 0 && --field.tailwind === 0) events.push({ kind: "effect", side, effect: "tailwind-end" });
   }
   if (st.trickRoom > 0 && --st.trickRoom === 0) events.push({ kind: "effect", side: "a", effect: "trick-room-end" });
 }
@@ -2455,8 +2487,7 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
   const moves = { a: pick(st.a, choices.a), b: pick(st.b, choices.b) };
 
   // Switches and items: before any move, the faster side first.
-  const weather = weatherOf(st);
-  const speedOrder: Side[] = effectiveSpeed(st.b, weather) > effectiveSpeed(st.a, weather) ? ["b", "a"] : ["a", "b"];
+  const speedOrder: Side[] = sideSpeed(st, "b") > sideSpeed(st, "a") ? ["b", "a"] : ["a", "b"];
   const fresh: Side[] = [];
   for (const side of speedOrder) {
     const choice = choices[side];

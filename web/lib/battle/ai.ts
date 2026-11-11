@@ -143,6 +143,10 @@ function fieldUseful(m: FighterMove, me: Fighter, foe: Fighter, ctx: AiContext):
       return foeBench && (Object.values(foe.boosts).reduce((a, b) => a + b, 0) > 0 || theirs.stealthRock || theirs.spikes > 0);
     case "trickroom":
       return st.trickRoom === 0 && effectiveSpeed(me) < effectiveSpeed(foe);
+    case "tailwind":
+      return mine.tailwind === 0 && effectiveSpeed(me) <= effectiveSpeed(foe) && effectiveSpeed(me) * 2 > effectiveSpeed(foe);
+    case "shedtail":
+      return me.hp > me.maxHp * 0.6 && st.bench[side].some((f) => f.hp > 0);
     case "partingshot":
     case "teleport":
     case "chillyreception":

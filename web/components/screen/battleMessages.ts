@@ -67,6 +67,8 @@ const EFFECT_TEXT: Record<Effect, (who: string, team: string, move?: string) => 
   trace: (who, _team, ability) => `${who} traced the foe's ${ability ?? "ability"}!`,
   "weather-negated": () => "The effects of the weather disappeared.",
   immune: (who) => `It doesn't affect ${who}...`,
+  tailwind: (_who, team) => `The Tailwind blew from behind ${team}!`,
+  "tailwind-end": (_who, team) => `${cap(team)}'s Tailwind petered out!`,
   "vest-block": (who, _team, move) => `${who} can't use ${move ?? "status moves"} while holding an ASSAULT VEST!`,
 };
 

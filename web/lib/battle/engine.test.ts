@@ -950,3 +950,16 @@ test("Weakness Policy, Rocky Helmet and Red Card react to hits", () => {
   const card = runTurn(createTeamBattle(team({ stats: fast }, {}), team({ item: "Red Card", hp: 999, maxHp: 999, moves: splashOnly })), 0, 0, seq([], 0.99));
   assert.ok(card.events.some((e) => e.kind === "switch" && e.side === "a" && e.dragged));
 });
+
+test("Tailwind doubles the side's Speed; Shed Tail passes a Substitute", () => {
+  const wind = status("tailwind", "Tailwind", { type: "flying", flags: ["wind"] });
+  const st = battle({ moves: [wind, move({})], stats: { ...slow, spe: 60 } }, { hp: 999, maxHp: 999 });
+  const t1 = runTurn(st, 0, 0, seq([], 0.99));
+  assert.equal(t1.state.field.a.tailwind, 3);
+  assert.deepEqual(turnOrder(t1.state, t1.state.a.moves[1], t1.state.b.moves[0], seq([])), ["a", "b"]);
+  const tail = status("shedtail", "Shed Tail");
+  const shed = runTurn(createTeamBattle(team({ moves: [tail] }, {}), team({ moves: splashOnly })), 0, 0, seq([], 0.99));
+  assert.equal(shed.state.a.hp, 75);
+  const next = resolvePivot(shed.state, 0, seq([], 0.99));
+  assert.equal(next.state.a.substitute, 37);
+});
