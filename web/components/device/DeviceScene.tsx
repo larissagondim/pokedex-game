@@ -3,7 +3,7 @@
 import { ContactShadows, Environment } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
-import { BODY, CAMERA } from "./device.config";
+import { BODY, CAMERA, LIGHTS } from "./device.config";
 import { CameraRig } from "./CameraRig";
 import { Device } from "./Device";
 import { DeviceModelProvider } from "./ModelPart";
@@ -12,10 +12,12 @@ import { DeviceModelProvider } from "./ModelPart";
 export default function DeviceScene() {
   return (
     <Canvas camera={{ fov: CAMERA.fov, position: [-3, 0, 40], near: 1, far: 200 }} dpr={[1, 2]} gl={{ alpha: true }}>
-      <ambientLight intensity={0.25} />
-      <directionalLight position={[6, 10, 12]} intensity={1.2} />
+      <ambientLight intensity={LIGHTS.ambient} />
+      <directionalLight position={LIGHTS.key.position} intensity={LIGHTS.key.intensity} />
+      {/* Cool rim light from behind: outlines the edges and the hinge barrel. */}
+      <directionalLight position={LIGHTS.rim.position} intensity={LIGHTS.rim.intensity} color={LIGHTS.rim.color} />
       <Suspense fallback={null}>
-        <Environment preset="city" environmentIntensity={0.35} />
+        <Environment preset="city" environmentIntensity={LIGHTS.environment} />
       </Suspense>
       <Suspense fallback={null}>
         <DeviceModelProvider>

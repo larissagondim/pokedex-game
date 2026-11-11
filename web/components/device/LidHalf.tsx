@@ -5,7 +5,9 @@ import type { Group } from "three";
 import { useRoundedSlab } from "./geometry";
 import { useCompactLayout } from "@/hooks/useDeviceLayout";
 import { Controls } from "./Controls";
+import { ShellSeams } from "./BaseHalf";
 import { BODY, COLORS, COMPACT_CONTROLS, COMPACT_SPEAKER, SCREEN_CENTER, SCREEN_HALF, SEAM } from "./device.config";
+import { HingeLeaves } from "./Hinge";
 import { MainScreen } from "./MainScreen";
 import { Cover } from "./Cover";
 import { Graphite, RedPlastic } from "./materials";
@@ -14,12 +16,12 @@ import { SpeakerGrill } from "./SpeakerGrill";
 
 /**
  * Left half, the lid: swings open to the left. Main screen, indicator bar,
- * speaker, side seams and the cover on its outer face; on phones also all the
- * controls, under the screen. Inner frame x ∈ [-WIDTH, 0].
+ * speaker, the lid's hinge leaves, side seams and the cover on its outer face;
+ * on phones also all the controls, under the screen. Inner frame x ∈ [-WIDTH, 0].
  */
 export function LidHalf({ bodyRef }: { bodyRef?: Ref<Group> }) {
   const body = useRoundedSlab(BODY.width, BODY.height, BODY.depth, BODY.cornerRadius, BODY.edgeBevel);
-  const { indicator, bezel, seams } = SCREEN_HALF;
+  const { indicator, bezel } = SCREEN_HALF;
   const indicatorY = SCREEN_CENTER.y - bezel.height / 2 - indicator.gapBelowBezel;
   const compact = useCompactLayout();
 
@@ -39,6 +41,7 @@ export function LidHalf({ bodyRef }: { bodyRef?: Ref<Group> }) {
         <Graphite />
       </mesh>
 
+      <HingeLeaves half="lid" />
       <Cover />
       <MainScreen />
 
@@ -56,13 +59,7 @@ export function LidHalf({ bodyRef }: { bodyRef?: Ref<Group> }) {
         <SpeakerGrill />
       )}
 
-      {/* Seam grooves along the outer left side. */}
-      {seams.z.map((z) => (
-        <mesh key={z} position={[-BODY.width + 0.004, 0, z]}>
-          <boxGeometry args={[0.01, BODY.height - 2 * seams.inset, seams.width]} />
-          <meshBasicMaterial color={COLORS.redDark} />
-        </mesh>
-      ))}
+      <ShellSeams x={-BODY.width} />
     </group>
   );
 }

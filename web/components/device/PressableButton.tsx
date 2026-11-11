@@ -6,7 +6,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Group } from "three";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { BUTTON } from "./device.config";
-import { ButtonHoverContext } from "./materials";
+import { ButtonHoverContext, ButtonPressContext } from "./materials";
 
 interface Props {
   button: DeviceButton;
@@ -18,8 +18,8 @@ interface Props {
 
 /**
  * Makes its children a physical button: pointer down emits the deviceInput
- * event, and the cap sinks whenever the button is pressed (by pointer,
- * keyboard or gamepad, since all go through the same store).
+ * event, and the cap sinks and darkens whenever the button is pressed (by
+ * pointer, keyboard or gamepad, since all go through the same store).
  */
 export function PressableButton({ button, position = [0, 0, 0], travel = BUTTON.travel, children }: Props) {
   const cap = useRef<Group>(null);
@@ -73,7 +73,9 @@ export function PressableButton({ button, position = [0, 0, 0], travel = BUTTON.
           up();
         }}
       >
-        <ButtonHoverContext.Provider value={hovered}>{children}</ButtonHoverContext.Provider>
+        <ButtonHoverContext.Provider value={hovered}>
+          <ButtonPressContext.Provider value={pressed}>{children}</ButtonPressContext.Provider>
+        </ButtonHoverContext.Provider>
       </group>
     </group>
   );

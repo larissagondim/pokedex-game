@@ -35,10 +35,28 @@ export const SEAM = {
 
 export const HINGE = {
   diameter: 0.5,
-  /** Two short knuckles at the top and bottom ends; the middle stays hidden. */
-  knuckleLength: 0.55,
-  /** Gap between each knuckle and the body's top/bottom edge. */
+  /** The barrel runs the full height, split into knuckles that alternate base / lid / base... */
+  knuckles: 5,
+  /** Gap between neighbouring knuckles. */
+  knuckleGap: 0.04,
+  /** Gap between the barrel ends and the body's top/bottom edge. */
   endInset: 0.08,
+  /** Metal pin caps at both barrel ends. */
+  pinCap: { diameter: 0.22, height: 0.03 },
+  /** Plate screwed to each half's inner face under its knuckles. */
+  leaf: {
+    /** How far the plate reaches onto the half from the hinge edge (clear of the screen bezel at 0.4). */
+    reach: 0.35,
+    /** Where it starts, measured from the hinge edge (clears the edge bevel). */
+    start: 0.02,
+    thickness: 0.05,
+    /** Inset from the knuckle's ends. */
+    endInset: 0.12,
+    radius: 0.06,
+    bevel: 0.01,
+  },
+  /** Screw heads on the leaves: two per leaf, slotted. */
+  screw: { diameter: 0.12, height: 0.02, slotWidth: 0.02, fromEdge: 0.27, fromEnd: 0.32 },
   openDeg: 172,
   /** Zoom lays the lid flat so the screen faces the camera head-on. */
   zoomDeg: 180,
@@ -76,8 +94,21 @@ export const SCREEN_HALF = {
     fromRight: 1.4,
     fromBottom: 1.4,
   },
-  /** Seam grooves on the outer left side, as z offsets from the inner face. */
+} as const;
+
+/** Shell finish shared by both halves. */
+export const SHELL = {
+  /** Parting-line grooves on the outer side wall, as z offsets from the inner face. */
   seams: { z: [-0.24, -0.46], width: 0.02, inset: 0.7 },
+  /** Bump noise on the plastic: texture size (px), bump depth and roughness spread. */
+  texture: { size: 128, repeat: 3, bumpScale: 0.004, roughnessSpread: 0.08 },
+  /** Corner screws on the outer faces (back of the base, cover of the lid). */
+  screws: { diameter: 0.16, height: 0.025, slotWidth: 0.025, inset: 0.45 },
+  /** Engraved lettering: offset of the darker copy that reads as its wall, at `engraveReference` font size (scales with it). */
+  engraveOffset: 0.015,
+  engraveReference: 0.42,
+  /** Brand engraved at the bottom of the controls half. */
+  brand: { text: "POKÉDEX GAME", size: 0.3, fromBottom: 0.8, letterSpacing: 0.1 },
 } as const;
 
 export const CONTROL_HALF = {
@@ -93,7 +124,22 @@ export const CONTROL_HALF = {
     scrollSpeed: 0.8,
     emissiveOn: 0.18,
   },
-  led: { diameter: 0.2, gapAbove: 0.3 },
+  led: {
+    diameter: 0.2,
+    gapAbove: 0.3,
+    /** Ring of dark plastic the LED sits in: width and height. */
+    bezel: 0.06,
+    bezelHeight: 0.02,
+    /** Steady glow when open; a quick blink on A. */
+    intensity: 2.2,
+    blinkS: 0.36,
+    blinkHz: 16,
+    /** Slow pulse while a tab needs attention (also while closed), and in battle. */
+    pulseHz: 0.8,
+    battleHz: 1.6,
+    /** Lowest intensity of a pulse, as a share of `intensity`. */
+    pulseFloor: 0.15,
+  },
   dpad: {
     diameter: 2.4,
     raise: 0.15,
@@ -112,6 +158,9 @@ export const CONTROL_HALF = {
     width: 1.6,
     height: 0.5,
     depth: 0.12,
+    /** Recessed well around each pill: margin and depth. */
+    well: 0.07,
+    wellDepth: 0.02,
     /** Center height above the bottom edge. */
     fromBottom: 2.0,
     gap: 0.4,
@@ -120,13 +169,24 @@ export const CONTROL_HALF = {
     feet: { diameter: 0.3, height: 0.05, inset: 0.8 },
     name: "POKÉDEX GAME",
     nameSize: 0.42,
+    nameSpacing: 0.06,
   },
 } as const;
 
 export const BUTTON = {
-  travel: 0.06,
-  pressS: 0.08,
+  travel: 0.09,
+  pressS: 0.06,
   hoverEmissive: 0.18,
+  /** A pressed cap darkens to this share of its color. */
+  pressedShade: 0.78,
+} as const;
+
+/** Scene lights (key from the top right, a cool rim from behind on the left). */
+export const LIGHTS = {
+  ambient: 0.25,
+  key: { position: [6, 10, 12] as const, intensity: 1.2 },
+  rim: { position: [-10, 4, -8] as const, intensity: 0.7, color: "#CFE0FF" },
+  environment: 0.35,
 } as const;
 
 export const INPUT = {
@@ -163,6 +223,12 @@ export const COLORS = {
   grayLight: "#F6F6F8",
   gray: "#B9B9C2",
   engrave: "#D2D2DA",
+  /** Wall of lettering engraved into the red shell. */
+  engraveWall: "#6E0919",
+  metal: "#9A9AA6",
+  ledWhite: "#FFFFFF",
+  ledBattle: "#FF3B3B",
+  ledAlert: "#FFB020",
   screenOff: "#050507",
   secondaryText: "#9EF0A5",
 } as const;
