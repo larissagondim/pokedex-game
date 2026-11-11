@@ -55,4 +55,8 @@ export interface BattlePokemon extends Combatant {
   weight?: number;
   /** Ability name ("Intimidate"). */
   ability?: string;
+  /** Held item name ("Leftovers"). */
+  item?: string;
+  /** Not fully evolved (Eviolite works on it). */
+  nfe?: boolean;
 }

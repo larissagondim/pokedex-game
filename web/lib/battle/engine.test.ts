@@ -867,3 +867,86 @@ test("Shadow Tag traps the foe; Imposter transforms on entry; Disguise takes the
   assert.equal(mimikyu.state.b.hp, 150 - 18);
   assert.equal(mimikyu.state.b.disguised, false);
 });
+
+// --- Held items ---
+
+test("Leftovers heal 1/16; Black Sludge hurts non-Poison types", () => {
+  const st = battle({ item: "Leftovers", moves: [splash] }, { item: "Black Sludge", moves: [splash] });
+  st.a.hp = 100;
+  const r = runTurn(st, 0, 0, seq([], 0.99));
+  assert.equal(r.state.a.hp, 109);
+  assert.equal(r.state.b.hp, 150 - 18);
+});
+
+test("Life Orb: 1.3× damage and 1/10 recoil; Choice Band: 1.5× and locked into the first move", () => {
+  const d = (item?: string) => {
+    const st = battle({ item }, {});
+    return calcDamage(st.a, st.b, st.a.moves[0], seq([0.99]), false);
+  };
+  assert.ok(d("Life Orb") >= Math.floor(d() * 1.3) - 1);
+  assert.ok(d("Choice Band") >= Math.floor(d() * 1.5) - 1);
+  const orb = runTurn(battle({ item: "Life Orb", stats: fast }, { hp: 999, maxHp: 999, moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(orb.state.a.hp, 135);
+  const band = battle({ item: "Choice Band", moves: [move({}), move({ id: "slam", name: "Slam", power: 80 })] }, { hp: 999, maxHp: 999, moves: [splash] });
+  const t1 = runTurn(band, 0, 0, seq([], 0.99));
+  assert.equal(t1.state.a.choiceLock, 0);
+  const t2 = runTurn(t1.state, 1, 0, seq([], 0.99));
+  assert.ok(t2.events.some((e) => e.kind === "move" && e.side === "a" && e.move === "Tackle"));
+  assert.equal(chooseMove(t2.state.a, t2.state.b, seq([0.9])), 0);
+});
+
+test("Focus Sash survives from full HP; Sitrus Berry heals at half; Lum Berry cures", () => {
+  const sash = runTurn(battle({ moves: [move({ power: 250 })] }, { item: "Focus Sash", moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(sash.state.b.hp, 1);
+  assert.equal(sash.state.b.item, "");
+  const sitrus = runTurn(battle({ moves: [move({ power: 140 })], stats: fast }, { item: "Sitrus Berry", moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.ok(sitrus.events.some((e) => e.kind === "held" && e.effect === "berry"));
+  const wisp = status("willowisp", "Will-O-Wisp", { type: "fire", status: "brn" });
+  const lum = runTurn(battle({ moves: [wisp], stats: fast }, { item: "Lum Berry", moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(lum.state.b.status, null);
+  assert.equal(lum.state.b.item, "");
+});
+
+test("Heavy-Duty Boots skip hazards; an Air Balloon floats until it's hit", () => {
+  const st = createTeamBattle(team({ moves: splashOnly }), team({ moves: splashOnly }, { item: "Heavy-Duty Boots" }));
+  st.field.b.stealthRock = true;
+  assert.equal(runTurn(st, 0, { switchTo: 0 }, seq([], 0.99)).state.b.hp, 150);
+  const balloon = battle({ moves: [earthquake, move({})], stats: fast }, { item: "Air Balloon", hp: 999, maxHp: 999, moves: [splash] });
+  const t1 = runTurn(balloon, 0, 0, seq([], 0.99));
+  assert.ok(t1.events.some((e) => e.kind === "no-effect" && e.side === "b"));
+  const t2 = runTurn(t1.state, 1, 0, seq([], 0.99));
+  assert.equal(t2.state.b.item, "");
+  assert.ok(runTurn(t2.state, 0, 0, seq([], 0.99)).events.some((e) => e.kind === "damage" && e.side === "b" && e.amount > 0));
+});
+
+test("Assault Vest blocks status moves; Eviolite only helps a Pokémon that can still evolve", () => {
+  const vest = runTurn(battle({ item: "Assault Vest", moves: [splash] }, { moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.ok(vest.events.some((e) => e.kind === "effect" && e.effect === "vest-block"));
+  const ember = move({ id: "ember", name: "Ember", type: "fire", category: "special", power: 40 });
+  const d = (b: Partial<BattlePokemon>) => {
+    const st = battle({}, b);
+    return calcDamage(st.a, st.b, { ...ember, ppLeft: 1 }, seq([0.99]), false);
+  };
+  assert.ok(d({ item: "Eviolite", nfe: true }) < d({ item: "Eviolite" }));
+});
+
+test("Knock Off hits harder and removes the item; Trick swaps items", () => {
+  const knock = move({ id: "knockoff", name: "Knock Off", type: "dark", power: 65, flags: ["contact"] });
+  const r = runTurn(battle({ moves: [knock], stats: fast }, { item: "Leftovers", hp: 999, maxHp: 999, moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(r.state.b.item, "");
+  assert.ok(r.events.some((e) => e.kind === "held" && e.effect === "knocked-off"));
+  const trick = status("trick", "Trick", { type: "psychic" });
+  const t = runTurn(battle({ item: "Choice Scarf", moves: [trick] }, { item: "Leftovers", moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(t.state.a.item, "leftovers");
+  assert.equal(t.state.b.item, "choicescarf");
+});
+
+test("Weakness Policy, Rocky Helmet and Red Card react to hits", () => {
+  const water = move({ id: "surf", name: "Surf", type: "water", category: "special", power: 90 });
+  const wp = runTurn(battle({ moves: [water] }, { types: ["fire"], item: "Weakness Policy", hp: 999, maxHp: 999, moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.deepEqual([wp.state.b.boosts.atk, wp.state.b.boosts.spa], [2, 2]);
+  const helmet = runTurn(battle({ moves: [move({ flags: ["contact"] })], stats: fast }, { item: "Rocky Helmet", hp: 999, maxHp: 999, moves: [splash] }), 0, 0, seq([], 0.99));
+  assert.equal(helmet.state.a.hp, 150 - 25);
+  const card = runTurn(createTeamBattle(team({ stats: fast }, {}), team({ item: "Red Card", hp: 999, maxHp: 999, moves: splashOnly })), 0, 0, seq([], 0.99));
+  assert.ok(card.events.some((e) => e.kind === "switch" && e.side === "a" && e.dragged));
+});

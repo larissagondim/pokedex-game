@@ -1,5 +1,6 @@
 import { effectiveness } from "../typeChart.ts";
 import { abilityBlock, moveType, statusBlocked } from "./abilities.ts";
+import { CHOICE } from "./items.ts";
 import {
   type BattleState,
   bypassesSub,
@@ -154,7 +155,7 @@ function fieldUseful(m: FighterMove, me: Fighter, foe: Fighter, ctx: AiContext):
 /** Would this status move do anything to the foe right now? */
 function statusUseful(m: FighterMove, me: Fighter, foe: Fighter, ctx?: AiContext): boolean {
   if (moveImmune(m, foe)) return false;
-  if (me.taunt > 0) return false;
+  if (me.taunt > 0 || me.item === "assaultvest") return false;
   const aimed = AIMED.has(m.id) || !!m.status || m.volatile === "confusion" || m.volatile === "leechseed" || m.boosts?.target === "foe";
   if (aimed && foe.substitute > 0 && !bypassesSub(m)) return false;
   // Volt Absorb, Good as Gold, Prankster into a Dark type...
@@ -191,6 +192,10 @@ function statusUseful(m: FighterMove, me: Fighter, foe: Fighter, ctx?: AiContext
       return me.types.includes("ghost") ? !foe.cursed && me.hp > me.maxHp * 0.6 : me.boosts.atk < 4;
     case "transform":
       return !me.transformed;
+    case "trick":
+    case "switcheroo":
+      // Hand a Choice item to a foe that relies on variety.
+      return CHOICE.has(me.item) && !CHOICE.has(foe.item) && foe.ability !== "stickyhold" && foe.substitute === 0;
     case "sleeptalk":
       return me.status === "slp" && me.sleepTurns > 0;
     case "revivalblessing":
@@ -240,6 +245,8 @@ const STATUS_VALUE = (m: FighterMove) =>
 export function chooseMove(me: Fighter, foe: Fighter, rng: Rng = Math.random, ctx?: AiContext): number {
   const usable = me.moves.map((m, i) => ({ m, i })).filter(({ m }) => m.ppLeft > 0);
   if (usable.length === 0) return 0;
+  // A Choice item (or Gorilla Tactics) only allows the locked move.
+  if (me.choiceLock !== null && me.moves[me.choiceLock]?.ppLeft > 0) return me.choiceLock;
   if (rng() < RANDOMNESS) return usable[Math.floor(rng() * usable.length)].i;
 
   // Finish it off with the most reliable KO.
@@ -308,6 +315,14 @@ export function chooseReplacement(bench: Fighter[], foe: Fighter): number {
 export function chooseAction(st: BattleState, side: Side, rng: Rng = Math.random): Choice {
   const me = st[side];
   const foe = st[side === "a" ? "b" : "a"];
+  if (canSwitch(st, side) && me.choiceLock !== null) {
+    // Locked into a move that barely works here: come back in later.
+    const locked = me.moves[me.choiceLock];
+    const ctx = { st, side };
+    const weak = isAttack(locked) ? damageIfHits(locked, me, foe, ctx) * accuracyOf(locked, ctx) < foe.hp * 0.2 : !statusUseful(locked, me, foe, ctx);
+    const slot = chooseReplacement(st.bench[side], foe);
+    if (weak && slot >= 0 && rng() < SWITCH_CHANCE) return { switchTo: slot };
+  }
   if (canSwitch(st, side) && me.turnsActive > 0) {
     const current = matchup(me, foe);
     const slot = chooseReplacement(st.bench[side], foe);

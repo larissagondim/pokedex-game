@@ -501,6 +501,11 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     if (!battle) return;
     const me = battle.a;
     if (me.moves[index]?.ppLeft === 0 && me.moves.some((m) => m.ppLeft > 0)) return onNotice("There's no PP left for this move!");
+    const locked = me.choiceLock !== null && me.moves[me.choiceLock]?.ppLeft > 0 ? me.moves[me.choiceLock] : null;
+    if (locked && index !== me.choiceLock) return onNotice(`${nameOf(me.dexId)} can only use ${locked.name.toUpperCase()}!`);
+    if (me.item === "assaultvest" && me.moves[index]?.category === "status") {
+      return onNotice(`${nameOf(me.dexId)} can't use status moves while holding an ASSAULT VEST!`);
+    }
     submit(index);
   };
 

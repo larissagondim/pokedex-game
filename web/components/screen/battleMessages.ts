@@ -1,4 +1,4 @@
-import { type BattleEvent, type Effect, type HurtCause, ITEMS, type Side, type Weather } from "@/lib/battle/engine";
+import { type BattleEvent, type Effect, type HeldEffect, type HurtCause, ITEMS, type Side, type Weather } from "@/lib/battle/engine";
 import type { StatName, Status } from "@/lib/battle/types";
 
 const STAT_NAMES: Record<StatName, string> = {
@@ -67,6 +67,7 @@ const EFFECT_TEXT: Record<Effect, (who: string, team: string, move?: string) => 
   trace: (who, _team, ability) => `${who} traced the foe's ${ability ?? "ability"}!`,
   "weather-negated": () => "The effects of the weather disappeared.",
   immune: (who) => `It doesn't affect ${who}...`,
+  "vest-block": (who, _team, move) => `${who} can't use ${move ?? "status moves"} while holding an ASSAULT VEST!`,
 };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -90,6 +91,31 @@ const HURT_TEXT: Record<HurtCause, (who: string) => string> = {
   "bad-dreams": (who) => `${who} is tormented by bad dreams!`,
   "liquid-ooze": (who) => `${who} sucked up the liquid ooze!`,
   disguise: (who) => `${who}'s disguise was busted!`,
+  "life-orb": (who) => `${who} lost some of its HP!`,
+  "rocky-helmet": (who) => `${who} was hurt by the ROCKY HELMET!`,
+  "black-sludge": (who) => `${who} was hurt by its BLACK SLUDGE!`,
+};
+
+/** Lines for held items: `who` is the holder, `item` the item's name in capitals. */
+const HELD_TEXT: Record<HeldEffect, (who: string, item: string) => string> = {
+  leftovers: (who, item) => `${who} restored a little HP using its ${item}!`,
+  berry: (who, item) => `${who} ate its ${item}!`,
+  "focus-sash": (who, item) => `${who} hung on using its ${item}!`,
+  "white-herb": (who, item) => `${who} returned its stats to normal using its ${item}!`,
+  "mental-herb": (who, item) => `${who} used its ${item} to come back to its senses!`,
+  "weakness-policy": (who, item) => `The ${item} sharply raised ${who}'s Attack and Sp. Atk!`,
+  "air-balloon": (who, item) => `${who} floats in the air with its ${item}!`,
+  "balloon-popped": (who, item) => `${who}'s ${item} popped!`,
+  "power-herb": (who, item) => `${who} became fully charged due to its ${item}!`,
+  "booster-energy": (who, item) => `${who} used its ${item} to activate its ability!`,
+  "throat-spray": (who, item) => `${who}'s ${item} raised its Sp. Atk!`,
+  orb: (who, item) => `${who}'s ${item} activated!`,
+  "knocked-off": (who, item) => `${who}'s ${item} was knocked off!`,
+  stolen: (who, item) => `${who}'s ${item} was stolen!`,
+  trick: (who) => `${who} switched items with its target!`,
+  "red-card": (who, item) => `${who} held up its ${item} against the attacker!`,
+  "eject-button": (who, item) => `${who} is switched out with the ${item}!`,
+  eaten: (who, item) => `${who}'s ${item} was eaten up!`,
 };
 
 const boostWord = (n: number) => (Math.abs(n) >= 3 ? "drastically " : Math.abs(n) === 2 ? (n > 0 ? "sharply " : "harshly ") : "");
@@ -197,5 +223,7 @@ export function describeBattleEvent(event: BattleEvent, name: (side: Side) => st
       return WEATHER_TEXT[event.weather][event.ended ? 1 : 0];
     case "ability":
       return `[${name(event.side)}'s ${event.ability}]`;
+    case "held":
+      return HELD_TEXT[event.effect](name(event.side), event.item.toUpperCase());
   }
 }

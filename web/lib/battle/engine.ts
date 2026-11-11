@@ -19,6 +19,18 @@ import {
   WEATHER_NEGATORS,
   WEATHER_SETTERS,
 } from "./abilities.ts";
+import {
+  CHOICE,
+  isBerry,
+  itemAccuracyModifier,
+  itemAttackModifier,
+  itemCritStages,
+  itemDefenseModifier,
+  itemFinalModifier,
+  itemPowerModifier,
+  itemSpeedModifier,
+  WEATHER_ROCKS,
+} from "./items.ts";
 import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./types.ts";
 
 /**
@@ -50,8 +62,14 @@ import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./type
  * immunities and absorbers, contact punishment, stat-drop guards, Defiant,
  * end-of-turn effects (Speed Boost, Poison Heal...), Regenerator / Natural
  * Cure on switching out, Sturdy, Disguise, Truant, Slow Start, trapping,
- * Mold Breaker, Magic Guard, Sheer Force, Serene Grace and more. Other
- * effects just fail.
+ * Mold Breaker, Magic Guard, Sheer Force, Serene Grace and more. Held items
+ * (see items.ts for the modifiers): Leftovers, Black Sludge, Life Orb, Choice
+ * items, Assault Vest, Eviolite, Focus Sash, Sitrus / Lum / status / pinch
+ * berries, White Herb, Mental Herb, Weakness Policy, Rocky Helmet, Air
+ * Balloon, Heavy-Duty Boots, Flame / Toxic Orb, Light Clay, weather rocks,
+ * Power Herb, Booster Energy, Throat Spray, Red Card, Eject Button, Loaded
+ * Dice, Covert Cloak, Clear Amulet, type boosters...; Knock Off, Thief,
+ * Trick and Acrobatics use them. Other effects just fail.
  *
  * Teams: each side has one Pokémon out (`a` / `b`) and the rest on its
  * `bench`. Switching and using an item take the whole turn and go before any
@@ -137,6 +155,15 @@ export interface Fighter {
   disguised: boolean;
   /** Booster Energy powered up Protosynthesis / Quark Drive. */
   boosterEnergy: boolean;
+  /** Held item id ("leftovers"; "" for none) and its display name. */
+  item: string;
+  itemName: string;
+  /** Not fully evolved (Eviolite). */
+  nfe: boolean;
+  /** A Choice item (or Gorilla Tactics) locked it into this move. */
+  choiceLock: number | null;
+  /** Unburden: its item is gone, Speed doubled. */
+  unburden: boolean;
   /** Per-turn flags. */
   protected: boolean;
   flinched: boolean;
@@ -255,7 +282,30 @@ export type BattleEvent =
   | { kind: "effect"; side: Side; effect: Effect; move?: string }
   /** An ability kicks in (shown before what it does). */
   | { kind: "ability"; side: Side; ability: string }
+  /** A held item does something (`item` is its name). */
+  | { kind: "held"; side: Side; item: string; effect: HeldEffect }
   | { kind: "weather"; side: Side; weather: Weather; ended: boolean };
+
+/** What a held item did (each has its own line). */
+export type HeldEffect =
+  | "leftovers"
+  | "berry"
+  | "focus-sash"
+  | "white-herb"
+  | "mental-herb"
+  | "weakness-policy"
+  | "air-balloon"
+  | "balloon-popped"
+  | "power-herb"
+  | "booster-energy"
+  | "throat-spray"
+  | "orb"
+  | "knocked-off"
+  | "stolen"
+  | "trick"
+  | "red-card"
+  | "eject-button"
+  | "eaten";
 
 /** HP lost to something other than a hit or a status (each has its own message). */
 export type HurtCause =
@@ -269,7 +319,10 @@ export type HurtCause =
   | "sun"
   | "bad-dreams"
   | "liquid-ooze"
-  | "disguise";
+  | "disguise"
+  | "life-orb"
+  | "rocky-helmet"
+  | "black-sludge";
 
 /** Text-only events: what changed is in the state, the screen just says it. */
 export type Effect =
@@ -319,7 +372,8 @@ export type Effect =
   | "pressure"
   | "trace"
   | "weather-negated"
-  | "immune";
+  | "immune"
+  | "vest-block";
 
 const STATS: StatName[] = ["atk", "def", "spa", "spd", "spe"];
 const CRIT_MULTIPLIER = 1.5;
@@ -388,6 +442,11 @@ export function createFighter(p: BattlePokemon): Fighter {
     loafing: false,
     disguised: toId(p.ability ?? "") === "disguise" || toId(p.ability ?? "") === "iceface",
     boosterEnergy: false,
+    item: toId(p.item ?? ""),
+    itemName: p.item ?? "",
+    nfe: !!p.nfe,
+    choiceLock: null,
+    unburden: false,
     protected: false,
     flinched: false,
     moves: p.moves.map((m) => ({ ...m, ppLeft: m.pp })),
@@ -442,7 +501,7 @@ export const canSwitch = (st: BattleState, side: Side) =>
 export function trapped(st: BattleState, side: Side): boolean {
   const me = st[side];
   const foe = st[other(side)];
-  if (foe.hp <= 0 || me.types.includes("ghost")) return false;
+  if (foe.hp <= 0 || me.types.includes("ghost") || me.item === "shedshell") return false;
   if (foe.ability === "shadowtag") return me.ability !== "shadowtag";
   if (foe.ability === "arenatrap") return grounded(me);
   return foe.ability === "magnetpull" && me.types.includes("steel");
@@ -454,7 +513,12 @@ export const weatherOf = (st: BattleState): Weather | null =>
 
 /** Speed for turn order: stages, paralysis (Quick Feet ignores it) and the ability (Swift Swim...). */
 export const effectiveSpeed = (f: Fighter, weather: Weather | null = null) =>
-  f.stats.spe * stageMultiplier(f.boosts.spe) * (f.status === "par" && f.ability !== "quickfeet" ? 0.5 : 1) * speedModifier(f, weather);
+  f.stats.spe *
+  stageMultiplier(f.boosts.spe) *
+  (f.status === "par" && f.ability !== "quickfeet" ? 0.5 : 1) *
+  speedModifier(f, weather) *
+  itemSpeedModifier(f) *
+  (f.unburden ? 2 : 1);
 
 /** Move priority with the user's ability (Prankster, Gale Wings, Triage). */
 export const priorityOf = (f: Fighter, move: FighterMove) => move.priority + priorityBonus(f, move);
@@ -484,7 +548,7 @@ const critChance = (ratio = 1) => (ratio >= 4 ? 1 : ratio === 3 ? 0.5 : ratio ==
 const critFor = (user: Fighter, target: Fighter, move: FighterMove) =>
   (target.ability === "battlearmor" || target.ability === "shellarmor") && !MOLD_BREAKERS.has(user.ability)
     ? 0
-    : critChance((move.critRatio ?? 1) + (user.ability === "superluck" ? 1 : 0));
+    : critChance((move.critRatio ?? 1) + (user.ability === "superluck" ? 1 : 0) + itemCritStages(user));
 
 /** What the field and the turn add to a hit: weather, a screen on the target's side, and what some abilities check. */
 export interface DamageMods {
@@ -530,7 +594,9 @@ export function calcDamage(user: Fighter, target: Fighter, move: FighterMove, rn
   if (user.ability === "unaware") defStage = 0;
   const attack = Math.max(
     1,
-    Math.floor(attacker.stats[atkStat] * stageMultiplier(atkStage) * attackModifier(user, target, move, weatherNow, ignoreTarget)),
+    Math.floor(
+      attacker.stats[atkStat] * stageMultiplier(atkStage) * attackModifier(user, target, move, weatherNow, ignoreTarget) * itemAttackModifier(attacker, physical),
+    ),
   );
   // Sand raises Rock types' Sp. Def, snow raises Ice types' Defense.
   const weatherDef =
@@ -540,11 +606,16 @@ export function calcDamage(user: Fighter, target: Fighter, move: FighterMove, rn
       : 1;
   const defense = Math.max(
     1,
-    Math.floor(target.stats[defStat] * stageMultiplier(defStage) * weatherDef * defenseModifier(user, target, weatherNow, ignoreTarget, defStat)),
+    Math.floor(
+      target.stats[defStat] * stageMultiplier(defStage) * weatherDef * defenseModifier(user, target, weatherNow, ignoreTarget, defStat) * itemDefenseModifier(target, defStat),
+    ),
   );
   const basePower = move.power > 0 ? move.power : FALLBACK_POWER;
-  const power = Math.max(1, Math.floor(basePower * powerModifier(user, target, move, { ...mods, weather: weatherNow, ignoreTarget })));
   const type = moveType(user, move);
+  const power = Math.max(
+    1,
+    Math.floor(basePower * powerModifier(user, target, move, { ...mods, weather: weatherNow, ignoreTarget }) * itemPowerModifier(user, type, move.category, move.flags)),
+  );
 
   let damage = Math.floor(Math.floor((Math.floor((2 * user.level) / 5 + 2) * power * attack) / defense) / 50) + 2;
   const weather = weatherFactor(weatherNow, type);
@@ -559,7 +630,7 @@ export function calcDamage(user: Fighter, target: Fighter, move: FighterMove, rn
   if (physical && user.status === "brn" && move.id !== "facade" && user.ability !== "guts") damage = Math.floor(damage / 2);
   // Screens halve the damage (critical hits go through them).
   if (mods.screen && !crit) damage = Math.floor(damage / 2);
-  damage = Math.floor(damage * finalModifier(user, target, move, eff, ignoreTarget));
+  damage = Math.floor(damage * finalModifier(user, target, move, eff, ignoreTarget) * itemFinalModifier(user, eff));
   return Math.max(1, damage);
 }
 
@@ -587,7 +658,8 @@ export function weatherAccuracy(move: Pick<FighterMove, "id" | "accuracy">, weat
 const WEATHER_BALL: Record<Weather, string> = { sun: "fire", rain: "water", sand: "rock", snow: "ice" };
 
 /** On the ground: hit by Spikes, Toxic Spikes, Sticky Web and Ground moves. */
-export const grounded = (f: Pick<Fighter, "types" | "magnetRise">) => !f.types.includes("flying") && f.magnetRise === 0;
+export const grounded = (f: Pick<Fighter, "types" | "magnetRise" | "item" | "ability">) =>
+  !f.types.includes("flying") && !floating(f) && f.ability !== "levitate";
 
 function hitCount(move: FighterMove, rng: Rng): number {
   if (typeof move.multihit === "number") return move.multihit;
@@ -611,18 +683,21 @@ const IMMUNE: Record<Status, string[]> = {
 };
 
 /** Type effectiveness against this fighter right now (Magnet Rise lifts it off the ground). */
-export const effectivenessOn = (type: string, target: Pick<Fighter, "types" | "magnetRise">) =>
-  type === "typeless" ? 1 : type === "ground" && target.magnetRise > 0 ? 0 : effectiveness(type, target.types);
+export const effectivenessOn = (type: string, target: Pick<Fighter, "types" | "magnetRise" | "item">) =>
+  type === "typeless" ? 1 : type === "ground" && floating(target) ? 0 : effectiveness(type, target.types);
+
+/** Magnet Rise and an Air Balloon keep it off the ground. */
+const floating = (f: Pick<Fighter, "magnetRise" | "item">) => f.magnetRise > 0 || f.item === "airballoon";
 
 /** Effectiveness of the user's move (Scrappy lets Normal and Fighting hit Ghosts). */
-export const effectivenessAgainst = (user: Pick<Fighter, "ability">, type: string, target: Pick<Fighter, "types" | "magnetRise">) =>
-  type === "ground" && target.magnetRise > 0 ? 0 : typeEffectiveness(user, type, target.types);
+export const effectivenessAgainst = (user: Pick<Fighter, "ability">, type: string, target: Pick<Fighter, "types" | "magnetRise" | "item">) =>
+  type === "ground" && floating(target) ? 0 : typeEffectiveness(user, type, target.types);
 
 /** Sound moves and a few others go through a Substitute. */
 export const bypassesSub = (move: Pick<FighterMove, "flags">) => !!move.flags?.some((f) => f === "bypasssub" || f === "sound");
 
 /** Status moves aimed at the foe that the generic effects below don't cover. */
-const FOE_STATUS = new Set(["encore", "taunt", "yawn", "strengthsap", "transform", "partingshot"]);
+const FOE_STATUS = new Set(["encore", "taunt", "yawn", "strengthsap", "transform", "partingshot", "trick", "switcheroo"]);
 
 /** Moves Sleep Talk can't call. */
 const NO_SLEEP_TALK = new Set(["sleeptalk", "rest", "bellydrum", "focuspunch", "uproar", "solarbeam", "solarblade", "skyattack", "meteorbeam"]);
@@ -692,6 +767,80 @@ function reveal(st: BattleState, side: Side, events: BattleEvent[]) {
 /** Magic Guard: no damage except from attacks. */
 const indirectOk = (f: Fighter) => f.ability !== "magicguard";
 
+/** The held item is gone (Unburden doubles Speed from then on). */
+function loseItem(f: Fighter) {
+  f.item = "";
+  f.choiceLock = null;
+  if (f.ability === "unburden") f.unburden = true;
+}
+
+/** The holder uses up its item, with its line. */
+function consumeItem(st: BattleState, side: Side, effect: HeldEffect, events: BattleEvent[]) {
+  const f = st[side];
+  events.push({ kind: "held", side, item: f.itemName, effect });
+  loseItem(f);
+}
+
+/** Items Knock Off, Thief and Trick can take (Sticky Hold keeps them). */
+const removable = (f: Fighter) => f.item !== "" && f.ability !== "stickyhold";
+
+const PINCH_BERRIES: Record<string, StatName> = {
+  liechiberry: "atk",
+  ganlonberry: "def",
+  petayaberry: "spa",
+  apicotberry: "spd",
+  salacberry: "spe",
+};
+const STATUS_BERRIES: Record<string, (f: Fighter) => boolean> = {
+  lumberry: (f) => f.status !== null || f.confusion > 0,
+  chestoberry: (f) => f.status === "slp",
+  cheriberry: (f) => f.status === "par",
+  rawstberry: (f) => f.status === "brn",
+  pechaberry: (f) => f.status === "psn" || f.status === "tox",
+  aspearberry: (f) => f.status === "frz",
+  persimberry: (f) => f.confusion > 0,
+};
+
+/** Berries and herbs reacting to HP, status or stat drops. Checked after every move and at the end of the turn. */
+function checkItem(st: BattleState, side: Side, events: BattleEvent[]) {
+  const f = st[side];
+  if (f.hp <= 0 || !f.item) return;
+  // Unnerve: the foe can't eat berries.
+  if (isBerry(f.item) && st[other(side)].ability === "unnerve" && st[other(side)].hp > 0) return;
+  const half = f.hp * 2 <= f.maxHp;
+  const quarter = f.hp * 4 <= f.maxHp || (f.ability === "gluttony" && half);
+  if ((f.item === "sitrusberry" || f.item === "oranberry") && half) {
+    const amount = f.item === "sitrusberry" ? f.maxHp / 4 : 10;
+    consumeItem(st, side, "berry", events);
+    heal(st, side, amount, events);
+  } else if (PINCH_BERRIES[f.item] && quarter) {
+    const stat = PINCH_BERRIES[f.item];
+    consumeItem(st, side, "berry", events);
+    applyBoosts(st, side, { [stat]: 1 }, events);
+  } else if (STATUS_BERRIES[f.item]?.(f)) {
+    const cures = f.item;
+    consumeItem(st, side, "berry", events);
+    if (cures !== "persimberry" && f.status) {
+      f.status = null;
+      f.sleepTurns = 0;
+      f.toxicTurns = 0;
+      events.push({ kind: "cure", side });
+    }
+    if (cures === "lumberry" || cures === "persimberry") f.confusion = 0;
+  } else if (f.item === "whiteherb" && STATS.some((s) => f.boosts[s] < 0)) {
+    consumeItem(st, side, "white-herb", events);
+    for (const s of STATS) f.boosts[s] = Math.max(0, f.boosts[s]);
+  } else if (f.item === "mentalherb" && (f.taunt > 0 || f.encore)) {
+    consumeItem(st, side, "mental-herb", events);
+    f.taunt = 0;
+    f.encore = null;
+  }
+}
+
+const checkItems = (st: BattleState, events: BattleEvent[]) => {
+  for (const side of ["a", "b"] as Side[]) checkItem(st, side, events);
+};
+
 /** Takes `amount` (capped by the HP left) for a reason other than a hit. Returns what it took. */
 function hurt(st: BattleState, side: Side, amount: number, cause: HurtCause, events: BattleEvent[]): number {
   const f = st[side];
@@ -717,7 +866,7 @@ function applyBoosts(st: BattleState, side: Side, boosts: Boosts, events: Battle
     if (!requested) continue;
     if (f.ability === "contrary" && !moldBroken) requested = -requested;
     if (f.ability === "simple" && !moldBroken) requested *= 2;
-    if (requested < 0 && fromFoe && blocksDrop(f, stat) && !moldBroken) {
+    if (requested < 0 && fromFoe && ((blocksDrop(f, stat) && !moldBroken) || f.item === "clearamulet")) {
       reveal(st, side, events);
       events.push({ kind: "effect", side, effect: "stats-protected" });
       continue;
@@ -869,6 +1018,10 @@ function attemptMove(
     events.push({ kind: "effect", side, effect: "taunt-block", move: move.name });
     return;
   }
+  if (user.item === "assaultvest" && move.category === "status") {
+    events.push({ kind: "effect", side, effect: "vest-block", move: move.name });
+    return;
+  }
 
   // PP is only spent on the first turn of a locked or two-turn move.
   const continuing = user.locked !== null || user.charging !== null;
@@ -883,6 +1036,8 @@ function attemptMove(
   // Destiny Bond can't be used twice in a row.
   const repeatedBond = move.id === "destinybond" && user.lastMove !== null && user.moves[user.lastMove]?.id === "destinybond";
   user.lastMove = index >= 0 ? index : null;
+  // Choice items (and Gorilla Tactics) lock it into the first move it uses.
+  if ((CHOICE.has(user.item) || user.ability === "gorillatactics") && user.choiceLock === null && index >= 0) user.choiceLock = index;
   events.push({ kind: "move", side, move: move.name });
   if (repeatedBond) {
     events.push({ kind: "fail", side });
@@ -892,10 +1047,14 @@ function attemptMove(
   if (CHARGE.has(move.id)) {
     const instant = (move.id === "solarbeam" || move.id === "solarblade") && weatherOf(st) === "sun";
     if (user.charging === null && !instant) {
-      user.charging = index;
       events.push({ kind: "effect", side, effect: "charging", move: move.name });
       if (move.id === "meteorbeam") applyBoosts(st, side, { spa: 1 }, events);
-      return;
+      // Power Herb skips the wait, once.
+      if (user.item === "powerherb") consumeItem(st, side, "power-herb", events);
+      else {
+        user.charging = index;
+        return;
+      }
     }
     user.charging = null;
   }
@@ -912,6 +1071,10 @@ function attemptMove(
     return;
   }
   executeMove(st, side, move, rng, events, foeMovesLater, foeMove);
+  if (user.item === "throatspray" && move.flags?.includes("sound") && user.hp > 0) {
+    consumeItem(st, side, "throat-spray", events);
+    applyBoosts(st, side, { spa: 1 }, events);
+  }
   // Explosion and the like: the user goes down whatever happened.
   if (SELF_KO.has(move.id) && user.hp > 0) {
     events.push({ kind: "hp-cost", side, amount: user.hp, hp: 0 });
@@ -937,7 +1100,8 @@ function executeMove(
     (move.id === "focuspunch" && events.some((e) => (e.kind === "damage" || e.kind === "sub-damage") && e.side === side)) ||
     (FIRST_TURN_ONLY.has(move.id) && user.turnsActive > 0) ||
     // Sucker Punch only works if the target is about to attack.
-    (move.id === "suckerpunch" && (!foeMovesLater || !foeMove || foeMove.category === "status"));
+    (move.id === "suckerpunch" && (!foeMovesLater || !foeMove || foeMove.category === "status")) ||
+    (move.id === "poltergeist" && !foe.item);
   if (failed) {
     events.push({ kind: "fail", side });
     user.locked = null;
@@ -1052,7 +1216,12 @@ function executeMove(
     }
   }
 
-  const hits = user.ability === "skilllink" && Array.isArray(move.multihit) ? move.multihit[1] : hitCount(move, rng);
+  const hits =
+    user.ability === "skilllink" && Array.isArray(move.multihit)
+      ? move.multihit[1]
+      : user.item === "loadeddice" && Array.isArray(move.multihit) && move.multihit[1] === 5
+        ? 4 + Math.floor(rng() * 2)
+        : hitCount(move, rng);
   // Infiltrator gets past a Substitute too.
   const throughSub = bypassesSub(move) || user.ability === "infiltrator";
   const moldBreaker = MOLD_BREAKERS.has(user.ability);
@@ -1060,6 +1229,7 @@ function executeMove(
   const hpBefore = foe.hp;
   let endured = false;
   let busted = false;
+  let sash = false;
   let total = 0;
   let toBody = 0;
   let crit = false;
@@ -1093,6 +1263,9 @@ function executeMove(
       // Sturdy: a hit from full HP leaves it at 1.
       damage = foe.hp - 1;
       endured = true;
+    } else if (foe.item === "focussash" && fullBefore && damage >= foe.hp && foe.hp === hpBefore) {
+      damage = foe.hp - 1;
+      sash = true;
     }
     if (foe.substitute > 0 && !throughSub) {
       // The Substitute takes the hit (and only as much as it has left).
@@ -1128,6 +1301,13 @@ function executeMove(
     reveal(st, foeSide, events);
     events.push({ kind: "effect", side: foeSide, effect: "sturdy" });
   }
+  if (sash) consumeItem(st, foeSide, "focus-sash", events);
+  // Any hit pops an Air Balloon.
+  if (landed > 0 && foe.item === "airballoon") consumeItem(st, foeSide, "balloon-popped", events);
+  if (landed > 0 && foe.hp > 0 && foe.item === "weaknesspolicy" && eff > 1 && fixed === null) {
+    consumeItem(st, foeSide, "weakness-policy", events);
+    applyBoosts(st, foeSide, { atk: 2, spa: 2 }, events);
+  }
   // Moxie, Beast Boost...: a knockout powers the user up.
   if (foe.hp <= 0 && user.hp > 0 && ON_KO[user.ability]) {
     const stat = ON_KO[user.ability];
@@ -1148,8 +1328,9 @@ function executeMove(
     if (foe.ability === "liquidooze") {
       reveal(st, foeSide, events);
       hurt(st, side, amount, "liquid-ooze", events);
-    } else heal(st, side, amount, events);
+    } else heal(st, side, user.item === "bigroot" ? amount * 1.3 : amount, events);
   }
+  if (user.item === "shellbell" && total > 0 && user.hp > 0) heal(st, side, total / 8, events);
   const recoil =
     move === STRUGGLE ? Math.floor(user.maxHp / 4) : move.recoil ? Math.floor((total * move.recoil[0]) / move.recoil[1]) : 0;
   const noRecoil = move !== STRUGGLE && (user.ability === "rockhead" || !indirectOk(user));
@@ -1158,11 +1339,14 @@ function executeMove(
     user.hp -= amount;
     events.push({ kind: "recoil", side, amount, hp: user.hp });
   }
+  // Life Orb: 10% of the max HP per hit landed (not when Sheer Force already took the move's extra effects).
+  const sheerForced = user.ability === "sheerforce" && !!move.secondary?.length;
+  if (user.item === "lifeorb" && total > 0 && user.hp > 0 && !sheerForced) hurt(st, side, user.maxHp / 10, "life-orb", events);
   if (move.selfBoosts && user.hp > 0) applyBoosts(st, side, move.selfBoosts, events);
 
   // Sheer Force trades the extra effects for power; Serene Grace doubles their odds; Shield Dust keeps them off the target.
   const secondaries = user.ability === "sheerforce" ? [] : (move.secondary ?? []);
-  const shielded = foe.ability === "shielddust" && !moldBreaker;
+  const shielded = (foe.ability === "shielddust" && !moldBreaker) || foe.item === "covertcloak";
   for (const sec of secondaries) {
     if (rng() * 100 >= sec.chance * (user.ability === "serenegrace" ? 2 : 1)) continue;
     // A Substitute shields the target from the move's extra effects.
@@ -1177,6 +1361,7 @@ function executeMove(
 
   if (landed > 0 && !hitSub) onHitAbilities(st, side, hit, typeNow, hpBefore, rng, events);
   afterHit(st, side, move, hitSub, rng, events);
+  if (landed > 0 && !hitSub) onHitItems(st, side, rng, events);
 
   if (move.recharge) user.mustRecharge = true;
   if (move.locked) {
@@ -1223,6 +1408,7 @@ function accuracyOf(st: BattleState, side: Side, move: FighterMove): number {
   if (accuracy >= 1) return 1;
   if (user.ability === "compoundeyes") accuracy *= 1.3;
   if (user.ability === "hustle" && move.category === "physical") accuracy *= 0.8;
+  accuracy *= itemAccuracyModifier(user);
   return Math.min(1, accuracy);
 }
 
@@ -1231,7 +1417,12 @@ function onHitAbilities(st: BattleState, side: Side, move: FighterMove, type: st
   const user = st[side];
   const foeSide = other(side);
   const foe = st[foeSide];
-  const contact = !!move.flags?.includes("contact");
+  // Protective Pads (and a Punching Glove on punches) avoid contact.
+  const contact =
+    !!move.flags?.includes("contact") && user.item !== "protectivepads" && !(user.item === "punchingglove" && move.flags?.includes("punch"));
+  if (contact && user.hp > 0 && foe.item === "rockyhelmet") {
+    hurt(st, side, user.maxHp / 6, "rocky-helmet", events);
+  }
   if (contact && user.hp > 0) {
     const status = CONTACT_STATUS[foe.ability];
     if (status && rng() < 0.3 && canInflict(status, user) && !statusBlocked(user, status, weatherOf(st))) {
@@ -1304,6 +1495,20 @@ function onHitAbilities(st: BattleState, side: Side, move: FighterMove, type: st
   }
 }
 
+/** The target's items that answer a hit: Red Card sends the attacker back, Eject Button the holder. */
+function onHitItems(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]) {
+  const foeSide = other(side);
+  const foe = st[foeSide];
+  if (foe.hp <= 0 || st.winner) return;
+  if (foe.item === "redcard" && st[side].hp > 0 && st.bench[side].some((f) => f.hp > 0)) {
+    consumeItem(st, foeSide, "red-card", events);
+    drag(st, side, rng, events);
+  } else if (foe.item === "ejectbutton" && canPivot(st, foeSide) && !st.pending) {
+    consumeItem(st, foeSide, "eject-button", events);
+    requestPivot(st, foeSide);
+  }
+}
+
 /** Moves that switch the user out afterwards. */
 export const PIVOTS = new Set(["uturn", "voltswitch", "flipturn", "partingshot", "chillyreception", "teleport"]);
 
@@ -1354,6 +1559,10 @@ export function powerAgainst(move: FighterMove, user: Fighter, foe: Fighter): nu
       return Math.min(350, 50 + 50 * user.timesHit);
     case "brine":
       return foe.hp * 2 <= foe.maxHp ? p * 2 : p;
+    case "knockoff":
+      return removable(foe) ? Math.floor(p * 1.5) : p;
+    case "acrobatics":
+      return user.item ? p : p * 2;
     default:
       return p;
   }
@@ -1412,6 +1621,17 @@ function afterHit(st: BattleState, side: Side, move: FighterMove, hitSub: boolea
       foe.boosts = { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
       events.push({ kind: "effect", side: foeSide, effect: "stats-reset" });
     }
+    // Knock Off removes the item; Thief and Covet take it; Bug Bite, Pluck and Incinerate get rid of a berry.
+    if (move.id === "knockoff" && removable(foe)) consumeItem(st, foeSide, "knocked-off", events);
+    if ((move.id === "thief" || move.id === "covet") && !user.item && user.hp > 0 && removable(foe)) {
+      events.push({ kind: "held", side: foeSide, item: foe.itemName, effect: "stolen" });
+      user.item = foe.item;
+      user.itemName = foe.itemName;
+      loseItem(foe);
+    }
+    if ((move.id === "bugbite" || move.id === "pluck" || move.id === "incinerate") && isBerry(foe.item) && removable(foe)) {
+      consumeItem(st, foeSide, "eaten", events);
+    }
   }
   if ((move.id === "rapidspin" || move.id === "mortalspin") && user.hp > 0) {
     if (clearHazards(st.field[side])) events.push({ kind: "effect", side, effect: "hazards-gone" });
@@ -1461,9 +1681,10 @@ function enterField(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]
       events.push({ kind: "cure", side });
     }
   }
-  // 1/8 of the max HP, scaled by how well Rock hits it.
-  if (field.stealthRock && f.hp > 0) hurt(st, side, (f.maxHp * effectiveness("rock", f.types)) / 8, "stealthrock", events);
-  if (grounded(f)) {
+  // Heavy-Duty Boots ignore hazards. Stealth Rock: 1/8 of the max HP, scaled by how well Rock hits it.
+  const boots = f.item === "heavydutyboots";
+  if (field.stealthRock && f.hp > 0 && !boots) hurt(st, side, (f.maxHp * effectiveness("rock", f.types)) / 8, "stealthrock", events);
+  if (grounded(f) && !boots) {
     if (field.spikes > 0 && f.hp > 0) hurt(st, side, f.maxHp / [8, 6, 4][field.spikes - 1], "spikes", events);
     if (field.toxicSpikes > 0 && f.hp > 0) {
       if (f.types.includes("poison")) {
@@ -1555,10 +1776,20 @@ function onEntry(st: BattleState, side: Side, events: BattleEvent[]) {
   const weather = WEATHER_SETTERS[f.ability];
   if (weather && st.weather?.kind !== weather) {
     reveal(st, side, events);
-    st.weather = { kind: weather, turns: WEATHER_TURNS };
+    st.weather = { kind: weather, turns: weatherTurns(f, weather) };
     events.push({ kind: "weather", side, weather, ended: false });
   }
+  if (f.item === "airballoon") events.push({ kind: "held", side, item: f.itemName, effect: "air-balloon" });
+  // Booster Energy powers Protosynthesis (without sun) or Quark Drive.
+  if (f.item === "boosterenergy" && ((f.ability === "protosynthesis" && weatherOf(st) !== "sun") || f.ability === "quarkdrive")) {
+    consumeItem(st, side, "booster-energy", events);
+    f.boosterEnergy = true;
+  }
+  checkItems(st, events);
 }
+
+/** Weather lasts 8 turns with the matching rock, 5 otherwise. */
+const weatherTurns = (f: Fighter, weather: Weather) => (WEATHER_ROCKS[f.item] === weather ? 8 : WEATHER_TURNS);
 
 const SLOW_START_TURNS = 5;
 
@@ -1580,6 +1811,7 @@ function startEntries(st: BattleState, events: BattleEvent[]) {
   const weather = weatherOf(st);
   const order: Side[] = effectiveSpeed(st.b, weather) > effectiveSpeed(st.a, weather) ? ["b", "a"] : ["a", "b"];
   for (const side of order) onEntry(st, side, events);
+  checkItems(st, events);
 }
 
 function confuse(f: Fighter, side: Side, rng: Rng, events: BattleEvent[], fatigue: boolean) {
@@ -1636,6 +1868,18 @@ function foeStatusMove(st: BattleState, side: Side, move: FighterMove, events: B
     case "transform":
       if (!transform(st, side, events)) fail();
       return;
+    case "trick":
+    case "switcheroo": {
+      // Swaps held items (a Choice item handed over locks the foe in).
+      if ((!user.item && !foe.item) || foe.ability === "stickyhold" || user.ability === "stickyhold") return fail();
+      events.push({ kind: "held", side, item: user.itemName || foe.itemName, effect: "trick" });
+      const mine = { item: user.item, itemName: user.itemName };
+      Object.assign(user, { item: foe.item, itemName: foe.itemName, choiceLock: null });
+      Object.assign(foe, { ...mine, choiceLock: null });
+      if (!user.item && user.ability === "unburden") user.unburden = true;
+      if (!foe.item && foe.ability === "unburden") foe.unburden = true;
+      return;
+    }
   }
 }
 
@@ -1765,7 +2009,7 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
       const key = move.id === "reflect" ? "reflect" : move.id === "lightscreen" ? "lightScreen" : "auroraVeil";
       // Aurora Veil only works in snow.
       if (field[key] > 0 || (move.id === "auroraveil" && weatherOf(st) !== "snow")) return fail(), true;
-      field[key] = SCREEN_TURNS;
+      field[key] = user.item === "lightclay" ? 8 : SCREEN_TURNS;
       events.push({ kind: "effect", side, effect: move.id === "reflect" ? "reflect" : move.id === "lightscreen" ? "light-screen" : "aurora-veil" });
       return true;
     }
@@ -1793,7 +2037,7 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
     case "chillyreception":
       // Snow, then the user switches out.
       if (st.weather?.kind !== "snow") {
-        st.weather = { kind: "snow", turns: WEATHER_TURNS };
+        st.weather = { kind: "snow", turns: weatherTurns(user, "snow") };
         events.push({ kind: "weather", side, weather: "snow", ended: false });
       }
       requestPivot(st, side);
@@ -1814,7 +2058,7 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
     case "hail": {
       const kind = WEATHER_MOVES[move.id];
       if (st.weather?.kind === kind) return fail(), true;
-      st.weather = { kind, turns: WEATHER_TURNS };
+      st.weather = { kind, turns: weatherTurns(user, kind) };
       events.push({ kind: "weather", side, weather: kind, ended: false });
       return true;
     }
@@ -1921,6 +2165,26 @@ function residual(st: BattleState, side: Side, events: BattleEvent[]) {
     events.push({ kind: "residual", side, status: f.status, amount, hp: f.hp });
   }
   if (f.hp > 0 && f.cursed) hurt(st, side, f.maxHp / 4, "curse", events);
+}
+
+/** Leftovers, Black Sludge and the status Orbs at the end of the turn. */
+function itemEndOfTurn(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]) {
+  const f = st[side];
+  if (f.hp <= 0) return;
+  if (f.item === "leftovers" || (f.item === "blacksludge" && f.types.includes("poison"))) {
+    if (f.hp < f.maxHp) {
+      events.push({ kind: "held", side, item: f.itemName, effect: "leftovers" });
+      heal(st, side, f.maxHp / 16, events);
+    }
+  } else if (f.item === "blacksludge") {
+    hurt(st, side, f.maxHp / 8, "black-sludge", events);
+  } else if ((f.item === "flameorb" || f.item === "toxicorb") && !f.status) {
+    const status = f.item === "flameorb" ? "brn" : "tox";
+    if (canInflict(status, f) && !statusBlocked(f, status, weatherOf(st))) {
+      events.push({ kind: "held", side, item: f.itemName, effect: "orb" });
+      tryStatus(st, side, status, rng, events, false);
+    }
+  }
 }
 
 /** End-of-turn abilities. `fresh`: it came in this turn (Speed Boost waits a turn). */
@@ -2069,7 +2333,15 @@ function doSwitch(st: BattleState, side: Side, index: number, forced: boolean, e
     events.push({ kind: "cure", side });
   }
   if (out.transformed) Object.assign(out, { types: out.transformed.types, stats: out.transformed.stats, moves: out.transformed.moves });
-  Object.assign(out, { ability: out.baseAbility.id, abilityName: out.baseAbility.name, flashFire: false, slowStart: 0, loafing: false });
+  Object.assign(out, {
+    ability: out.baseAbility.id,
+    abilityName: out.baseAbility.name,
+    flashFire: false,
+    slowStart: 0,
+    loafing: false,
+    choiceLock: null,
+    unburden: false,
+  });
   Object.assign(out, {
     boosts: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     toxicTurns: 0,
@@ -2178,7 +2450,7 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
       : f.charging !== null
         ? f.moves[f.charging]
         : typeof choice === "number"
-          ? resolveMove(f, f.encore ? f.encore.index : choice)
+          ? resolveMove(f, f.encore ? f.encore.index : f.choiceLock !== null && f.moves[f.choiceLock]?.ppLeft > 0 ? f.choiceLock : choice)
           : null;
   const moves = { a: pick(st.a, choices.a), b: pick(st.b, choices.b) };
 
@@ -2221,6 +2493,7 @@ function continueTurn(st: BattleState, plan: TurnPlan, rng: Rng, events: BattleE
     if (st[side].hp <= 0 || plan.fresh.includes(side) || events.some((e) => e.kind === "switch" && e.side === side)) continue;
     const foeMovesLater = i === 0 && plan.order.length === 2;
     performMove(st, side, moveOf(side)!, rng, events, foeMovesLater, moveOf(other(side)));
+    checkItems(st, events);
     if (checkFaints(st, events, [other(side), side])) {
       st.pending = null;
       return { state: st, events };
@@ -2236,6 +2509,8 @@ function continueTurn(st: BattleState, plan: TurnPlan, rng: Rng, events: BattleE
   for (const side of endOrder) residual(st, side, events);
   const fresh = [...plan.fresh, ...switchedThisTurn(events)];
   for (const side of endOrder) abilityEndOfTurn(st, side, fresh.includes(side), rng, events);
+  for (const side of endOrder) itemEndOfTurn(st, side, rng, events);
+  checkItems(st, events);
   if (!checkFaints(st, events, endOrder)) {
     for (const side of endOrder) countdowns(st, side, rng, events);
     fieldCountdowns(st, events);
