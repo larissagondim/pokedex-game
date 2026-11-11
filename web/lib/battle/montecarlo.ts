@@ -6,9 +6,9 @@ const MAX_TURNS = 60;
 
 /** Plays the battle out with the AI on both sides: 1 if A wins, 0 if B wins, 0.5 for a draw. */
 function playOut(start: BattleState, limit: number, rng: Rng): number {
-  let st = replaceFainted(start);
+  let st = replaceFainted(start, ["a", "b"], rng);
   while (!st.winner && st.turn < limit) {
-    st = replaceFainted(runTurn(st, chooseAction(st, "a", rng), chooseAction(st, "b", rng), rng).state);
+    st = replaceFainted(runTurn(st, chooseAction(st, "a", rng), chooseAction(st, "b", rng), rng).state, ["a", "b"], rng);
   }
   return st.winner === "a" ? 1 : st.winner === "b" ? 0 : 0.5;
 }
@@ -39,7 +39,7 @@ export function choiceWinChance(state: BattleState, choice: Choice, runs = 200, 
   const limit = turnLimit(state);
   let wins = 0;
   for (let r = 0; r < runs; r++) {
-    const st = replaceFainted(state, ["b"]);
+    const st = replaceFainted(state, ["b"], rng);
     wins += playOut(runTurn(st, choice, chooseAction(st, "b", rng), rng).state, limit, rng);
   }
   return wins / runs;

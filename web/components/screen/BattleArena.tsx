@@ -16,6 +16,7 @@ import {
   type ItemId,
   ITEMS,
   needsReplacement,
+  resolvePivot,
   runTurn,
   type Side,
   switchIn,
@@ -203,7 +204,8 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
       if (f.hp <= 0 || (isForced && i === 0)) return null;
       if (i === 0) return (runs) => winChance(st, runs);
       if (isForced) {
-        const sent = switchIn(st, "a", i - 1).state;
+        // A pivot finishes the turn with that Pokémon in; a faint just sends it out.
+        const sent = st.pending ? resolvePivot(st, i - 1).state : switchIn(st, "a", i - 1).state;
         return (runs) => winChance(sent, runs);
       }
       return (runs) => choiceWinChance(st, { switchTo: i - 1 }, runs);
@@ -356,6 +358,20 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     setBattle(final);
     setView(viewOf(final));
     if (final.winner) return gameOver(final);
+    // A pivot (U-turn...) paused the turn: whoever used it picks who comes in.
+    if (final.pending?.side === "a") {
+      updateLive(final);
+      estimateParty(final, true);
+      setForced(true);
+      setCursor((c) => ({ ...c, party: 1 + final.bench.a.findIndex((f) => f.hp > 0) }));
+      setPhase("party");
+      onNotice(`Who will replace ${nameOf(final.a.dexId)}? A: send out`);
+      return;
+    }
+    if (final.pending?.side === "b") {
+      const { state, events } = resolvePivot(final, chooseReplacement(final.bench.b, final.a));
+      return play(events, state);
+    }
     // Your Pokémon fainted: choose the next one (the foe's replacement comes after).
     if (needsReplacement(final, "a")) {
       // The live chance drops right away (assuming the best replacement).
@@ -489,6 +505,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     if (!f) return;
     if (f.hp <= 0) return onNotice(`${f.name.toUpperCase()} has no energy left to battle!`);
     if (index === 0) return onNotice(`${f.name.toUpperCase()} is already in battle!`);
+    if (forced && battle.pending) return play(...pivotTo(battle, index - 1));
     if (forced) {
       // Between turns: no turn is spent. The foe replaces its own after.
       let { state, events } = switchIn(battle, "a", index - 1);
@@ -502,6 +519,13 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     }
     if (!canSwitch(battle, "a")) return onNotice(`${nameOf(battle.a.dexId)} can't be switched out now!`);
     submit({ switchTo: index - 1 });
+  };
+
+  /** Your pivot: that Pokémon comes in and the turn goes on. */
+  const pivotTo = (st: BattleState, slot: number): [BattleEvent[], BattleState] => {
+    setForced(false);
+    const { state, events } = resolvePivot(st, slot);
+    return [events, state];
   };
 
   const moveCursor = (key: "command" | "fight" | "bag" | "party", count: number, button: DeviceButton, steps = GRID_STEPS) => {

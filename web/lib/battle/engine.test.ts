@@ -8,6 +8,7 @@ import {
   createTeamBattle,
   type Fighter,
   needsReplacement,
+  resolvePivot,
   runTurn,
   switchIn,
   turnOrder,
@@ -629,4 +630,36 @@ test("Healing Wish faints the user and fully heals the next one; Roar drags out 
   assert.ok(dragged.events.some((e) => e.kind === "switch" && e.side === "b" && e.dragged));
   assert.equal(dragged.state.b.name, "M2");
   assert.ok(runTurn(battle({ moves: [roar] }, { moves: [splash] }), 0, 0, seq([], 0.99)).events.some((e) => e.kind === "fail"));
+});
+
+// --- Pivots ---
+
+test("U-turn pauses the turn; the chosen Pokémon comes in and takes the slower foe's hit", () => {
+  const uturn = move({ id: "uturn", name: "U-turn", type: "bug", power: 70 });
+  const st = createTeamBattle(team({ moves: [uturn], stats: fast }, { types: ["ghost"] }), team({}));
+  const r = runTurn(st, 0, 0, seq([], 0.99));
+  assert.equal(r.state.pending?.side, "a");
+  assert.ok(!r.events.some((e) => e.kind === "move" && e.side === "b"), "the foe hasn't moved yet");
+  assert.equal(r.state.turn, 1);
+  const done = resolvePivot(r.state, 0, seq([], 0.99));
+  assert.equal(done.state.pending, null);
+  assert.equal(done.state.a.name, "M1");
+  // The foe's Tackle hits the Ghost that came in.
+  assert.ok(done.events.some((e) => e.kind === "no-effect" && e.side === "a"));
+  assert.equal(done.state.turn, 2);
+  assert.equal(done.state.a.turnsActive, 0);
+  // runTurn waits until the pivot is resolved.
+  assert.deepEqual(runTurn(r.state, 0, 0).events, []);
+});
+
+test("alone, U-turn is just an attack; Parting Shot lowers the foe's stats before switching", () => {
+  const uturn = move({ id: "uturn", name: "U-turn", type: "bug", power: 70 });
+  assert.equal(runTurn(battle({ moves: [uturn] }, {}), 0, 0, seq([], 0.99)).state.pending, null);
+  const shot = status("partingshot", "Parting Shot", { type: "dark", flags: ["sound", "bypasssub"] });
+  const st = createTeamBattle(team({ moves: [shot], stats: fast }, {}), team({}));
+  const r = runTurn(st, 0, 0, seq([], 0.99));
+  assert.deepEqual([r.state.b.boosts.atk, r.state.b.boosts.spa], [-1, -1]);
+  assert.equal(r.state.pending?.side, "a");
+  // The AI (and the simulations) settle a pending pivot with its best matchup.
+  assert.equal(replaceFainted(r.state).pending, null);
 });

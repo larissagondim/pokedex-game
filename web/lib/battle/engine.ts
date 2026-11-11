@@ -18,7 +18,10 @@ import type { BattleMove, BattlePokemon, Boosts, StatName, Status } from "./type
  * Sticky Web) and the moves that clear them, Reflect / Light Screen / Aurora
  * Veil, Wish, Healing Wish, Roar / Whirlwind / Dragon Tail, Trick Room and
  * weather (sun, rain, sand, snow) with its effects on damage, accuracy,
- * healing and Weather Ball. Other effects just fail.
+ * healing and Weather Ball. Pivots (U-turn, Volt Switch, Flip Turn, Parting
+ * Shot, Chilly Reception, Teleport) pause the turn: `state.pending` says who
+ * must pick a replacement, and `resolvePivot` finishes the turn. Other effects
+ * just fail.
  *
  * Teams: each side has one Pokémon out (`a` / `b`) and the rest on its
  * `bench`. Switching and using an item take the whole turn and go before any
@@ -79,6 +82,8 @@ export interface Fighter {
   /** Transform: the species it looks like and what it had before (restored on switching out). */
   transformed: { dexId: number; types: string[]; stats: Record<StatName, number>; moves: FighterMove[] } | null;
   weight: number;
+  /** Its faint has been announced. */
+  down: boolean;
   /** Per-turn flags. */
   protected: boolean;
   flinched: boolean;
@@ -128,7 +133,21 @@ export interface BattleState {
   weather: { kind: Weather; turns: number } | null;
   /** Turns of Trick Room left (slower Pokémon move first). */
   trickRoom: number;
+  /** A turn paused by a pivot move: `side` picks who comes in (`resolvePivot`). */
+  pending: { side: Side; plan: TurnPlan } | null;
   winner: Side | null;
+}
+
+/** The rest of a turn, kept while it's paused. */
+export interface TurnPlan {
+  order: Side[];
+  /** Move index each side is using (−1: Struggle; null: it switched or used an item). */
+  moves: Record<Side, number | null>;
+  /** Where in `order` to pick up. */
+  next: number;
+  /** Sides that brought a Pokémon in this turn. */
+  fresh: Side[];
+  speedOrder: Side[];
 }
 
 /** A move (its index), a switch to a bench slot, or an item on the active Pokémon. */
@@ -276,6 +295,7 @@ export function createFighter(p: BattlePokemon): Fighter {
     magnetRise: 0,
     transformed: null,
     weight: p.weight ?? 50,
+    down: false,
     protected: false,
     flinched: false,
     moves: p.moves.map((m) => ({ ...m, ppLeft: m.pp })),
@@ -308,6 +328,7 @@ export const createTeamBattle = (a: BattlePokemon[], b: BattlePokemon[]): Battle
   field: { a: emptyField(), b: emptyField() },
   weather: null,
   trickRoom: 0,
+  pending: null,
   winner: null,
 });
 
@@ -438,7 +459,7 @@ export const effectivenessOn = (type: string, target: Pick<Fighter, "types" | "m
 export const bypassesSub = (move: Pick<FighterMove, "flags">) => !!move.flags?.some((f) => f === "bypasssub" || f === "sound");
 
 /** Status moves aimed at the foe that the generic effects below don't cover. */
-const FOE_STATUS = new Set(["encore", "taunt", "yawn", "strengthsap", "transform"]);
+const FOE_STATUS = new Set(["encore", "taunt", "yawn", "strengthsap", "transform", "partingshot"]);
 
 /** Moves Sleep Talk can't call. */
 const NO_SLEEP_TALK = new Set(["sleeptalk", "rest", "bellydrum", "focuspunch", "uproar", "solarbeam", "solarblade", "skyattack", "meteorbeam"]);
@@ -783,6 +804,17 @@ function executeMove(
   }
 }
 
+/** Moves that switch the user out afterwards. */
+export const PIVOTS = new Set(["uturn", "voltswitch", "flipturn", "partingshot", "chillyreception", "teleport"]);
+
+/** Whether `side` can pivot out (it's still standing and has someone to send in). */
+const canPivot = (st: BattleState, side: Side) => st[side].hp > 0 && st.bench[side].some((f) => f.hp > 0);
+
+/** Pauses the turn after this move so `side` can pick who comes in (the plan is filled in by `continueTurn`). */
+function requestPivot(st: BattleState, side: Side) {
+  if (canPivot(st, side) && !st.winner) st.pending = { side, plan: null as unknown as TurnPlan };
+}
+
 /** Brick Break and Psychic Fangs shatter screens before they hit. */
 const SCREEN_BREAKERS = new Set(["brickbreak", "psychicfangs", "ragingbull"]);
 /** Damaging moves that drag the target out (Dragon Tail...). */
@@ -805,6 +837,7 @@ function afterHit(st: BattleState, side: Side, move: FighterMove, hitSub: boolea
     events.push({ kind: "effect", side: foeSide, effect: "stealth-rock" });
   }
   if (DRAGGERS.has(move.id) && !hitSub && st[foeSide].hp > 0 && user.hp > 0) drag(st, foeSide, rng, events);
+  if (PIVOTS.has(move.id)) requestPivot(st, side);
 }
 
 /** Removes the hazards on one side; true if there were any. */
@@ -903,6 +936,11 @@ function foeStatusMove(st: BattleState, side: Side, move: FighterMove, events: B
       if (user.hp < user.maxHp) heal(st, side, attack, events);
       return;
     }
+    case "partingshot":
+      // Lowers the foe's attacking stats, then the user switches out.
+      applyBoosts(st, foeSide, { atk: -1, spa: -1 }, events);
+      requestPivot(st, side);
+      return;
     case "transform": {
       if (user.transformed || foe.transformed) return fail();
       user.transformed = { dexId: foe.dexId, types: user.types, stats: user.stats, moves: user.moves };
@@ -1016,7 +1054,7 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
       const foeField = st.field[foeSide];
       const screens = foeField.reflect || foeField.lightScreen || foeField.auroraVeil;
       Object.assign(foeField, { reflect: 0, lightScreen: 0, auroraVeil: 0 });
-      const cleared = clearHazards(st.field[side]) || clearHazards(foeField);
+      const cleared = [clearHazards(st.field[side]), clearHazards(foeField)].some(Boolean);
       if (cleared || screens) events.push({ kind: "effect", side, effect: "hazards-gone" });
       else fail();
       return true;
@@ -1048,6 +1086,18 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
     case "roar":
     case "whirlwind":
       if (!drag(st, foeSide, rng, events)) fail();
+      return true;
+    case "teleport":
+      if (!canPivot(st, side)) fail();
+      else requestPivot(st, side);
+      return true;
+    case "chillyreception":
+      // Snow, then the user switches out.
+      if (st.weather?.kind !== "snow") {
+        st.weather = { kind: "snow", turns: WEATHER_TURNS };
+        events.push({ kind: "weather", side, weather: "snow", ended: false });
+      }
+      requestPivot(st, side);
       return true;
     case "trickroom":
       if (st.trickRoom > 0) {
@@ -1090,14 +1140,17 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
       }
       applyBoosts(st, side, { spa: 1, spd: 1 }, events);
       return true;
-    case "tidyup":
-      if (user.substitute > 0 || foe.substitute > 0) {
+    case "tidyup": {
+      // Clears hazards on both sides and every Substitute.
+      const hazards = [clearHazards(st.field.a), clearHazards(st.field.b)].some(Boolean);
+      if (hazards || user.substitute > 0 || foe.substitute > 0) {
         user.substitute = 0;
         foe.substitute = 0;
         events.push({ kind: "effect", side, effect: "tidy-up" });
       }
       applyBoosts(st, side, { atk: 1, spe: 1 }, events);
       return true;
+    }
     case "destinybond":
       user.destinyBond = true;
       events.push({ kind: "effect", side, effect: "destiny-bond" });
@@ -1133,6 +1186,7 @@ function performSpecial(st: BattleState, side: Side, move: FighterMove, rng: Rng
       } else {
         fallen.hp = Math.floor(fallen.maxHp / 2);
         fallen.status = null;
+        fallen.down = false;
         events.push({ kind: "revive", side, name: fallen.name });
       }
       return true;
@@ -1218,7 +1272,8 @@ function countdowns(st: BattleState, side: Side, rng: Rng, events: BattleEvent[]
 /** Records faints; returns true if the battle is over. */
 function checkFaints(st: BattleState, events: BattleEvent[], order: Side[]): boolean {
   for (const side of order) {
-    if (st[side].hp <= 0 && !events.some((e) => e.kind === "faint" && e.side === side)) {
+    if (st[side].hp <= 0 && !st[side].down) {
+      st[side].down = true;
       events.push({ kind: "faint", side });
       // A side with nobody left loses; if both run out, the one that fell last wins.
       if (remaining(st, side) === 0) st.winner = remaining(st, other(side)) > 0 ? other(side) : side;
@@ -1315,12 +1370,13 @@ function legalChoice(st: BattleState, side: Side, choice: Choice): Choice {
  * Plays one turn. Each side picks a move index (Struggle if out of PP), a
  * switch or an item; switches and items go first (the faster side first),
  * then the moves. Fainted Pokémon must be replaced with `switchIn` before the
- * next turn. Doesn't mutate `state`.
+ * next turn, and a pivot pauses the turn until `resolvePivot`. Doesn't mutate
+ * `state`.
  */
 export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rng: Rng = Math.random): { state: BattleState; events: BattleEvent[] } {
   const st: BattleState = structuredClone(state);
   const events: BattleEvent[] = [];
-  if (st.winner) return { state: st, events };
+  if (st.winner || st.pending) return { state: st, events };
 
   for (const f of [st.a, st.b]) {
     f.protected = false;
@@ -1334,14 +1390,14 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
 
   // Switches and items: before any move, the faster side first.
   const speedOrder: Side[] = effectiveSpeed(st.b) > effectiveSpeed(st.a) ? ["b", "a"] : ["a", "b"];
-  const fresh = new Set<Side>();
+  const fresh: Side[] = [];
   for (const side of speedOrder) {
     const choice = choices[side];
     if (typeof choice === "number") continue;
     if ("switchTo" in choice) {
       doSwitch(st, side, choice.switchTo, false, events);
       enterField(st, side, rng, events);
-      fresh.add(side);
+      fresh.push(side);
     } else {
       applyItem(st, side, choice.item, events);
     }
@@ -1351,13 +1407,35 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
 
   const movers = (["a", "b"] as Side[]).filter((side) => moves[side]);
   const order = movers.length === 2 ? turnOrder(st, moves.a!, moves.b!, rng) : movers;
-  for (const [i, side] of order.entries()) {
-    if (st[side].hp <= 0) continue;
-    const foeMovesLater = i === 0 && order.length === 2;
-    performMove(st, side, moves[side]!, rng, events, foeMovesLater, moves[other(side)]);
-    if (checkFaints(st, events, [other(side), side])) return { state: st, events };
+  const indexOf = (side: Side) => {
+    const m = moves[side];
+    return m ? (m === STRUGGLE ? -1 : st[side].moves.indexOf(m)) : null;
+  };
+  return continueTurn(st, { order, moves: { a: indexOf("a"), b: indexOf("b") }, next: 0, fresh, speedOrder }, rng, events);
+}
+
+/** The moves from `plan.next` on, then the end of the turn. Pauses again on a pivot. */
+function continueTurn(st: BattleState, plan: TurnPlan, rng: Rng, events: BattleEvent[]): { state: BattleState; events: BattleEvent[] } {
+  const moveOf = (side: Side) => {
+    const index = plan.moves[side];
+    return index === null ? null : index < 0 ? STRUGGLE : st[side].moves[index];
+  };
+  for (let i = plan.next; i < plan.order.length; i++) {
+    const side = plan.order[i];
+    // Fainted, or dragged out / switched in earlier this turn: no move.
+    if (st[side].hp <= 0 || plan.fresh.includes(side) || events.some((e) => e.kind === "switch" && e.side === side)) continue;
+    const foeMovesLater = i === 0 && plan.order.length === 2;
+    performMove(st, side, moveOf(side)!, rng, events, foeMovesLater, moveOf(other(side)));
+    if (checkFaints(st, events, [other(side), side])) {
+      st.pending = null;
+      return { state: st, events };
+    }
+    if (st.pending) {
+      st.pending.plan = { ...plan, next: i + 1, fresh: [...plan.fresh, ...switchedThisTurn(events)] };
+      return { state: st, events };
+    }
   }
-  const endOrder = order.length === 2 ? order : speedOrder;
+  const endOrder = plan.order.length === 2 ? plan.order : plan.speedOrder;
   for (const side of endOrder) weatherDamage(st, side, events);
   for (const side of endOrder) wish(st, side, events);
   for (const side of endOrder) residual(st, side, events);
@@ -1366,7 +1444,29 @@ export function runTurn(state: BattleState, choiceA: Choice, choiceB: Choice, rn
     fieldCountdowns(st, events);
   }
   // A Pokémon that came in this turn hasn't had its first turn yet (Fake Out still works).
-  for (const side of ["a", "b"] as Side[]) if (!fresh.has(side)) st[side].turnsActive++;
+  const fresh = [...plan.fresh, ...switchedThisTurn(events)];
+  for (const side of ["a", "b"] as Side[]) if (!fresh.includes(side)) st[side].turnsActive++;
   st.turn++;
   return { state: st, events };
+}
+
+const switchedThisTurn = (events: BattleEvent[]) => events.flatMap((e) => (e.kind === "switch" ? [e.side] : []));
+
+/**
+ * Finishes a turn paused by a pivot: the pivoting side sends out bench slot
+ * `index`, then the rest of the turn plays. Doesn't mutate `state`.
+ */
+export function resolvePivot(state: BattleState, index: number, rng: Rng = Math.random): { state: BattleState; events: BattleEvent[] } {
+  const st: BattleState = structuredClone(state);
+  const events: BattleEvent[] = [];
+  const pending = st.pending;
+  if (!pending) return { state: st, events };
+  st.pending = null;
+  const slot = st.bench[pending.side][index]?.hp > 0 ? index : st.bench[pending.side].findIndex((f) => f.hp > 0);
+  if (slot >= 0) {
+    doSwitch(st, pending.side, slot, false, events);
+    enterField(st, pending.side, rng, events);
+    if (checkFaints(st, events, [pending.side])) return { state: st, events };
+  }
+  return continueTurn(st, { ...pending.plan, fresh: [...pending.plan.fresh, pending.side] }, rng, events);
 }

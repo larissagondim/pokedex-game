@@ -12,6 +12,7 @@ import {
   type FighterMove,
   moveImmune,
   needsReplacement,
+  resolvePivot,
   type Rng,
   type Side,
   stageMultiplier,
@@ -76,7 +77,7 @@ function damageIfHits(m: FighterMove, me: Fighter, foe: Fighter, ctx?: AiContext
 
 const HALF_HEALS = new Set(["synthesis", "moonlight", "morningsun", "shoreup"]);
 /** Status moves aimed at the foe (a Substitute blocks them unless they go through it). */
-const AIMED = new Set(["encore", "taunt", "yawn", "strengthsap", "transform"]);
+const AIMED = new Set(["encore", "taunt", "yawn", "strengthsap", "transform", "partingshot"]);
 const statusOf = (m: FighterMove) => m.category === "status" && m.fixedDamage === undefined;
 
 const HAZARDS = new Set(["stealthrock", "spikes", "toxicspikes", "stickyweb"]);
@@ -122,6 +123,11 @@ function fieldUseful(m: FighterMove, me: Fighter, foe: Fighter, ctx: AiContext):
       return foeBench && (Object.values(foe.boosts).reduce((a, b) => a + b, 0) > 0 || theirs.stealthRock || theirs.spikes > 0);
     case "trickroom":
       return st.trickRoom === 0 && effectiveSpeed(me) < effectiveSpeed(foe);
+    case "partingshot":
+    case "teleport":
+    case "chillyreception":
+      // Worth it to get out of a losing matchup.
+      return st.bench[side].some((f) => f.hp > 0) && matchup(me, foe) < 0;
   }
   return false;
 }
@@ -291,8 +297,15 @@ export function chooseAction(st: BattleState, side: Side, rng: Rng = Math.random
   return chooseMove(me, foe, rng, { st, side });
 }
 
-/** Sends out the best replacement for every fainted Pokémon (both sides). */
-export function replaceFainted(st: BattleState, sides: Side[] = ["a", "b"]): BattleState {
+/**
+ * Finishes a turn paused by a pivot (the best matchup comes in), then sends
+ * out the best replacement for every fainted Pokémon (both sides).
+ */
+export function replaceFainted(st: BattleState, sides: Side[] = ["a", "b"], rng: Rng = Math.random): BattleState {
+  while (st.pending) {
+    const { side } = st.pending;
+    st = resolvePivot(st, chooseReplacement(st.bench[side], st[side === "a" ? "b" : "a"]), rng).state;
+  }
   for (const side of sides) {
     if (needsReplacement(st, side)) st = switchIn(st, side, chooseReplacement(st.bench[side], st[side === "a" ? "b" : "a"])).state;
   }
