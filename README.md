@@ -4,7 +4,7 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 
 > Non-profit fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company. See the [legal notice](#legal-notice).
 
-**Status:** in development. The scraper, the 3D device, the Pokédex, the Tamagotchi, the trainer profile and 1v1 / 3v3 / 6v6 battles with win prediction are working. Docker and a database are planned (marked _(planned)_ below).
+**Status:** in development. The scraper, the 3D device, the Pokédex, the Tamagotchi, the trainer profile and 1v1 / 3v3 / 6v6 battles with win prediction are working, the whole stack runs with Docker Compose, and the Tamagotchi syncs across devices through Postgres.
 
 ## Table of contents
 
@@ -96,21 +96,21 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 flowchart LR
     U["Browser"] -->|HTTP| W["web<br/>Next.js + R3F<br/>battle engine in TS"]
     W -.->|REST, optional| M["ml<br/>FastAPI + model"]
-    W -.->|SQL, planned| D[("db<br/>Postgres")]
+    W -.->|SQL, optional| D[("db<br/>Postgres")]
     M -.->|simulated battle dataset| S["@pkmn/sim<br/>dataset generator only"]
     P["PokéAPI + Showdown"] -->|scrape_pokemon.py| J["data/pokemon.json<br/>sprites/ animated/ artwork/"]
     J -->|sync-assets.mjs| W
     J --> M
 ```
 
-The battle engine and the win model run in the browser, so no API routes are needed. The FastAPI service is optional, and Postgres is planned for persistence (for now the Tamagotchi, favorites and trainer live in `localStorage`).
+The battle engine and the win model run in the browser, and everything is saved in `localStorage`, so the app works with no backend at all. Two services are optional: FastAPI for the win model, and Postgres for the Tamagotchi sync (one route handler, `web/app/api/tamagotchi`).
 
 Inside `web`, the code is split into four layers:
 
-- **Stores (zustand):** `deviceInput` (button events, repeat, subscriptions), `deviceState` (phase machine `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex`, `favorites`, `tamagotchi`, `battleRecord` and `audio`.
+- **Stores (zustand):** `deviceInput` (button events, repeat, subscriptions), `deviceState` (phase machine `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex`, `favorites`, `tamagotchi`, `tamaSync`, `battleRecord` and `audio`.
 - **Device (`components/device`):** procedural 3D shell, hinge, buttons and camera rig, loaded lazily.
 - **Screen (`components/screen`):** the 2D UI rendered inside the main screen. It subscribes to input with higher priority than the device controller, so the UI gets the first say on each button.
-- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing, fun facts, Tamagotchi rules, trainer, sound and music synthesis, the battle engine (rules, AI, Monte Carlo) and the battle features shared with the ML pipeline.
+- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing, fun facts, Tamagotchi rules, trainer, sound and music synthesis, the Tamagotchi sync protocol, the battle engine (rules, AI, Monte Carlo) and the battle features shared with the ML pipeline.
 
 ## Tech stack
 
@@ -119,8 +119,8 @@ Inside `web`, the code is split into four layers:
 | Front end | Next.js 16 (App Router), React 19, TypeScript, React Three Fiber, drei, three.js, camera-controls, zustand |
 | Battle | Own TypeScript engine; `@pkmn/sim` only to generate the ML dataset |
 | ML | Python, scikit-learn, pandas, FastAPI; Node dataset generator with `@pkmn/sim` |
-| Persistence | `localStorage` today; Postgres _(planned)_ |
-| Infrastructure | Docker and Docker Compose _(planned)_ |
+| Persistence | `localStorage`; Postgres (`pg`) for the Tamagotchi sync, optional |
+| Infrastructure | Docker and Docker Compose |
 | Data scraping | Python 3, standard library only |
 
 ## Project structure
@@ -132,7 +132,7 @@ pokedex-game/
 ├── sprites/  artwork/      # static sprites (with back views) and official artwork
 ├── animated/               # animated sprites (git-ignored)
 ├── web/                    # Next.js app
-│   ├── app/                # App Router entry
+│   ├── app/                # App Router entry, api/tamagotchi (sync)
 │   ├── components/
 │   │   ├── device/         # 3D shell; all measurements in device.config.ts
 │   │   └── screen/         # UI inside the 4:3 screen
@@ -147,7 +147,7 @@ pokedex-game/
 │   ├── tests/              # pytest
 │   └── reports/            # metrics
 ├── CLAUDE.md               # conventions for coding agents
-├── docker-compose.yml      # (planned)
+├── docker-compose.yml      # web + ml + db
 └── README.md
 ```
 
@@ -191,18 +191,32 @@ npm run start    # serve the production build
 
 The app already ships the exported model. To retrain it or serve it through FastAPI, follow [`ml/README.md`](ml/README.md). With the service on port 8000, set `NEXT_PUBLIC_ML_API_URL` (default `http://localhost:8000`).
 
-### 4. Full stack with Docker _(planned)_
+### 4. Full stack with Docker
+
+Requires Docker with Compose, and the scraped data (step 1; `animated/` is optional).
 
 ```bash
 cp .env.example .env
-docker compose up
+docker compose up --build      # http://localhost:3000
 ```
+
+This starts three services: `web` (the Next.js standalone server, [`web/Dockerfile`](web/Dockerfile)), `ml` (FastAPI, [`ml/Dockerfile`](ml/Dockerfile)) and `db` (Postgres 17, data in the `db-data` volume). The tables are created on the first request.
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Postgres connection |
-| `ML_API_URL` | URL of the FastAPI service used by `web` |
+| `DATABASE_URL` | Postgres connection used by `web` |
+| `ML_API_URL` | URL of the FastAPI service as seen from the browser (inlined when `web` is built; empty = model in the browser) |
+| `CORS_ORIGINS` | Origins allowed to call the `ml` service |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Credentials for the `db` service |
+| `WEB_PORT` / `ML_PORT` / `DB_PORT` | Host ports (3000, 8000, 5433) |
+
+To use the database from `npm run dev`, start only `db` (`docker compose up -d db`) and set `DATABASE_URL` in `web/.env.local` (see [`web/.env.example`](web/.env.example)).
+
+### Tamagotchi sync
+
+With a database, the Tamagotchi party is saved in Postgres under a **sync code** (e.g. `K7QM-2HXA-9RTB`), shown on the trainer card's DIARY page next to the party's milestones (adoptions, eggs, evolutions, level-ups). To share the party with another device, open the profile editor there and type the code in SYNC CODE; that device's own party is replaced. Without a database (e.g. a static deploy) the save and the diary stay in `localStorage`.
+
+Each write names the revision it was based on; if another device wrote first, the server's copy wins and the device takes it (`web/lib/tamaSync.ts`, tested in `tamaSync.test.ts`). The code is the only credential, so treat it like a password; the server stores just its hash.
 
 ## Controls
 
@@ -225,7 +239,7 @@ Gamepads with the standard mapping also work: D-pad or left stick, A/B, Start = 
 
 - **Battle:** pick SINGLE, TEAM (3v3) or FULL BATTLE (6v6), then your Pokémon and the opponent (A confirms, B goes back or undoes the last pick). In the arena, A starts the battle; the D-pad moves through FIGHT / BAG / POKéMON / RUN, A confirms, B goes back, and A skips messages while a turn plays. When it ends, A fights again and B returns to the lists.
 - **Tamagotchi:** ↑ ↓ pick a Pokémon, ← → pick an action, A does it, B goes back.
-- **Trainer:** A creates or edits the profile. In the editor, ↑ ↓ pick a row, ← → change it, A on NAME opens the keyboard, MENU saves and B cancels.
+- **Trainer:** ↑ ↓ flip the card's pages (stats, badges, battle history, Tamagotchi diary); A creates or edits the profile. In the editor, ↑ ↓ pick a row, ← → change it, A on NAME or SYNC CODE opens the keyboard, MENU saves and B cancels.
 
 </details>
 
@@ -288,11 +302,8 @@ Done:
 - [x] Trainer profile
 - [x] Battle engine: abilities, held items, Substitute, hazards, weather, pivots and the moves that used to fail
 - [x] 3D device polish: hinge, shell finish, buttons, LED
-
-Next:
-
-- [ ] **Phase 1:** Docker
-- [ ] **Phase 6:** Tamagotchi in Postgres (history, sync across devices)
+- [x] Docker: `web`, `ml` and `db` with Docker Compose
+- [x] Tamagotchi in Postgres: diary of milestones and sync across devices with a sync code
 
 Ideas:
 

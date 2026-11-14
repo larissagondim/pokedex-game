@@ -62,3 +62,11 @@ Guidance for coding agents working in this repo. The Next.js app lives in `web/`
 - Abilities and held items: pure modifiers in `abilities.ts` / `items.ts` (damage, speed, priority, immunities); triggered effects (on entry, on hit, end of turn, switch-out, berries) live in `engine.ts`. Field state (hazards, screens, weather, Trick Room, Tailwind) is on `BattleState`. `beginBattle` plays the leads' entry abilities (`runTurn` does it on turn 1 otherwise). A pivot move pauses the turn: `state.pending` → `resolvePivot` (`replaceFainted` in `ai.ts` settles it for the AI and simulations).
 - Teams: `createTeamBattle` puts the rest of each team on `bench`; a choice is a move index, `{ switchTo }` or `{ item }`. After a turn, a fainted active Pokémon is replaced with `switchIn` (the screen asks you; `chooseReplacement` / `replaceFainted` in `ai.ts` for the foe and simulations). 1v1 is a team of one and must keep consuming the RNG exactly as before (the ML soft labels come from it).
 - If movesets change, regenerate the pre-battle dataset and retrain/export the model (see `ml/README.md`).
+
+## Tamagotchi sync (`web/lib/tamaSync.ts`, `web/stores/tamaSync.ts`, `web/app/api/tamagotchi`)
+
+- `stores/tamagotchi.ts` stays the source of truth in the browser (localStorage). `stores/tamaSync.ts` mirrors it to Postgres through `GET`/`PUT /api/tamagotchi`, keyed by the sync code in the `X-Sync-Code` header. Without `DATABASE_URL` the route answers 503 `no-database` and the store goes quiet (`status: "off"`).
+- Writes carry the revision they were based on; a stale one gets 409 with the server's copy, which the client adopts (`nextSyncStep`). Only player actions count as changes (`changes` in the Tamagotchi store): decay from `refresh` is never pushed, and a save taken from the server goes through `replace`.
+- The diary (`HistoryEntry`) is derived by diffing the party (`diffHistory`), not emitted by each action. A new kind needs: `HISTORY_KINDS`, the diff, the tag and sentence in `DiaryPage` (`TrainerScreen.tsx`), and a test.
+- Everything that crosses the wire goes through `sanitizeSave` / `sanitizeHistory` on both ends. The schema lives in `lib/server/tamaDb.ts` and is created on first use.
+- Docker: `web/Dockerfile` builds from the repo root (it needs `data/` and `sprites/`) with `NEXT_OUTPUT=standalone`; `docker compose up --build` must keep working.
