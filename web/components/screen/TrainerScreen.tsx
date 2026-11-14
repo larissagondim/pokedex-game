@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MAX_SLOTS } from "@/lib/tamagotchi";
+import { CODE_LENGTH, formatSyncDraft, type HistoryEntry, normalizeSyncCode } from "@/lib/tamaSync";
 import {
   type Appearance,
   APPEARANCE_FIELDS,
@@ -23,6 +24,7 @@ import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { useFavorites } from "@/stores/favorites";
 import { usePokedex } from "@/stores/pokedex";
 import { useTamagotchi } from "@/stores/tamagotchi";
+import { type LinkResult, type SyncStatus, useTamaSync } from "@/stores/tamaSync";
 import { useTrainer } from "@/stores/trainer";
 import { type KeyDef, type KeyPos, keyFor, moveKey, OnScreenKeyboard } from "./OnScreenKeyboard";
 import styles from "./trainer.module.css";
@@ -32,15 +34,15 @@ import { TrainerSprite } from "./TrainerSprite";
 const INPUT_PRIORITY = 11;
 
 export const TRAINER_HINTS = {
-  card: "▲▼ stats / badges / history   A: edit your profile   ◀▶ tabs   B: back to the list",
+  card: "▲▼ stats / badges / history / diary   A: edit your profile   ◀▶ tabs   B: back to the list",
   new: "A: create your trainer profile",
   edit: "▲▼ choose   ◀▶ change   A: select   MENU: save   B: cancel",
   keyboard: "◀▲▼▶ move   A: type   B: delete   MENU: done",
 } as const;
 export type TrainerHint = keyof typeof TRAINER_HINTS;
 
-/** Editor rows: the name, each appearance field, then two actions. */
-const ROWS = ["name", ...APPEARANCE_FIELDS.map((f) => f.key), "random", "save"] as const;
+/** Editor rows: the name, each appearance field, the sync code, then two actions. */
+const ROWS = ["name", ...APPEARANCE_FIELDS.map((f) => f.key), "sync", "random", "save"] as const;
 type Row = (typeof ROWS)[number];
 
 const KEY_STEPS: Partial<Record<DeviceButton, [number, number]>> = {
@@ -53,7 +55,16 @@ const KEY_STEPS: Partial<Record<DeviceButton, [number, number]>> = {
 const wrap = (i: number, n: number) => (i + n) % n;
 
 /** Pages of the card's right panel (▲▼). */
-const PAGES = ["STATS", "BADGES", "HISTORY"] as const;
+const PAGES = ["STATS", "BADGES", "HISTORY", "DIARY"] as const;
+
+/** What the dialog box says after trying to link to another device's code. */
+const LINK_NOTICE: Record<LinkResult, string> = {
+  linked: "Linked! This device now shares that party.",
+  same: "That's this device's own code.",
+  "bad-code": `A sync code has ${CODE_LENGTH} letters and digits.`,
+  "not-found": "No party uses that code. Check it on the other device.",
+  unavailable: "Couldn't reach the server. Try again later.",
+};
 
 /** Screen pixels per sprite pixel on the card. */
 const SPRITE_SCALE = 3.4;
@@ -79,6 +90,10 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [row, setRow] = useState(0);
   const [keyPos, setKeyPos] = useState<KeyPos | null>(null);
+  /** Another device's sync code being typed (the SYNC CODE row). */
+  const [syncDraft, setSyncDraft] = useState("");
+  /** A typed code waiting for "A: yes" (linking replaces this device's party). */
+  const [linkConfirm, setLinkConfirm] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const editor = useRef<HTMLUListElement>(null);
 
@@ -123,6 +138,7 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
   const cancel = () => {
     setDraft(null);
     setKeyPos(null);
+    setSyncDraft("");
   };
   const save = () => {
     if (!draft) return;
@@ -140,19 +156,45 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
     onNotice(first ? `Welcome, ${clean}! Your trainer card is ready.` : "Profile saved!");
   };
   const setName = (value: string) => setDraft((d) => d && { ...d, name: cleanName(value) });
+  const typingSync = ROWS[row] === "sync";
+  const link = async (code: string) => {
+    setSyncDraft("");
+    onNotice(LINK_NOTICE[await useTamaSync.getState().link(code)]);
+  };
+  /** Done typing a code: link right away, or ask first if a party would be lost. */
+  const submitSync = () => {
+    const code = normalizeSyncCode(syncDraft);
+    if (!code) return onNotice(LINK_NOTICE["bad-code"]);
+    setKeyPos(null);
+    if (useTamagotchi.getState().pets.length === 0) return void link(code);
+    setLinkConfirm(code);
+    onNotice(`Link to ${code}? This device's party will be replaced. A: yes   B: no`);
+  };
+  const openSync = () => {
+    if (useTamaSync.getState().status === "off") return onNotice("Sync needs the server's database. Your party stays on this device.");
+    setKeyPos({ row: 0, col: 0 });
+  };
   const step = (r: Row, delta: number) => {
-    if (r === "name" || r === "save") return;
+    if (r === "name" || r === "sync" || r === "save") return;
     if (r === "random") return setDraft((d) => d && { ...d, appearance: randomAppearance() });
     setDraft((d) => d && { ...d, appearance: stepAppearance(d.appearance, r, delta) });
   };
   const choose = (r: Row) => {
     if (r === "name") setKeyPos({ row: 0, col: 0 });
+    else if (r === "sync") openSync();
     else if (r === "save") save();
     else step(r, 1);
   };
   const pressKey = (key: KeyDef, pos: KeyPos) => {
     if (!draft) return;
     setKeyPos(pos);
+    if (typingSync) {
+      if (key.value === "BACKSPACE") setSyncDraft(formatSyncDraft(syncDraft.slice(0, -1)));
+      else if (key.value === "CLEAR") setSyncDraft("");
+      else if (key.value === "OK") submitSync();
+      else setSyncDraft(formatSyncDraft(syncDraft + key.value));
+      return;
+    }
     if (key.value === "BACKSPACE") setName(draft.name.slice(0, -1));
     else if (key.value === "CLEAR") setName("");
     else if (key.value === "OK") setKeyPos(null);
@@ -162,6 +204,15 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
   /** Returns true when consumed. */
   const handle = (button: DeviceButton): boolean => {
     if (button === "ZOOM") return false;
+    if (linkConfirm) {
+      setLinkConfirm(null);
+      if (button === "A") void link(linkConfirm);
+      else {
+        setSyncDraft("");
+        onNotice("OK! This device keeps its party.");
+      }
+      return true;
+    }
     if (!draft) {
       if (button === "A") {
         startEditing();
@@ -178,9 +229,14 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
       if (dir) setKeyPos(moveKey(keyPos, ...dir));
       else if (button === "A") pressKey(keyFor(keyPos), keyPos);
       else if (button === "B") {
-        if (draft.name) setName(draft.name.slice(0, -1));
+        const typed = typingSync ? syncDraft : draft.name;
+        if (!typed) setKeyPos(null);
+        else if (typingSync) setSyncDraft(formatSyncDraft(syncDraft.slice(0, -1)));
+        else setName(draft.name.slice(0, -1));
+      } else if (button === "MENU") {
+        if (typingSync && syncDraft) submitSync();
         else setKeyPos(null);
-      } else if (button === "MENU") setKeyPos(null);
+      }
       return true;
     }
     switch (button) {
@@ -227,7 +283,15 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
           <p className={styles.name}>{draft.name || "???"}</p>
         </div>
         {keyPos ? (
-          <OnScreenKeyboard pos={keyPos} status={`NAME: ${draft.name}_ (${draft.name.length}/${NAME_MAX}) · MENU: done`} onKey={pressKey} />
+          <OnScreenKeyboard
+            pos={keyPos}
+            status={
+              typingSync
+                ? `CODE: ${syncDraft}_ (${syncDraft.replaceAll("-", "").length}/${CODE_LENGTH}) · MENU: link`
+                : `NAME: ${draft.name}_ (${draft.name.length}/${NAME_MAX}) · MENU: done`
+            }
+            onKey={pressKey}
+          />
         ) : (
           <ul ref={editor} className={styles.editor} role="listbox" aria-label="Edit profile">
             {ROWS.map((r, i) => (
@@ -240,7 +304,15 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
                 onClick={() => (i === row ? choose(r) : setRow(i))}
               >
                 <span className={styles.cursor}>{i === row ? "▶" : ""}</span>
-                <EditorRow row={r} draft={draft} onName={setName} onSubmit={save} onStep={(d) => step(r, d)} />
+                <EditorRow
+                  row={r}
+                  draft={draft}
+                  syncDraft={syncDraft}
+                  onName={setName}
+                  onSync={(value) => setSyncDraft(formatSyncDraft(value))}
+                  onSubmit={r === "sync" ? submitSync : save}
+                  onStep={(d) => step(r, d)}
+                />
               </li>
             ))}
           </ul>
@@ -278,28 +350,33 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
 interface EditorRowProps {
   row: Row;
   draft: Draft;
+  /** Another device's sync code, as typed so far. */
+  syncDraft: string;
   onName: (value: string) => void;
+  onSync: (value: string) => void;
+  /** Enter in the row's text field. */
   onSubmit: () => void;
   onStep: (delta: number) => void;
 }
 
-function EditorRow({ row, draft, onName, onSubmit, onStep }: EditorRowProps) {
+function EditorRow({ row, draft, syncDraft, onName, onSync, onSubmit, onStep }: EditorRowProps) {
   if (row === "random") return <span className={styles.action}>🎲 RANDOM LOOK</span>;
   if (row === "save") return <span className={styles.action}>✔ SAVE</span>;
-  if (row === "name") {
+  if (row === "name" || row === "sync") {
+    const sync = row === "sync";
     return (
       <>
-        <span className={styles.label}>NAME</span>
+        <span className={styles.label}>{sync ? "SYNC CODE" : "NAME"}</span>
         <input
           className={styles.nameInput}
-          value={draft.name}
-          maxLength={NAME_MAX}
-          placeholder="type a name"
-          aria-label="Trainer name"
+          value={sync ? syncDraft : draft.name}
+          maxLength={sync ? CODE_LENGTH + 2 : NAME_MAX}
+          placeholder={sync ? "other device's code" : "type a name"}
+          aria-label={sync ? "Sync code of another device" : "Trainer name"}
           autoComplete="off"
           spellCheck={false}
           onClick={(e) => e.stopPropagation()}
-          onChange={(e) => onName(e.target.value)}
+          onChange={(e) => (sync ? onSync : onName)(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -375,6 +452,7 @@ function TrainerCard({ bestId, wins, losses, page, onPage, onEdit }: CardProps) 
         {page === 0 && <StatsPage bestId={bestId} wins={wins} losses={losses} />}
         {page === 1 && <BadgesPage />}
         {page === 2 && <HistoryPage />}
+        {page === 3 && <DiaryPage />}
       </div>
     </div>
   );
@@ -501,5 +579,77 @@ function HistoryRow({ entry }: { entry: BattleLogEntry }) {
       <small className={styles.odds}>{entry.odds !== null ? `${Math.round(entry.odds * 100)}%` : ""}</small>
       <small className={styles.when}>{shortDate(entry.at)}</small>
     </li>
+  );
+}
+
+const SYNC_LABEL: Record<SyncStatus, string> = {
+  starting: "connecting...",
+  syncing: "saving...",
+  synced: "synced",
+  offline: "offline, will retry",
+  off: "this device only",
+};
+
+const DIARY_TAG: Record<HistoryEntry["kind"], string> = {
+  adopted: "NEW",
+  egg: "EGG",
+  hatched: "HATCH",
+  evolved: "EVO",
+  level: "LV UP",
+  released: "BYE",
+};
+
+/** The Tamagotchi party's milestones, newest first, under this device's sync code. */
+function DiaryPage() {
+  const code = useTamaSync((s) => s.code);
+  const status = useTamaSync((s) => s.status);
+  const history = useTamaSync((s) => s.history);
+  const list = usePokedex((s) => s.list);
+  const nameOf = (dexId: number | null) => (dexId === null ? "AN EGG" : (list.find((p) => p.id === dexId)?.name ?? `#${dexId}`).toUpperCase());
+  const describe = (e: HistoryEntry) => {
+    switch (e.kind) {
+      case "adopted":
+        return `${nameOf(e.dexId)} joined the party`;
+      case "egg":
+        return "Bought an egg";
+      case "hatched":
+        return `${nameOf(e.dexId)} hatched`;
+      case "evolved":
+        return `${nameOf(e.detail)} evolved into ${nameOf(e.dexId)}`;
+      case "level":
+        return `${nameOf(e.dexId)} reached Lv${e.detail}`;
+      case "released":
+        return `Said goodbye to ${nameOf(e.dexId)}`;
+    }
+  };
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.rank} title="Type this code on another device (edit profile, SYNC CODE) to share your party">
+        <span>SYNC {code}</span>
+        <small>{SYNC_LABEL[status]}</small>
+      </div>
+      {history.length === 0 ? (
+        <p className={styles.emptyPage}>Nothing yet. Adopt a Pokémon or buy an egg!</p>
+      ) : (
+        <ul className={`${styles.history} ${styles.diary}`}>
+          {history.map((e, i) => (
+            <li key={`${e.at}-${e.kind}-${e.dexId}-${i}`} title={describe(e)}>
+              <span className={styles.result} data-won={e.kind !== "released"}>
+                {DIARY_TAG[e.kind]}
+              </span>
+              {e.dexId !== null ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className={styles.mini} src={`/sprites/${e.dexId}.png`} alt="" draggable={false} />
+              ) : (
+                <span className={styles.mini} data-egg />
+              )}
+              <span className={styles.diaryText}>{describe(e)}</span>
+              <small className={styles.when}>{shortDate(e.at)}</small>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
