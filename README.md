@@ -4,6 +4,8 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 
 > Non-profit fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company. See the [legal notice](#legal-notice).
 
+![Demo: opening the device, browsing the Pokédex, a 1v1 battle, the Tamagotchi and the trainer card](docs/demo.gif)
+
 **Status:** in development. The scraper, the 3D device, the Pokédex, the Tamagotchi, the trainer profile and 1v1 / 3v3 / 6v6 battles with win prediction are working, the whole stack runs with Docker Compose, and the Tamagotchi syncs across devices through Postgres.
 
 ## Table of contents
@@ -29,7 +31,8 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 - **Full Pokédex** for all 1025 Pokémon (generations 1 to 9): prefix search, regions with music, filters, favorites and generated fun facts.
 - **Own battle engine** in pure TypeScript with standard gen 5+ rules, a foe AI and unit tests. Supports 1v1, 3v3 and 6v6.
 - **Win prediction** by a gradient-boosting model that runs entirely in the browser, plus a live Monte Carlo re-estimate every turn.
-- **Tamagotchi and trainer profile** with evolution, eggs, coins, a customizable pixel sprite and a trainer card.
+- **Tamagotchi and trainer profile** with evolution, eggs, coins, a customizable pixel sprite and a trainer card. With a database, the party syncs across devices.
+- **Runs anywhere:** no backend needed (everything works from `localStorage`), or the full stack with one `docker compose up`.
 
 ## Features
 
@@ -68,8 +71,8 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 
 | Area | Description |
 | --- | --- |
-| Tamagotchi | Adopt up to 5 Pokémon. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Coins buy eggs that hatch into random base-stage Pokémon. Alerts when one needs attention. Saved in `localStorage`. |
-| Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card has three pages (▲▼): **stats** (rank from Rookie to Champion, wins and losses, win streak, best partner, party, favorites, coins, start date), **badges** and **history** (the last 30 battles with the teams, the pre-battle win chance and the result). Your trainer stands in the arena before each battle and sends your Pokémon out by name. |
+| Tamagotchi | Adopt up to 5 Pokémon. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Coins buy eggs that hatch into random base-stage Pokémon. Alerts when one needs attention. Saved in `localStorage`; with a database it is also saved in Postgres, so the same party shows up on every device that uses your sync code. |
+| Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card has four pages (▲▼): **stats** (rank from Rookie to Champion, wins and losses, win streak, best partner, party, favorites, coins, start date), **badges**, **history** (the last 30 battles with the teams, the pre-battle win chance and the result) and **diary** (your sync code and the party's milestones: adoptions, eggs, hatchings, evolutions, level-ups and goodbyes). Your trainer stands in the arena before each battle and sends your Pokémon out by name. |
 | Badges | Eight badges, kept once earned: first win, a 3v3 win, a 6v6 win, beating a legendary or mythical, winning with under 30% win chance, 5 wins in a row, a full Tamagotchi party and 10 favorites. New ones are announced in the dialog box. |
 
 ## Screenshots
@@ -185,7 +188,7 @@ npm run build    # production build
 npm run start    # serve the production build
 ```
 
-> **Deploying (e.g. Vercel):** `animated/` is git-ignored (~72 MB), so a deploy loads the GIFs from remote URLs and falls back to static PNGs if they are offline. The build needs `sprites/` and `data/` from outside `web/`, so keep Vercel's "Include source files outside of the Root Directory" enabled when the Root Directory is `web`.
+> **Deploying (e.g. Vercel):** `animated/` is git-ignored (~72 MB), so a deploy loads the GIFs from remote URLs and falls back to static PNGs if they are offline. The build needs `sprites/` and `data/` from outside `web/`, so keep Vercel's "Include source files outside of the Root Directory" enabled when the Root Directory is `web`. The Tamagotchi sync is off unless `DATABASE_URL` points to a hosted Postgres; without it everything stays in `localStorage`.
 
 ### 3. Win-prediction service (optional)
 
@@ -310,7 +313,8 @@ Ideas:
 - [x] Trainer in battles: your sprite in the arena intro and your name in the messages ("LARISSA sent out PIKACHU!")
 - [x] Badges on the trainer card
 - [x] Battle history on the profile: the last battles, the opponents and the results
-- [ ] Deploy (e.g. Vercel) with a live demo link. The win model runs in the browser, so no backend is needed
+- [x] Deploy on Vercel. The win model runs in the browser, so no backend is needed
+- [ ] Live demo link in this README
 
 ## Legal notice
 
