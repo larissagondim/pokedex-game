@@ -10,6 +10,7 @@ import { useGamepadInput } from "@/hooks/useGamepadInput";
 import { useKeyboardInput } from "@/hooks/useKeyboardInput";
 import { useRegionMusic } from "@/hooks/useRegionMusic";
 import { useSoundEffects } from "@/hooks/useSoundEffects";
+import { useTamagotchiSync } from "@/hooks/useTamagotchiSync";
 import { useAudio } from "@/stores/audio";
 import { isLidOpen, isZoomedIn, useDeviceState } from "@/stores/deviceState";
 import { usePokedex } from "@/stores/pokedex";
@@ -42,6 +43,7 @@ export function DeviceExperience() {
   useDeviceController();
   useSoundEffects();
   useRegionMusic();
+  useTamagotchiSync();
 
   const phase = useDeviceState((s) => s.phase);
   const compact = useCompactLayout();

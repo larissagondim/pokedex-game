@@ -39,6 +39,13 @@ export type TamaEvent =
 interface TamagotchiState extends Saved {
   /** Latest event; a new object every time so subscribers can react. */
   event: TamaEvent | null;
+  /**
+   * Counts the changes worth syncing: everything the player does, but not the
+   * decay applied by `refresh` (any device can work that out from the clock).
+   */
+  changes: number;
+  /** Takes a save from the server (another device's progress). Not counted in `changes`. */
+  replace: (saved: Saved) => void;
   adopt: (dexId: number) => boolean;
   buyEgg: () => void;
   release: (uid: string) => void;
@@ -76,14 +83,19 @@ const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice
 
 /** Up to MAX_SLOTS Pokémon (eggs included) and the coin balance, in localStorage. */
 export const useTamagotchi = create<TamagotchiState>((set, get) => {
-  const commit = (changes: Partial<Saved> & { event?: TamaEvent | null }) => {
-    set(changes);
+  /** `local: false` for changes that aren't the player's doing (decay, a save from the server). */
+  const commit = (changes: Partial<Saved> & { event?: TamaEvent | null }, local = true) => {
+    const counts = local && (changes.pets !== undefined || changes.coins !== undefined);
+    set(counts ? { ...changes, changes: get().changes + 1 } : changes);
     save(get());
   };
 
   return {
     ...(typeof window === "undefined" ? { pets: [], coins: START_COINS } : load()),
     event: null,
+    changes: 0,
+
+    replace: ({ pets, coins }) => commit({ pets, coins }, false),
 
     adopt: (dexId) => {
       const { pets } = get();
@@ -159,7 +171,8 @@ export const useTamagotchi = create<TamagotchiState>((set, get) => {
         }
         return tick(p, now);
       });
-      commit(hatched ? { pets, event: hatched } : { pets });
+      if (hatched) commit({ pets, event: hatched });
+      else commit({ pets }, false);
     },
   };
 });
