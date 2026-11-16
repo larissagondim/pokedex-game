@@ -29,7 +29,7 @@ interface Saved {
 export type TamaEvent =
   | { kind: "action"; uid: string; dexId: number; outcome: Outcome; coins: number }
   | { kind: "evolved"; uid: string; from: number; to: number }
-  | { kind: "hatched"; uid: string; dexId: number }
+  | { kind: "hatched"; uid: string; dexId: number; shiny: boolean }
   | { kind: "adopted"; uid: string; dexId: number }
   | { kind: "egg-bought"; uid: string }
   | { kind: "released"; dexId: number | null }
@@ -166,7 +166,7 @@ export const useTamagotchi = create<TamagotchiState>((set, get) => {
       const pets = get().pets.map((p) => {
         const born = hatch(p, pool, now);
         if (born && born.dexId !== null) {
-          hatched = { kind: "hatched", uid: born.uid, dexId: born.dexId };
+          hatched = { kind: "hatched", uid: born.uid, dexId: born.dexId, shiny: born.shiny === true };
           return born;
         }
         return tick(p, now);

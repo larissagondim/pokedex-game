@@ -76,10 +76,12 @@ function sanitizePet(value: unknown): Pet | null {
   if (p.hatchAt !== null && !isTime(p.hatchAt)) return null;
   if (!isNeed(p.fullness) || !isNeed(p.happiness) || !isNeed(p.energy)) return null;
   if (!isIndex(p.xp, MAX_XP) || typeof p.asleep !== "boolean" || !isTime(p.updatedAt)) return null;
+  if (p.shiny !== undefined && typeof p.shiny !== "boolean") return null;
   return {
     uid: p.uid,
     dexId: p.dexId,
     hatchAt: p.hatchAt,
+    ...(p.shiny && { shiny: true }),
     fullness: p.fullness,
     happiness: p.happiness,
     energy: p.energy,
@@ -112,7 +114,7 @@ export interface HistoryEntry {
   kind: HistoryKind;
   /** The species (after evolving, for "evolved"); null for an egg. */
   dexId: number | null;
-  /** "evolved": the species it evolved from. "level": the level reached. */
+  /** "evolved": the species it evolved from. "level": the level reached. "hatched": 1 if it came out shiny. */
   detail: number | null;
 }
 
@@ -135,7 +137,7 @@ export function diffHistory(prev: readonly Pet[], next: readonly Pet[], at: numb
       entries.push(entry(pet.dexId === null ? "egg" : "adopted", pet.dexId));
       continue;
     }
-    if (pet.dexId !== old.dexId) entries.push(old.dexId === null ? entry("hatched", pet.dexId) : entry("evolved", pet.dexId, old.dexId));
+    if (pet.dexId !== old.dexId) entries.push(old.dexId === null ? entry("hatched", pet.dexId, pet.shiny ? 1 : null) : entry("evolved", pet.dexId, old.dexId));
     if (pet.dexId !== null && levelOf(pet.xp) > levelOf(old.xp)) entries.push(entry("level", pet.dexId, levelOf(pet.xp)));
   }
   return entries;

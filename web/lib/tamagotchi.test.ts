@@ -13,6 +13,7 @@ import {
   moodOf,
   newPet,
   type Pet,
+  SHINY_CHANCE,
   stageOf,
   tick,
 } from "./tamagotchi.ts";
@@ -128,4 +129,14 @@ test("eggs hatch into base stages or babies, never legendaries or mythicals", ()
   const egg = newPet("e", null, T0);
   assert.equal(hatch(egg, pool, T0 + EGG_HATCH_MS - 1), null);
   assert.equal(hatch(egg, pool, T0 + EGG_HATCH_MS, () => 0.5)?.dexId, 133);
+});
+
+test("an egg hatches shiny with SHINY_CHANCE, and evolution keeps it", () => {
+  const pool = eggPool(LIST);
+  const egg = newPet("egg", null, T0);
+  const rolls = (...values: number[]) => () => values.shift() ?? 0;
+  assert.equal(hatch(egg, pool, T0 + EGG_HATCH_MS, rolls(0, SHINY_CHANCE - 0.001))?.shiny, true);
+  assert.equal(hatch(egg, pool, T0 + EGG_HATCH_MS, rolls(0, SHINY_CHANCE))?.shiny, false);
+  assert.equal(newPet("a", 1, T0).shiny, undefined); // adopted Pokémon are never shiny
+  assert.equal(evolve(pet({ xp: 200, shiny: true }), dexOf(LIST))?.shiny, true);
 });

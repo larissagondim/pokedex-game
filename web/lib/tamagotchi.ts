@@ -12,6 +12,8 @@ export const MAX_SLOTS = 5;
 export const START_COINS = 150;
 export const EGG_PRICE = 100;
 export const EGG_HATCH_MS = 2 * 60_000;
+/** Chance that an egg hatches into a shiny Pokémon. */
+export const SHINY_CHANCE = 1 / 16;
 export const XP_PER_LEVEL = 50;
 /** Babies evolve at this level, given enough happiness. */
 export const BABY_EVOLUTION_LEVEL = 3;
@@ -36,6 +38,8 @@ export interface Pet {
   dexId: number | null;
   /** When the egg hatches (eggs only). */
   hatchAt: number | null;
+  /** Alternate colors, decided when the egg hatches and kept through evolution. Absent in older saves. */
+  shiny?: boolean;
   /** 0..100, higher is better for all three. */
   fullness: number;
   happiness: number;
@@ -205,9 +209,9 @@ export function evolve(pet: Pet, dex: Dex, random: () => number = Math.random): 
 export const eggPool = (list: readonly Pokemon[]) =>
   list.filter((p) => p.evolvesFromId === null && !p.isLegendary && !p.isMythical);
 
-/** Hatches the egg if its time has come. */
+/** Hatches the egg if its time has come: a random species of the pool, shiny with SHINY_CHANCE. */
 export function hatch(pet: Pet, pool: readonly Pokemon[], now: number, random: () => number = Math.random): Pet | null {
   if (pet.dexId !== null || pet.hatchAt === null || now < pet.hatchAt || pool.length === 0) return null;
   const species = pool[Math.floor(random() * pool.length)];
-  return { ...pet, dexId: species.id, hatchAt: null, updatedAt: now };
+  return { ...pet, dexId: species.id, hatchAt: null, shiny: random() < SHINY_CHANCE, updatedAt: now };
 }

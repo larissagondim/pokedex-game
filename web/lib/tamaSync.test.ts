@@ -77,6 +77,13 @@ test("diffHistory: adoption, egg, hatching, evolution, level and release", () =>
   ] satisfies HistoryEntry[]);
 });
 
+test("shiny: kept by sanitizeSave and noted when it hatches", () => {
+  const shiny = pet("s", 133, { shiny: true });
+  assert.deepEqual(sanitizeSave({ pets: [shiny, { ...pet("n", 1), shiny: false }], coins: 0 })?.pets, [shiny, pet("n", 1)]);
+  assert.equal(sanitizeSave({ pets: [{ ...shiny, shiny: "yes" }], coins: 0 }), null);
+  assert.deepEqual(diffHistory([pet("s", null)], [shiny], T0), [{ at: T0, kind: "hatched", dexId: 133, detail: 1 }]);
+});
+
 test("diffHistory: needs changing is not a milestone", () => {
   const before = [pet("a", 1)];
   assert.deepEqual(diffHistory(before, [pet("a", 1, { fullness: 10, xp: 3, asleep: true })], T0), []);
