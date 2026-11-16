@@ -27,6 +27,7 @@ import { useTamagotchi } from "@/stores/tamagotchi";
 import { type LinkResult, type SyncStatus, useTamaSync } from "@/stores/tamaSync";
 import { useTrainer } from "@/stores/trainer";
 import { type KeyDef, type KeyPos, keyFor, moveKey, OnScreenKeyboard } from "./OnScreenKeyboard";
+import { PetSprite } from "./PetSprite";
 import styles from "./trainer.module.css";
 import { TrainerSprite } from "./TrainerSprite";
 
@@ -500,10 +501,8 @@ function StatsPage({ bestId, wins, losses }: { bestId: number | null; wins: numb
             const pet = pets[i];
             if (!pet) return <span key={`empty-${i}`} className={styles.mini} data-empty />;
             if (pet.dexId === null) return <span key={pet.uid} className={styles.mini} data-egg title="Egg" />;
-            return (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={pet.uid} className={styles.mini} src={`/sprites/${pet.dexId}.png`} alt={nameOf(pet.dexId)} title={nameOf(pet.dexId)} draggable={false} />
-            );
+            const label = `${pet.shiny ? "SHINY " : ""}${nameOf(pet.dexId)}`;
+            return <PetSprite key={pet.uid} className={styles.mini} dexId={pet.dexId} shiny={pet.shiny} alt={label} title={label} />;
           })}
         </dd>
         <dt>FAVORITES</dt>
@@ -613,7 +612,7 @@ function DiaryPage() {
       case "egg":
         return "Bought an egg";
       case "hatched":
-        return `${nameOf(e.dexId)} hatched`;
+        return e.detail ? `A shiny ${nameOf(e.dexId)} hatched ✦` : `${nameOf(e.dexId)} hatched`;
       case "evolved":
         return `${nameOf(e.detail)} evolved into ${nameOf(e.dexId)}`;
       case "level":

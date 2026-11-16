@@ -9,7 +9,9 @@ export function describeEvent(event: TamaEvent, nameOf: (dexId: number | null) =
     case "egg-bought":
       return `You bought an egg for ${EGG_PRICE}₽. Keep it warm, it will hatch soon!`;
     case "hatched":
-      return `Oh? The egg is hatching... It's ${nameOf(event.dexId)}!`;
+      return event.shiny
+        ? `Oh? The egg is hatching... It's ${nameOf(event.dexId)}! ✦ Wait, it sparkles... it's SHINY! ✦`
+        : `Oh? The egg is hatching... It's ${nameOf(event.dexId)}!`;
     case "evolved":
       return `What? ${nameOf(event.from)} is evolving! ... ${nameOf(event.from)} evolved into ${nameOf(event.to)}! +50₽`;
     case "released":

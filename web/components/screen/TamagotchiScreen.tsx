@@ -20,6 +20,7 @@ import {
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { usePokedex } from "@/stores/pokedex";
 import { useTamagotchi } from "@/stores/tamagotchi";
+import { PetSprite } from "./PetSprite";
 import styles from "./tamagotchi.module.css";
 
 /** Above the main screen handler (10): this tab gets first say while active. */
@@ -193,7 +194,11 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
                 <span className={styles.cursor}>{i === selected ? "▶" : ""}</span>
                 {p ? <SlotIcon pet={p} /> : <span className={styles.slotIcon} />}
                 <span className={styles.slotName}>{p ? nameOf(p).toUpperCase() : "— empty —"}</span>
-                {p?.dexId != null && <span className={styles.slotLevel}>Lv{levelOf(p.xp)}</span>}
+                {p?.dexId != null && (
+                  <span className={styles.slotLevel}>
+                    {p.shiny && <Shiny />} Lv{levelOf(p.xp)}
+                  </span>
+                )}
               </li>
             );
           })}
@@ -207,6 +212,7 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
             <div className={styles.info}>
               <span className={styles.name}>
                 {species ? `${formatDexNumber(species.id)} ${species.name.toUpperCase()}` : "EGG"}
+                {pet.shiny && <Shiny />}
               </span>
               {species && <span className={styles.level}>Lv{levelOf(pet.xp)}</span>}
             </div>
@@ -247,10 +253,18 @@ function eggCountdown(pet: Pet, now: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** The mark next to a shiny Pokémon's name. */
+function Shiny() {
+  return (
+    <span className={styles.shiny} role="img" aria-label="shiny" title="Shiny">
+      {" ✦"}
+    </span>
+  );
+}
+
 function SlotIcon({ pet }: { pet: Pet }) {
   if (pet.dexId === null) return <span className={styles.slotIcon + " " + styles.miniEgg} aria-label="Egg" />;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img className={styles.slotIcon} src={`/sprites/${pet.dexId}.png`} alt="" draggable={false} />;
+  return <PetSprite className={styles.slotIcon} dexId={pet.dexId} shiny={pet.shiny} />;
 }
 
 const BARS: { key: "fullness" | "happiness" | "energy"; label: string }[] = [
@@ -312,26 +326,23 @@ function Stage({ pet, species, stage, reaction, now, onPet }: StageProps) {
   const mood = moodOf(pet);
   const size = species?.isBaby ? "baby" : (["basic", "middle", "final"] as const)[Math.min(stage, 2)];
   const hearts = pet.dexId !== null && (mood === "happy" || reaction?.kind === "pet" || reaction?.kind === "play") && !reducedMotion;
-  const [failedGif, setFailedGif] = useState<number | null>(null);
-  const useGif = species?.animated && !reducedMotion && mood !== "sleeping" && failedGif !== pet.dexId;
+  const useGif = species?.animated && !reducedMotion && mood !== "sleeping";
   const hatchSoon = pet.dexId === null && (pet.hatchAt ?? 0) - now < 30_000;
 
   return (
-    <div className={styles.stage} data-type={species?.types[0]} data-mood={mood}>
+    <div className={styles.stage} data-type={species?.types[0]} data-mood={mood} data-shiny={pet.shiny === true}>
       {pet.dexId === null ? (
         <button type="button" className={styles.egg} data-soon={hatchSoon} aria-label="Egg" />
       ) : (
         <button type="button" className={styles.petButton} onClick={onPet} aria-label={`Pet ${species?.name}`}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            key={`${pet.dexId}-${useGif}`}
+          <PetSprite
             className={styles.pet}
             data-size={size}
             data-reaction={reaction?.kind}
-            src={useGif && species?.animated ? species.animated : `/sprites/${pet.dexId}.png`}
-            alt={species?.name ?? ""}
-            draggable={false}
-            onError={() => setFailedGif(pet.dexId)}
+            dexId={pet.dexId}
+            shiny={pet.shiny}
+            animated={useGif ? species?.animated : null}
+            alt={species ? `${pet.shiny ? "Shiny " : ""}${species.name}` : ""}
           />
         </button>
       )}

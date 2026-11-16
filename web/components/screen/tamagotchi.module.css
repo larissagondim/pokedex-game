@@ -462,3 +462,33 @@
     display: none;
   }
 }
+
+/* Shiny */
+
+.shiny {
+  color: #d99a00;
+}
+
+.stage[data-shiny="true"]::before {
+  content: "✦  ✦";
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  color: #ffd23f;
+  font-size: 18px;
+  letter-spacing: 6px;
+  text-shadow: 1px 1px 0 var(--graphite);
+  animation: twinkle 1.2s steps(2) infinite;
+}
+
+@keyframes twinkle {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage[data-shiny="true"]::before {
+    animation: none;
+  }
+}
