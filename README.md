@@ -6,7 +6,7 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 
 ![Demo: opening the device, browsing the Pokédex, a 1v1 battle, the Tamagotchi and the trainer card](docs/demo.gif)
 
-**Status:** in development. The scraper, the 3D device, the Pokédex, the Tamagotchi, the trainer profile and 1v1 / 3v3 / 6v6 battles with win prediction are working, the whole stack runs with Docker Compose, and the Tamagotchi syncs across devices through Postgres.
+**Status:** in development. The scraper, the 3D device, the Pokédex, the Tamagotchi, the trainer profile and 1v1 / 3v3 / 6v6 battles with win prediction are working, along with a league, a daily challenge and a progression loop that ties them together. The whole stack runs with Docker Compose, and the Tamagotchi syncs across devices through Postgres.
 
 ## Table of contents
 
@@ -30,7 +30,8 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 - **Procedural 3D device** with a spring hinge, pressable buttons, a zoom camera, positional sound and a phone layout. No external model needed.
 - **Full Pokédex** for all 1025 Pokémon (generations 1 to 9): prefix search, regions with music, filters, favorites and generated fun facts.
 - **Own battle engine** in pure TypeScript with standard gen 5+ rules, a foe AI and unit tests. Supports 1v1, 3v3 and 6v6.
-- **Win prediction** by a gradient-boosting model that runs entirely in the browser, plus a live Monte Carlo re-estimate every turn.
+- **Win prediction** by a gradient-boosting model that runs entirely in the browser, plus a live Monte Carlo re-estimate every turn. It also sets the prize: the less likely the win, the bigger the reward.
+- **A progression loop:** beat a Pokémon to catch it, adopt what you caught, keep your party fed and rested so it fights well, spend the coins in the shop, climb an eight-leader league and come back for the daily challenge.
 - **Tamagotchi and trainer profile** with evolution, eggs, coins, a customizable pixel sprite and a trainer card. With a database, the party syncs across devices.
 - **Runs anywhere:** no backend needed (everything works from `localStorage`), or the full stack with one `docker compose up`.
 
@@ -53,7 +54,8 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 | Browse | Scrollable list with a preview panel and a detail page: animated sprite, types, base stats, height, weight, abilities and a typewriter dex entry. |
 | Search | Prefix search by name (binary search, A→Z) or lookup by number (`25`, `#25`). Real keyboard (`/` to focus) or on-screen keyboard. |
 | Regions and music | Region of the focused Pokémon, jump between regions with ◀ ▶, and crossfading chiptune loops per region. |
-| Filters and favorites | Filter by type or ★ favorites, sort by number, name or base stat total. Favorites persist in `localStorage`. |
+| Filters and favorites | Filter by type, ★ favorites or caught, sort by number, name or base stat total. Favorites persist in `localStorage`. |
+| Seen and caught | Foes you meet in battle are **seen**; the ones you beat, and everything your Tamagotchi party hatches or evolves into, are **caught**. The list marks both, the region bar counts the region's caught share and the trainer card shows the totals. |
 | Fun facts | Three "Did you know?" facts per Pokémon, computed by comparing it with all 1025 (stat rankings, rare typings, size extremes, catch rate…). |
 
 ### Battles
@@ -61,18 +63,22 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 | Area | Description |
 | --- | --- |
 | Modes | Single (1v1), team (3v3) and full (6v6) battles against a chosen or random opponent, with backdrops picked from the foe's type and original battle themes. |
+| League | Eight original leaders with themed 3v3 teams (normal up to dragon), unlocked in order. The first win against each pays a bonus that grows along the way; beaten leaders can be fought again. |
+| Daily challenge | A 3v3 against a foe team picked from the date with a seeded generator: the same for everyone that day, with no server. The first win of the day pays a bonus. |
 | Fight menu | Classic FIGHT / BAG / POKéMON / RUN flow with type-effectiveness hints, Super Potions, Full Heals and switching. Turns play back event by event. |
 | Engine | Hand-written, pure TypeScript (`web/lib/battle`). Priority and speed, damage formula, STAB, type chart, crits, accuracy, stat stages, PP, status conditions (freeze included), drain, recoil, multi-hit, flinch, confusion, Protect, Substitute, Leech Seed, locked, recharge and two-turn moves. Abilities (Intimidate, Levitate, Sturdy, Multiscale, weather setters...) and held items (Leftovers, Life Orb, Choice items, Focus Sash, berries...). The field: entry hazards, screens, weather, Trick Room, Tailwind, Wish. Pivots (U-turn, Volt Switch) and forced switches (Roar, Dragon Tail, Red Card). |
 | Foe AI | Greedy: takes the surest KO when available, avoids useless status moves, and in team battles sends out its best matchup and switches out of losing ones. |
 | Win chance | Shown before the fight (ML model) and re-estimated every turn (Monte Carlo, 600 simulations per estimate in the browser). Team win chances are simulated, since the model is 1v1. |
-| Rewards | Coins for the Tamagotchi shop, XP and joy for party members (they can evolve), and a win/loss record per Pokémon. |
+| Rewards | Coins and party XP scale with the pre-battle win chance: an even fight pays the base amount, a sure win ×0.2, an upset up to ×2 (shown before you fight). Beaten foes are caught. Party members gain joy (they can evolve) and every Pokémon keeps a win/loss record. |
+| Party condition | A Tamagotchi party member fights as well as it is looked after: hungry or tired ones get −15% Attack, Sp. Atk and Speed, happy well-kept ones +10%. A battle costs it energy and food. With a condition in play the 1v1 win chance is simulated, since the model only knows plain sets. |
 
 ### Tamagotchi and trainer
 
 | Area | Description |
 | --- | --- |
-| Tamagotchi | Adopt up to 5 Pokémon. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Coins buy eggs that hatch into random base-stage Pokémon, with a 1 in 16 chance of a ✦ shiny one (it keeps its colors when it evolves). Alerts when one needs attention. Saved in `localStorage`; with a database it is also saved in Postgres, so the same party shows up on every device that uses your sync code. |
-| Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card has four pages (▲▼): **stats** (rank from Rookie to Champion, wins and losses, win streak, best partner, party, favorites, coins, start date), **badges**, **history** (the last 30 battles with the teams, the pre-battle win chance and the result) and **diary** (your sync code and the party's milestones: adoptions, eggs, hatchings, evolutions, level-ups and goodbyes). Your trainer stands in the arena before each battle and sends your Pokémon out by name. |
+| Tamagotchi | Adopt up to 5 of the Pokémon you caught. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Eggs hatch into random base-stage Pokémon, with a 1 in 16 chance of a ✦ shiny one (it keeps its colors when it evolves). Alerts when one needs attention. Saved in `localStorage`; with a database it is also saved in Postgres, so the same party shows up on every device that uses your sync code. |
+| Shop | In the Tamagotchi tab: eggs, treats (+40 food, +25 joy for the selected Pokémon) and extra Super Potions and Full Heals for the battle bag, on top of the standard one. Bought items are only used up once the standard ones are gone. |
+| Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card has four pages (▲▼): **stats** (rank from Rookie to Champion, league progress, wins and losses, win streak, best partner, party, Pokédex progress and favorites, coins, start date), **badges**, **history** (the last 30 battles with the teams, the pre-battle win chance and the result) and **diary** (your sync code and the party's milestones: adoptions, eggs, hatchings, evolutions, level-ups and goodbyes). Your trainer stands in the arena before each battle and sends your Pokémon out by name. |
 | Badges | Eight badges, kept once earned: first win, a 3v3 win, a 6v6 win, beating a legendary or mythical, winning with under 30% win chance, 5 wins in a row, a full Tamagotchi party and 10 favorites. New ones are announced in the dialog box. |
 
 ## Screenshots
@@ -110,10 +116,10 @@ The battle engine and the win model run in the browser, and everything is saved 
 
 Inside `web`, the code is split into four layers:
 
-- **Stores (zustand):** `deviceInput` (button events, repeat, subscriptions), `deviceState` (phase machine `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex`, `favorites`, `tamagotchi`, `tamaSync`, `battleRecord` and `audio`.
+- **Stores (zustand):** `deviceInput` (button events, repeat, subscriptions), `deviceState` (phase machine `CLOSED → OPENING → OPEN → ZOOMING_IN → ZOOMED → ZOOMING_OUT → OPEN → CLOSING`), `pokedex`, `favorites`, `dexProgress` (seen and caught), `tamagotchi`, `tamaSync`, `inventory` (shop items), `battleRecord`, `battleLog`, `league`, `daily` and `audio`.
 - **Device (`components/device`):** procedural 3D shell, hinge, buttons and camera rig, loaded lazily.
 - **Screen (`components/screen`):** the 2D UI rendered inside the main screen. It subscribes to input with higher priority than the device controller, so the UI gets the first say on each button.
-- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing, fun facts, Tamagotchi rules, trainer, sound and music synthesis, the Tamagotchi sync protocol, the battle engine (rules, AI, Monte Carlo) and the battle features shared with the ML pipeline.
+- **Logic (`lib/`):** pure, unit-tested modules with no React: search, regions, listing, fun facts, Pokédex progress, Tamagotchi rules (including the battle condition), trainer, league, daily challenge, sound and music synthesis, the Tamagotchi sync protocol, the battle engine (rules, AI, Monte Carlo, rewards) and the battle features shared with the ML pipeline.
 
 ## Tech stack
 
@@ -240,8 +246,8 @@ Gamepads with the standard mapping also work: D-pad or left stick, A/B, Start = 
 <details>
 <summary>Per-tab controls</summary>
 
-- **Battle:** pick SINGLE, TEAM (3v3) or FULL BATTLE (6v6), then your Pokémon and the opponent (A confirms, B goes back or undoes the last pick). In the arena, A starts the battle; the D-pad moves through FIGHT / BAG / POKéMON / RUN, A confirms, B goes back, and A skips messages while a turn plays. When it ends, A fights again and B returns to the lists.
-- **Tamagotchi:** ↑ ↓ pick a Pokémon, ← → pick an action, A does it, B goes back.
+- **Battle:** pick SINGLE, TEAM (3v3) or FULL BATTLE (6v6), then your Pokémon and the opponent (A confirms, B goes back or undoes the last pick). LEAGUE lists the leaders (A challenges the next one or a beaten one); DAILY CHALLENGE shows today's foes, then you pick your three. In the arena, A starts the battle; the D-pad moves through FIGHT / BAG / POKéMON / RUN, A confirms, B goes back, and A skips messages while a turn plays. When it ends, A fights again and B returns to the lists.
+- **Tamagotchi:** ↑ ↓ pick a Pokémon, ← → pick an action, A does it, B goes back. In the SHOP, ↑ ↓ pick an item, A buys it and B closes it.
 - **Trainer:** ↑ ↓ flip the card's pages (stats, badges, battle history, Tamagotchi diary); A creates or edits the profile. In the editor, ↑ ↓ pick a row, ← → change it, A on NAME or SYNC CODE opens the keyboard, MENU saves and B cancels.
 
 </details>
@@ -315,6 +321,21 @@ Ideas:
 - [x] Battle history on the profile: the last battles, the opponents and the results
 - [x] Deploy on Vercel. The win model runs in the browser, so no backend is needed
 - [ ] Live demo link in this README
+
+Progression:
+
+- [x] Rewards that scale with the pre-battle win chance
+- [x] Pokédex progress: seen and caught
+- [x] Adopt only what you caught
+- [x] A party member's condition counts in battle
+- [x] Shop: eggs, treats and battle items
+- [x] League of eight leaders
+- [x] Daily challenge
+
+Next ideas:
+
+- [ ] Trainer sprite accessories in the shop
+- [ ] Sync the Pokédex progress, league and shop items with the Tamagotchi
 
 ## Legal notice
 
