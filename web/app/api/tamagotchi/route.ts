@@ -4,16 +4,16 @@ import { HISTORY_BATCH, normalizeSyncCode, sanitizeHistory, sanitizeSave, SYNC_C
 /**
  * Tamagotchi sync. The save is picked by the sync code in the `X-Sync-Code` header.
  *
- *   GET → { save: { pets, coins, revision, updatedAt } | null, history }
- *   PUT { pets, coins, revision, events } → { revision, history }
+ *   GET → { save: { pets, coins, progress?, revision, updatedAt } | null, history }
+ *   PUT { pets, coins, progress?, revision, events } → { revision, history }
  *       409 + the server's { save, history } if `revision` is no longer the latest
  *
  * 503 when there is no database (DATABASE_URL unset) or it can't be reached:
  * the app then stays on localStorage.
  */
 
-/** A full party is under 2 KB; this leaves room for a batch of events. */
-const MAX_BODY = 16_000;
+/** A full party is under 2 KB and a full Pokédex about 10 KB; this leaves room for a batch of events. */
+const MAX_BODY = 48_000;
 
 const error = (status: number, code: string) => Response.json({ error: code }, { status });
 

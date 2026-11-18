@@ -38,6 +38,8 @@ interface InventoryState {
   battleBag: () => Items;
   /** After a battle: uses up the bought items spent beyond the standard bag. */
   settle: (left: Items) => void;
+  /** Takes the items from the server. */
+  replace: (items: Items) => void;
 }
 
 export const useInventory = create<InventoryState>((set, get) => ({
@@ -52,6 +54,12 @@ export const useInventory = create<InventoryState>((set, get) => ({
   battleBag: () => {
     const { items } = get();
     return { potion: ITEMS.potion.count + items.potion, fullheal: ITEMS.fullheal.count + items.fullheal };
+  },
+  replace: (items) => {
+    const { potion, fullheal } = get().items;
+    if (items.potion === potion && items.fullheal === fullheal) return;
+    set({ items: { ...items } });
+    save(items);
   },
   settle: (left) => {
     // The standard items go first; bought ones only once those are gone.

@@ -4,14 +4,21 @@ import {
   diffHistory,
   HISTORY_BATCH,
   type HistoryEntry,
+  mergeProgress,
   newSyncCode,
   nextSyncStep,
   normalizeSyncCode,
   type RemoteSave,
   sanitizeHistory,
+  sameProgress,
   sanitizeSave,
   SYNC_CODE_HEADER,
+  type SyncedProgress,
 } from "@/lib/tamaSync";
+import { useDaily } from "./daily";
+import { useDexProgress } from "./dexProgress";
+import { useInventory } from "./inventory";
+import { useLeague } from "./league";
 import { useTamagotchi } from "./tamagotchi";
 
 const STORAGE_KEY = "pokedex-game:tama-sync";
@@ -93,6 +100,27 @@ function snapshotOf(body: unknown): Snapshot {
   };
 }
 
+const sorted = (ids: ReadonlySet<number>) => [...ids].sort((a, b) => a - b);
+
+/** This device's progress, as it is synced. */
+function localProgress(): SyncedProgress {
+  const { seen, caught } = useDexProgress.getState();
+  return {
+    seen: sorted(seen),
+    caught: sorted(caught),
+    league: useLeague.getState().beaten,
+    items: { ...useInventory.getState().items },
+    dailyWon: useDaily.getState().lastWon,
+  };
+}
+
+function applyProgress(p: SyncedProgress) {
+  useDexProgress.getState().replace(p);
+  useLeague.getState().replace(p.league);
+  useInventory.getState().replace(p.items);
+  useDaily.getState().replace(p.dailyWon);
+}
+
 /**
  * Keeps the Tamagotchi save in step with the server (Postgres) so the same
  * party shows up on every device using this sync code, and records the party's
@@ -102,6 +130,10 @@ export const useTamaSync = create<SyncState>((set, get) => {
   const initial: Saved = typeof window === "undefined" ? { code: "", revision: 0, dirty: false, history: [], pending: [] } : load();
   let { revision, dirty, pending } = initial;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** True while a save from the server is being applied (those changes aren't the player's). */
+  let applying = false;
+  /** Bumped on every progress change, so one made during a write isn't lost. */
+  let progressChanges = 0;
   /** Requests run one at a time, in order. */
   let queue: Promise<unknown> = Promise.resolve();
 
@@ -140,12 +172,23 @@ export const useTamaSync = create<SyncState>((set, get) => {
   };
 
   const adopt = ({ save, history }: Snapshot & { save: RemoteSave }) => {
-    useTamagotchi.getState().replace(save);
+    applying = true;
+    let merged: SyncedProgress;
+    try {
+      useTamagotchi.getState().replace(save);
+      // Progress only moves forward: keep what this device earned too.
+      merged = save.progress ? mergeProgress(localProgress(), save.progress) : localProgress();
+      applyProgress(merged);
+    } finally {
+      applying = false;
+    }
     revision = save.revision;
-    dirty = false;
     pending = [];
-    set({ history, status: "synced" });
+    // Send the merged progress back if the server didn't have all of it.
+    dirty = !sameProgress(merged, save.progress);
+    set({ history, status: dirty ? "syncing" : "synced" });
     persist();
+    if (dirty) schedule();
   };
 
   const schedule = () => {
@@ -158,9 +201,10 @@ export const useTamaSync = create<SyncState>((set, get) => {
 
   const push = async () => {
     const { pets, coins, changes } = useTamagotchi.getState();
+    const progressAt = progressChanges;
     const events = pending.slice(0, HISTORY_BATCH);
     set({ status: "syncing" });
-    const res = await request(get().code, { pets, coins, revision, events });
+    const res = await request(get().code, { pets, coins, progress: localProgress(), revision, events });
     if (res?.status === 409) {
       const snapshot = snapshotOf(await res.json().catch(() => null));
       if (snapshot.save) return adopt({ ...snapshot, save: snapshot.save });
@@ -173,7 +217,7 @@ export const useTamaSync = create<SyncState>((set, get) => {
     if (typeof body?.revision !== "number") return failed(null);
     revision = body.revision;
     pending = pending.slice(events.length);
-    dirty = pending.length > 0 || useTamagotchi.getState().changes !== changes;
+    dirty = pending.length > 0 || useTamagotchi.getState().changes !== changes || progressChanges !== progressAt;
     set({ history: addHistory(sanitizeHistory(body.history), pending), status: dirty ? "syncing" : "synced" });
     persist();
     if (dirty) schedule();
@@ -186,7 +230,9 @@ export const useTamaSync = create<SyncState>((set, get) => {
     if (!res?.ok) return failed(res);
     const snapshot = snapshotOf(await res.json().catch(() => null));
     const step = nextSyncStep(revision, dirty, snapshot.save?.revision ?? null);
-    if (step === "adopt" && snapshot.save) adopt({ ...snapshot, save: snapshot.save });
+    // In step but with different progress (e.g. earned before it was synced): merge it.
+    const progressDiffers = step === "idle" && snapshot.save && !sameProgress(localProgress(), snapshot.save.progress);
+    if ((step === "adopt" || progressDiffers) && snapshot.save) adopt({ ...snapshot, save: snapshot.save });
     else if (step === "push") await push();
     else set({ status: "synced" });
   };
@@ -206,6 +252,20 @@ export const useTamaSync = create<SyncState>((set, get) => {
         persist();
         if (get().status !== "off") schedule();
       });
+      // The Pokédex, the league, the shop items and the daily challenge travel with the party.
+      const progressChanged = () => {
+        if (applying) return;
+        progressChanges++;
+        dirty = true;
+        persist();
+        if (get().status !== "off") schedule();
+      };
+      const offProgress = [
+        useDexProgress.subscribe((s, prev) => s.caught !== prev.caught || s.seen !== prev.seen ? progressChanged() : undefined),
+        useLeague.subscribe((s, prev) => (s.beaten !== prev.beaten ? progressChanged() : undefined)),
+        useInventory.subscribe((s, prev) => (s.items !== prev.items ? progressChanged() : undefined)),
+        useDaily.subscribe((s, prev) => (s.lastWon !== prev.lastWon ? progressChanged() : undefined)),
+      ];
       const pull = () => {
         if (document.visibilityState === "visible" && !timer) void run(sync);
       };
@@ -214,6 +274,7 @@ export const useTamaSync = create<SyncState>((set, get) => {
       pull();
       return () => {
         offStore();
+        offProgress.forEach((off) => off());
         document.removeEventListener("visibilitychange", pull);
         clearInterval(interval);
         if (timer) clearTimeout(timer);

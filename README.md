@@ -223,9 +223,9 @@ To use the database from `npm run dev`, start only `db` (`docker compose up -d d
 
 ### Tamagotchi sync
 
-With a database, the Tamagotchi party is saved in Postgres under a **sync code** (e.g. `K7QM-2HXA-9RTB`), shown on the trainer card's DIARY page next to the party's milestones (adoptions, eggs, evolutions, level-ups). To share the party with another device, open the profile editor there and type the code in SYNC CODE; that device's own party is replaced. Without a database (e.g. a static deploy) the save and the diary stay in `localStorage`.
+With a database, the Tamagotchi party (and the rest of the progress: seen and caught Pokémon, league, shop items and the daily challenge) is saved in Postgres under a **sync code** (e.g. `K7QM-2HXA-9RTB`), shown on the trainer card's DIARY page next to the party's milestones (adoptions, eggs, evolutions, level-ups). To share the party with another device, open the profile editor there and type the code in SYNC CODE; that device's own party is replaced, while its Pokédex, league and daily progress are merged in (they only move forward). Without a database (e.g. a static deploy) the save and the diary stay in `localStorage`.
 
-Each write names the revision it was based on; if another device wrote first, the server's copy wins and the device takes it (`web/lib/tamaSync.ts`, tested in `tamaSync.test.ts`). The code is the only credential, so treat it like a password; the server stores just its hash.
+Each write names the revision it was based on; if another device wrote first, the server's copy wins and the device takes it, merging the progress that only moves forward and sending the result back (`web/lib/tamaSync.ts`, tested in `tamaSync.test.ts`). The code is the only credential, so treat it like a password; the server stores just its hash.
 
 ## Controls
 
@@ -335,7 +335,7 @@ Progression:
 Next ideas:
 
 - [ ] Trainer sprite accessories in the shop
-- [ ] Sync the Pokédex progress, league and shop items with the Tamagotchi
+- [x] Sync the Pokédex progress, league, shop items and daily challenge with the Tamagotchi
 
 ## Legal notice
 

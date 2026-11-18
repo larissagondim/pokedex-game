@@ -1,3 +1,4 @@
+import { LEAGUE } from "./league.ts";
 import { levelOf, MAX_SLOTS, type Pet } from "./tamagotchi.ts";
 
 /**
@@ -48,6 +49,21 @@ export function formatSyncDraft(input: string): string {
 export interface TamaSave {
   pets: Pet[];
   coins: number;
+  /** The rest of the game's progress. Absent in saves from before it was synced. */
+  progress?: SyncedProgress;
+}
+
+/** Progress kept next to the party: Pokédex, league, shop items and the daily challenge. */
+export interface SyncedProgress {
+  /** Dex numbers, ascending; caught ⊆ seen. */
+  seen: number[];
+  caught: number[];
+  /** League leaders beaten. */
+  league: number;
+  /** Battle items bought and not used yet. */
+  items: { potion: number; fullheal: number };
+  /** Last day ("2026-11-18") the daily challenge was won. */
+  dailyWon: string | null;
 }
 
 /** A save as the server stores it. */
@@ -91,15 +107,64 @@ function sanitizePet(value: unknown): Pet | null {
   };
 }
 
+const MAX_ITEMS = 999;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function dexIds(value: unknown): number[] | null {
+  if (!Array.isArray(value) || value.length > MAX_DEX) return null;
+  if (!value.every((id) => isIndex(id, MAX_DEX) && id > 0)) return null;
+  return [...new Set(value as number[])].sort((a, b) => a - b);
+}
+
+/** Well-formed progress, or null if anything is off. */
+export function sanitizeSyncedProgress(value: unknown): SyncedProgress | null {
+  if (!value || typeof value !== "object") return null;
+  const p = value as Record<string, unknown>;
+  const seen = dexIds(p.seen);
+  const caught = dexIds(p.caught);
+  const items = (p.items && typeof p.items === "object" ? p.items : null) as Record<string, unknown> | null;
+  if (!seen || !caught || !isIndex(p.league, LEAGUE.length) || !items) return null;
+  if (!isIndex(items.potion, MAX_ITEMS) || !isIndex(items.fullheal, MAX_ITEMS)) return null;
+  if (p.dailyWon !== null && !(typeof p.dailyWon === "string" && DAY.test(p.dailyWon))) return null;
+  return {
+    seen: [...new Set([...seen, ...caught])].sort((a, b) => a - b),
+    caught,
+    league: p.league,
+    items: { potion: items.potion, fullheal: items.fullheal },
+    dailyWon: p.dailyWon,
+  };
+}
+
+/**
+ * Two devices' progress put together: the Pokédex, the league and the daily
+ * challenge only ever move forward, so nothing earned on either is lost. Items
+ * are spent, so they come from `remote` like the coins.
+ */
+export function mergeProgress(local: SyncedProgress, remote: SyncedProgress): SyncedProgress {
+  const union = (a: number[], b: number[]) => [...new Set([...a, ...b])].sort((x, y) => x - y);
+  const daily = [local.dailyWon, remote.dailyWon].filter((d): d is string => d !== null).sort();
+  return {
+    seen: union(local.seen, remote.seen),
+    caught: union(local.caught, remote.caught),
+    league: Math.max(local.league, remote.league),
+    items: { ...remote.items },
+    dailyWon: daily.at(-1) ?? null,
+  };
+}
+
+export const sameProgress = (a: SyncedProgress | undefined, b: SyncedProgress | undefined) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
 /** A well-formed save (known fields only), or null if anything is off. Used on both ends of the wire. */
 export function sanitizeSave(value: unknown): TamaSave | null {
   if (!value || typeof value !== "object") return null;
-  const { pets, coins } = value as Record<string, unknown>;
+  const { pets, coins, progress } = value as Record<string, unknown>;
   if (!Array.isArray(pets) || pets.length > MAX_SLOTS || !isIndex(coins, MAX_COINS)) return null;
   const clean = pets.map(sanitizePet);
   if (clean.some((p) => p === null)) return null;
   if (new Set(clean.map((p) => p!.uid)).size !== clean.length) return null;
-  return { pets: clean as Pet[], coins };
+  // Bad progress is dropped, not the whole save (the server then keeps what it had).
+  const synced = progress === undefined ? null : sanitizeSyncedProgress(progress);
+  return { pets: clean as Pet[], coins, ...(synced && { progress: synced }) };
 }
 
 /* History */

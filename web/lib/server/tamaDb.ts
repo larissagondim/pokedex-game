@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS tamagotchi_events (
   detail    integer
 );
 CREATE INDEX IF NOT EXISTS tamagotchi_events_latest ON tamagotchi_events (code_hash, at DESC, id DESC);
+ALTER TABLE tamagotchi_saves ADD COLUMN IF NOT EXISTS progress jsonb;
 `;
 
 interface Db {
@@ -59,6 +60,7 @@ const hashOf = (code: string) => createHash("sha256").update(code).digest("hex")
 interface SaveRow {
   pets: unknown;
   coins: number;
+  progress: unknown;
   revision: number;
   updated_at: string;
 }
@@ -82,7 +84,7 @@ export async function readSnapshot(code: string): Promise<Snapshot> {
   const hash = hashOf(code);
   const [saves, events] = await Promise.all([
     db.query<SaveRow>(
-      "SELECT pets, coins, revision, (extract(epoch FROM updated_at) * 1000)::bigint AS updated_at FROM tamagotchi_saves WHERE code_hash = $1",
+      "SELECT pets, coins, progress, revision, (extract(epoch FROM updated_at) * 1000)::bigint AS updated_at FROM tamagotchi_saves WHERE code_hash = $1",
       [hash],
     ),
     db.query<EventRow>("SELECT at, kind, dex_id, detail FROM tamagotchi_events WHERE code_hash = $1 ORDER BY at DESC, id DESC LIMIT $2", [
@@ -91,7 +93,7 @@ export async function readSnapshot(code: string): Promise<Snapshot> {
     ]),
   ]);
   const row = saves.rows[0];
-  const save = row && sanitizeSave({ pets: row.pets, coins: row.coins });
+  const save = row && sanitizeSave({ pets: row.pets, coins: row.coins, progress: row.progress ?? undefined });
   return {
     save: row && save ? { ...save, revision: row.revision, updatedAt: Number(row.updated_at) } : null,
     history: events.rows.map((e) => ({ at: Number(e.at), kind: e.kind, dexId: e.dex_id, detail: e.detail })),
@@ -107,17 +109,19 @@ export async function writeSave(code: string, save: TamaSave, baseRevision: numb
   const client = await (await pool()).connect();
   const hash = hashOf(code);
   const pets = JSON.stringify(save.pets);
+  // A save without progress (an older client) keeps the stored one.
+  const progress = save.progress ? JSON.stringify(save.progress) : null;
   try {
     await client.query("BEGIN");
     const written =
       baseRevision === 0
         ? await client.query<{ revision: number }>(
-            "INSERT INTO tamagotchi_saves (code_hash, pets, coins) VALUES ($1, $2, $3) ON CONFLICT (code_hash) DO NOTHING RETURNING revision",
-            [hash, pets, save.coins],
+            "INSERT INTO tamagotchi_saves (code_hash, pets, coins, progress) VALUES ($1, $2, $3, $4) ON CONFLICT (code_hash) DO NOTHING RETURNING revision",
+            [hash, pets, save.coins, progress],
           )
         : await client.query<{ revision: number }>(
-            "UPDATE tamagotchi_saves SET pets = $2, coins = $3, revision = revision + 1, updated_at = now() WHERE code_hash = $1 AND revision = $4 RETURNING revision",
-            [hash, pets, save.coins, baseRevision],
+            "UPDATE tamagotchi_saves SET pets = $2, coins = $3, progress = COALESCE($5::jsonb, progress), revision = revision + 1, updated_at = now() WHERE code_hash = $1 AND revision = $4 RETURNING revision",
+            [hash, pets, save.coins, baseRevision, progress],
           );
     const revision = written.rows[0]?.revision ?? null;
     if (revision !== null && events.length > 0) {

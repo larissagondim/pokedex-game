@@ -38,6 +38,8 @@ interface DexProgressState extends DexProgress {
   see: (dexIds: readonly number[]) => void;
   /** Foes beaten, Pokémon raised. */
   capture: (dexIds: readonly number[]) => void;
+  /** Takes progress from the server (already merged with this device's). */
+  replace: (progress: { seen: readonly number[]; caught: readonly number[] }) => void;
 }
 
 /** Seen and caught species, in localStorage. The Tamagotchi party is caught automatically. */
@@ -52,6 +54,11 @@ export const useDexProgress = create<DexProgressState>((set, get) => {
     ...(typeof window === "undefined" ? EMPTY_PROGRESS : load()),
     see: (ids) => update(see(get(), ids)),
     capture: (ids) => update(capture(get(), ids)),
+    replace: ({ seen, caught }) => {
+      const next = sanitizeProgress({ seen, caught });
+      const same = (a: ReadonlySet<number>, b: ReadonlySet<number>) => a.size === b.size && [...a].every((id) => b.has(id));
+      if (!same(next.seen, get().seen) || !same(next.caught, get().caught)) update(next);
+    },
   };
 });
 

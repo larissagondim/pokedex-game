@@ -9,10 +9,14 @@ import {
   HISTORY_MAX,
   type HistoryEntry,
   newSyncCode,
+  mergeProgress,
   nextSyncStep,
   normalizeSyncCode,
+  sameProgress,
   sanitizeHistory,
   sanitizeSave,
+  sanitizeSyncedProgress,
+  type SyncedProgress,
 } from "./tamaSync.ts";
 
 const T0 = 1_000_000_000_000;
@@ -114,4 +118,50 @@ test("nextSyncStep: first write, local changes, and the server winning", () => {
   assert.equal(nextSyncStep(3, false, 4), "adopt");
   assert.equal(nextSyncStep(3, true, 4), "adopt"); // another device wrote first
   assert.equal(nextSyncStep(0, true, 2), "adopt"); // just linked to an existing save
+});
+
+const progress = (extra: Partial<SyncedProgress> = {}): SyncedProgress => ({
+  seen: [1, 4],
+  caught: [4],
+  league: 2,
+  items: { potion: 1, fullheal: 0 },
+  dailyWon: "2026-11-17",
+  ...extra,
+});
+
+test("progress: kept by sanitizeSave, sorted, caught counted as seen", () => {
+  const save = sanitizeSave({ pets: [], coins: 5, progress: progress({ seen: [4, 1, 1], caught: [9] }) });
+  assert.deepEqual(save?.progress, progress({ seen: [1, 4, 9], caught: [9] }));
+  // Old saves have none.
+  assert.equal(sanitizeSave({ pets: [], coins: 5 })?.progress, undefined);
+});
+
+test("progress: a malformed one is dropped, the save is kept", () => {
+  const bad: unknown[] = [
+    progress({ league: 9 }),
+    progress({ seen: [0] }),
+    progress({ caught: ["4" as unknown as number] }),
+    progress({ items: { potion: -1, fullheal: 0 } }),
+    progress({ dailyWon: "yesterday" }),
+    "junk",
+  ];
+  for (const p of bad) {
+    assert.equal(sanitizeSyncedProgress(p), null, JSON.stringify(p));
+    assert.deepEqual(sanitizeSave({ pets: [], coins: 1, progress: p }), { pets: [], coins: 1 });
+  }
+});
+
+test("progress: merging never loses what either device earned; items come from the server", () => {
+  const local = progress({ seen: [1, 4, 7], caught: [4, 7], league: 3, items: { potion: 5, fullheal: 5 }, dailyWon: "2026-11-18" });
+  const remote = progress({ seen: [2], caught: [2], league: 1, items: { potion: 0, fullheal: 1 }, dailyWon: "2026-11-10" });
+  assert.deepEqual(mergeProgress(local, remote), {
+    seen: [1, 2, 4, 7],
+    caught: [2, 4, 7],
+    league: 3,
+    items: { potion: 0, fullheal: 1 },
+    dailyWon: "2026-11-18",
+  });
+  assert.equal(mergeProgress(progress({ dailyWon: null }), progress({ dailyWon: null })).dailyWon, null);
+  assert.ok(sameProgress(progress(), progress()));
+  assert.ok(!sameProgress(progress(), progress({ league: 0 })));
 });
