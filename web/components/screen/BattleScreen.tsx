@@ -5,7 +5,7 @@ import type { Pokemon } from "@/data/pokedex";
 import { useBattleRecord } from "@/stores/battleRecord";
 import { usePokedex } from "@/stores/pokedex";
 import { useFavorites } from "@/stores/favorites";
-import { DAILY_BONUS, dailyTeam, dayKey } from "@/lib/daily";
+import { dailyBonus, dailyTeam, dayKey, liveStreak, nextStreak } from "@/lib/daily";
 import { canChallenge, LEAGUE, leagueBonus, leaderState, trainerTitle } from "@/lib/league";
 import { battleCondition, tick } from "@/lib/tamagotchi";
 import { useDaily } from "@/stores/daily";
@@ -32,7 +32,7 @@ const MODES: { label: string; detail: string; mode?: Mode; step?: Step }[] = [
   { label: "TEAM BATTLE", detail: "3 vs 3. Switch Pokémon, use items; the last one standing wins.", mode: "team" },
   { label: "FULL BATTLE", detail: "6 vs 6, a full team each, like a real trainer battle.", mode: "full" },
   { label: "LEAGUE", detail: "8 leaders (3 vs 3), then the champion (6 vs 6). Beat them all!", step: "league" },
-  { label: "DAILY CHALLENGE", detail: `Today's foe team, the same for everyone. First win of the day: +${DAILY_BONUS}₽` },
+  { label: "DAILY CHALLENGE", detail: "Today's foe team, the same for everyone. Win every day for a growing bonus!" },
   { label: "RECORD", detail: "Your wins and losses.", step: "record" },
 ];
 const FOE_SOURCES = [
@@ -247,7 +247,7 @@ export function BattleScreen({ active, onNotice }: Props) {
     <BattleMenu
       key="menu"
       title="BATTLE"
-      options={MODES}
+      options={MODES.map((m) => (m.label === "DAILY CHALLENGE" ? { ...m, detail: dailyDetail() } : m))}
       active={active}
       onPick={(i) => {
         const chosen = MODES[i].mode;
@@ -276,9 +276,20 @@ type Challenge = { kind: "league"; index: number } | { kind: "daily"; day: strin
 /** Records a daily challenge: the first win of the day pays a bonus. */
 function dailyResult(day: string, won: boolean): string | null {
   if (!won) return null;
-  if (!useDaily.getState().win(day)) return "Daily challenge already won today. Come back tomorrow!";
-  useTamagotchi.getState().reward(DAILY_BONUS);
-  return `Daily challenge complete! +${DAILY_BONUS}₽`;
+  const streak = useDaily.getState().win(day);
+  if (streak === null) return "Daily challenge already won today. Come back tomorrow!";
+  const bonus = dailyBonus(streak);
+  useTamagotchi.getState().reward(bonus);
+  return `Daily challenge complete! +${bonus}₽${streak > 1 ? ` ${streak} days in a row!` : ""}`;
+}
+
+/** "Streak: 3 days. Win today: +140₽" for the daily challenge's menu entry. */
+function dailyDetail(): string {
+  const { lastWon, streak } = useDaily.getState();
+  const today = dayKey(new Date());
+  if (lastWon === today) return `Won today! Streak: ${streak} day${streak === 1 ? "" : "s"}. Come back tomorrow.`;
+  const alive = liveStreak(lastWon, streak, today);
+  return `Today's foes, the same for everyone. ${alive > 0 ? `Streak: ${alive}. ` : ""}Win today: +${dailyBonus(nextStreak(lastWon, streak, today))}₽`;
 }
 
 /** Records a league battle: a first win against the next leader pays a bonus. */

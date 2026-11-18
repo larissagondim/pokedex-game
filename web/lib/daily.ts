@@ -6,12 +6,34 @@
 
 export const DAILY_SIZE = 3;
 export const DAILY_BONUS = 100;
+/** Each day in a row adds this much to the bonus, up to STREAK_MAX days. */
+export const STREAK_STEP = 20;
+export const STREAK_MAX = 7;
 
 /** "2026-11-18" in local time. */
 export function dayKey(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
+
+/** The day before `day` ("2026-03-01" → "2026-02-28"). */
+export function previousDay(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return dayKey(new Date(y, m - 1, d - 1));
+}
+
+/** Days in a row after winning on `day`, given the last win and its streak. */
+export function nextStreak(lastWon: string | null, streak: number, day: string): number {
+  if (lastWon === day) return streak;
+  return lastWon !== null && lastWon === previousDay(day) ? streak + 1 : 1;
+}
+
+/** The streak as of `today`: still alive if the last win was today or yesterday, else 0. */
+export const liveStreak = (lastWon: string | null, streak: number, today: string) =>
+  lastWon === today || (lastWon !== null && lastWon === previousDay(today)) ? streak : 0;
+
+/** Bonus for a first win of the day that makes a streak of `streak` days. */
+export const dailyBonus = (streak: number) => DAILY_BONUS + STREAK_STEP * (Math.min(Math.max(streak, 1), STREAK_MAX) - 1);
 
 /** 32-bit FNV-1a hash of a string. */
 function hash(text: string): number {

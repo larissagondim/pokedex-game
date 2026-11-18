@@ -1,44 +1,56 @@
 import { create } from "zustand";
+import { nextStreak } from "@/lib/daily";
 
 const STORAGE_KEY = "pokedex-game:daily";
 
-function load(): string | null {
+interface Saved {
+  /** The day (`dayKey`) of the last daily challenge won. */
+  lastWon: string | null;
+  /** Days in a row won, ending on `lastWon`. */
+  streak: number;
+}
+
+function load(): Saved {
   try {
     const v: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
-    return typeof v === "string" ? v : null;
+    // The first version stored just the day.
+    if (typeof v === "string") return { lastWon: v, streak: 1 };
+    const s = (v && typeof v === "object" ? v : {}) as Partial<Saved>;
+    const lastWon = typeof s.lastWon === "string" ? s.lastWon : null;
+    return { lastWon, streak: lastWon && Number.isInteger(s.streak) && s.streak! > 0 ? s.streak! : lastWon ? 1 : 0 };
   } catch {
-    return null;
+    return { lastWon: null, streak: 0 };
   }
 }
 
-interface DailyState {
-  /** The day (`dayKey`) of the last daily challenge won. */
-  lastWon: string | null;
-  /** Records a win for `day`; returns true if it's the first one that day. */
-  win: (day: string) => boolean;
+interface DailyState extends Saved {
+  /** Records a win for `day`; returns the new streak if it's the first win that day, else null. */
+  win: (day: string) => number | null;
   /** Takes progress from the server. */
-  replace: (day: string | null) => void;
+  replace: (lastWon: string | null, streak: number) => void;
 }
 
 /** Daily challenge progress, in localStorage. */
 export const useDaily = create<DailyState>((set, get) => {
-  const store = (day: string | null) => {
-    set({ lastWon: day });
+  const store = (saved: Saved) => {
+    set(saved);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(day));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     } catch {
       // Storage unavailable: lasts for this session only.
     }
   };
   return {
-    lastWon: typeof window === "undefined" ? null : load(),
+    ...(typeof window === "undefined" ? { lastWon: null, streak: 0 } : load()),
     win: (day) => {
-      if (get().lastWon === day) return false;
-      store(day);
-      return true;
+      const { lastWon, streak } = get();
+      if (lastWon === day) return null;
+      const next = nextStreak(lastWon, streak, day);
+      store({ lastWon: day, streak: next });
+      return next;
     },
-    replace: (day) => {
-      if (day !== get().lastWon) store(day);
+    replace: (lastWon, streak) => {
+      if (lastWon !== get().lastWon || streak !== get().streak) store({ lastWon, streak });
     },
   };
 });

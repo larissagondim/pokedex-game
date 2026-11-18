@@ -113,6 +113,7 @@ function localProgress(): SyncedProgress {
     league: useLeague.getState().beaten,
     items: { ...useInventory.getState().items },
     dailyWon: useDaily.getState().lastWon,
+    dailyStreak: useDaily.getState().lastWon === null ? 0 : useDaily.getState().streak,
     accessories: ACCESSORIES.filter((id) => useWardrobe.getState().owned.has(id)),
   };
 }
@@ -121,7 +122,7 @@ function applyProgress(p: SyncedProgress) {
   useDexProgress.getState().replace(p);
   useLeague.getState().replace(p.league);
   useInventory.getState().replace(p.items);
-  useDaily.getState().replace(p.dailyWon);
+  useDaily.getState().replace(p.dailyWon, p.dailyStreak ?? (p.dailyWon ? 1 : 0));
   useWardrobe.getState().replace(p.accessories ?? []);
 }
 
@@ -268,7 +269,7 @@ export const useTamaSync = create<SyncState>((set, get) => {
         useDexProgress.subscribe((s, prev) => s.caught !== prev.caught || s.seen !== prev.seen ? progressChanged() : undefined),
         useLeague.subscribe((s, prev) => (s.beaten !== prev.beaten ? progressChanged() : undefined)),
         useInventory.subscribe((s, prev) => (s.items !== prev.items ? progressChanged() : undefined)),
-        useDaily.subscribe((s, prev) => (s.lastWon !== prev.lastWon ? progressChanged() : undefined)),
+        useDaily.subscribe((s, prev) => (s.lastWon !== prev.lastWon || s.streak !== prev.streak ? progressChanged() : undefined)),
         useWardrobe.subscribe((s, prev) => (s.owned !== prev.owned ? progressChanged() : undefined)),
       ];
       const pull = () => {

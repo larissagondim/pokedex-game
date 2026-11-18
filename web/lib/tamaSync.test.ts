@@ -126,6 +126,7 @@ const progress = (extra: Partial<SyncedProgress> = {}): SyncedProgress => ({
   league: 2,
   items: { potion: 1, fullheal: 0 },
   dailyWon: "2026-11-17",
+  dailyStreak: 1,
   accessories: [],
   ...extra,
 });
@@ -145,6 +146,7 @@ test("progress: a malformed one is dropped, the save is kept", () => {
     progress({ items: { potion: -1, fullheal: 0 } }),
     progress({ dailyWon: "yesterday" }),
     progress({ accessories: ["wings" as never] }),
+    progress({ dailyStreak: -1 }),
     "junk",
   ];
   for (const p of bad) {
@@ -162,8 +164,12 @@ test("progress: merging never loses what either device earned; items come from t
     league: 3,
     items: { potion: 0, fullheal: 1 },
     dailyWon: "2026-11-18",
+    dailyStreak: 1,
     accessories: [],
   });
+  const streaks = mergeProgress(progress({ dailyWon: "2026-11-18", dailyStreak: 2 }), progress({ dailyWon: "2026-11-18", dailyStreak: 5 }));
+  assert.equal(streaks.dailyStreak, 5);
+  assert.equal(mergeProgress(progress({ dailyWon: "2026-11-18", dailyStreak: 2 }), progress({ dailyWon: "2026-11-10", dailyStreak: 9 })).dailyStreak, 2);
   assert.deepEqual(mergeProgress(progress({ accessories: ["crown"] }), progress({ accessories: ["scarf"] })).accessories, ["scarf", "crown"]);
   assert.equal(mergeProgress(progress({ dailyWon: null }), progress({ dailyWon: null })).dailyWon, null);
   assert.ok(sameProgress(progress(), progress()));

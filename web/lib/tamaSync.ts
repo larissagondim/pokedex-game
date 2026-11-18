@@ -65,6 +65,8 @@ export interface SyncedProgress {
   items: { potion: number; fullheal: number };
   /** Last day ("2026-11-18") the daily challenge was won. */
   dailyWon: string | null;
+  /** Days in a row won, ending on `dailyWon` (absent in older progress). */
+  dailyStreak?: number;
   /** Trainer accessories bought (absent in progress saved before they existed). */
   accessories?: Accessory[];
 }
@@ -129,6 +131,7 @@ export function sanitizeSyncedProgress(value: unknown): SyncedProgress | null {
   if (!seen || !caught || !isIndex(p.league, LEAGUE.length) || !items) return null;
   if (!isIndex(items.potion, MAX_ITEMS) || !isIndex(items.fullheal, MAX_ITEMS)) return null;
   if (p.dailyWon !== null && !(typeof p.dailyWon === "string" && DAY.test(p.dailyWon))) return null;
+  if (p.dailyStreak !== undefined && !isIndex(p.dailyStreak, 100_000)) return null;
   if (p.accessories !== undefined && !(Array.isArray(p.accessories) && p.accessories.every(isAccessory))) return null;
   return {
     seen: [...new Set([...seen, ...caught])].sort((a, b) => a - b),
@@ -136,6 +139,7 @@ export function sanitizeSyncedProgress(value: unknown): SyncedProgress | null {
     league: p.league,
     items: { potion: items.potion, fullheal: items.fullheal },
     dailyWon: p.dailyWon,
+    dailyStreak: p.dailyWon === null ? 0 : Math.max(1, (p.dailyStreak as number | undefined) ?? 1),
     accessories: ACCESSORIES.filter((id) => (p.accessories as Accessory[] | undefined)?.includes(id)),
   };
 }
@@ -148,12 +152,15 @@ export function sanitizeSyncedProgress(value: unknown): SyncedProgress | null {
 export function mergeProgress(local: SyncedProgress, remote: SyncedProgress): SyncedProgress {
   const union = (a: number[], b: number[]) => [...new Set([...a, ...b])].sort((x, y) => x - y);
   const daily = [local.dailyWon, remote.dailyWon].filter((d): d is string => d !== null).sort();
+  // The streak goes with the later win (the longer one if both won the same day).
+  const streakOf = (p: SyncedProgress) => (p.dailyWon === daily.at(-1) ? (p.dailyStreak ?? 1) : 0);
   return {
     seen: union(local.seen, remote.seen),
     caught: union(local.caught, remote.caught),
     league: Math.max(local.league, remote.league),
     items: { ...remote.items },
     dailyWon: daily.at(-1) ?? null,
+    dailyStreak: Math.max(streakOf(local), streakOf(remote)),
     accessories: ACCESSORIES.filter((id) => local.accessories?.includes(id) || remote.accessories?.includes(id)),
   };
 }
