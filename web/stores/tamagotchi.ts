@@ -15,6 +15,7 @@ import {
   type Pet,
   START_COINS,
   tick,
+  TREAT_PRICE,
 } from "@/lib/tamagotchi";
 
 const STORAGE_KEY = "pokedex-game:tamagotchi";
@@ -33,7 +34,7 @@ export type TamaEvent =
   | { kind: "egg-bought"; uid: string }
   | { kind: "released"; dexId: number | null }
   | { kind: "full" }
-  | { kind: "no-coins" };
+  | { kind: "no-coins"; price: number };
 
 interface TamagotchiState extends Saved {
   /** Latest event; a new object every time so subscribers can react. */
@@ -50,6 +51,10 @@ interface TamagotchiState extends Saved {
   release: (uid: string) => void;
   /** Adds coins (e.g. for winning a battle). */
   reward: (coins: number) => void;
+  /** Takes coins if there are enough (shop); false otherwise. */
+  spend: (coins: number) => boolean;
+  /** Buys a treat and gives it to this party member right away. */
+  buyTreat: (uid: string, list: readonly Pokemon[]) => void;
   /**
    * A party member of this species battled: `xp` and joy on a win (it may
    * evolve), a little less joy on a loss, and some energy and food either
@@ -111,12 +116,41 @@ export const useTamagotchi = create<TamagotchiState>((set, get) => {
     buyEgg: () => {
       const { pets, coins } = get();
       if (pets.length >= MAX_SLOTS) return commit({ event: { kind: "full" } });
-      if (coins < EGG_PRICE) return commit({ event: { kind: "no-coins" } });
+      if (coins < EGG_PRICE) return commit({ event: { kind: "no-coins", price: EGG_PRICE } });
       const egg = newPet(uid(), null, Date.now());
       commit({ pets: [...pets, egg], coins: coins - EGG_PRICE, event: { kind: "egg-bought", uid: egg.uid } });
     },
 
     reward: (coins) => commit({ coins: get().coins + coins }),
+
+    spend: (coins) => {
+      if (get().coins < coins) {
+        commit({ event: { kind: "no-coins", price: coins } });
+        return false;
+      }
+      commit({ coins: get().coins - coins });
+      return true;
+    },
+
+    buyTreat: (id, list) => {
+      const pet = get().pets.find((p) => p.uid === id);
+      if (!pet || pet.dexId === null) return;
+      if (get().coins < TREAT_PRICE) return commit({ event: { kind: "no-coins", price: TREAT_PRICE } });
+      const result = act(pet, "treat", Date.now());
+      const paid = result.outcome === "treated";
+      let next = result.pet;
+      let event: TamaEvent = { kind: "action", uid: id, dexId: pet.dexId, outcome: result.outcome, coins: 0 };
+      const evolved = paid ? evolve(next, dexOf(list)) : null;
+      if (evolved && evolved.dexId !== null) {
+        event = { kind: "evolved", uid: id, from: pet.dexId, to: evolved.dexId };
+        next = evolved;
+      }
+      commit({
+        pets: get().pets.map((p) => (p.uid === id ? next : p)),
+        coins: get().coins - (paid ? TREAT_PRICE : 0) + (event.kind === "evolved" ? 50 : 0),
+        event,
+      });
+    },
 
     battled: (dexId, won, winXp, list) => {
       const pet = get().pets.find((p) => p.dexId === dexId);

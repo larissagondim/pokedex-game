@@ -34,6 +34,7 @@ import { badgeNotice, checkBadges } from "@/stores/badges";
 import { useBattleLog } from "@/stores/battleLog";
 import { useBattleRecord } from "@/stores/battleRecord";
 import { useDexProgress } from "@/stores/dexProgress";
+import { useInventory } from "@/stores/inventory";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import { useTrainer } from "@/stores/trainer";
 import styles from "./battle.module.css";
@@ -273,7 +274,8 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     // ready screen (teams). A rematch keeps the one from the first start.
     if (useModel) startOdds.current = chance ?? null;
     else if (phase === "ready") startOdds.current = live;
-    const st = createTeamBattle(sets.a, sets.b);
+    // Your bag: the standard items plus the ones bought in the shop.
+    const st = createTeamBattle(sets.a, sets.b, useInventory.getState().battleBag());
     useDexProgress.getState().see(foe.map((p) => p.id));
     shownHp.current = { a: { hp: st.a.hp, max: st.a.maxHp }, b: { hp: st.b.hp, max: st.b.maxHp } };
     shownId.current = { a: st.a.dexId, b: st.b.dexId };
@@ -430,6 +432,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     setPhase("over");
     overAt.current = performance.now();
     const won = final.winner === "a";
+    useInventory.getState().settle(final.bag.a);
     useBattleLog.getState().add({ at: Date.now(), player: player.map((p) => p.id), foe: foe.map((p) => p.id), won, odds: startOdds.current });
     const list = usePokedex.getState().list;
     // The less likely the win, the bigger the reward.
@@ -488,6 +491,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
 
   const runAway = () => {
     clearTimeout(timer.current);
+    if (battle) useInventory.getState().settle(battle.bag.a);
     setPhase("ready");
     setBattle(null);
     setView(null);

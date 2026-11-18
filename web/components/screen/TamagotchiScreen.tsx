@@ -15,9 +15,12 @@ import {
   type Outcome,
   type Pet,
   stageOf,
+  TREAT_PRICE,
   XP_PER_LEVEL,
 } from "@/lib/tamagotchi";
+import type { ItemId } from "@/lib/battle/engine";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
+import { ITEM_PRICES, useInventory } from "@/stores/inventory";
 import { usePokedex } from "@/stores/pokedex";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import { PetSprite } from "./PetSprite";
@@ -28,14 +31,23 @@ const INPUT_PRIORITY = 11;
 const REFRESH_MS = 10_000;
 const REACTION_MS = 1600;
 
-type MenuItem = Action | "egg" | "release";
-const MENU: MenuItem[] = ["feed", "play", "sleep", "train", "egg", "release"];
+type MenuItem = Exclude<Action, "treat"> | "shop" | "release";
+const MENU: MenuItem[] = ["feed", "play", "sleep", "train", "shop", "release"];
+
+type ShopItem = "egg" | "treat" | ItemId;
+const SHOP: { id: ShopItem; label: string; price: number }[] = [
+  { id: "egg", label: "EGG", price: EGG_PRICE },
+  { id: "treat", label: "TREAT", price: TREAT_PRICE },
+  { id: "potion", label: "SUPER POTION", price: ITEM_PRICES.potion },
+  { id: "fullheal", label: "FULL HEAL", price: ITEM_PRICES.fullheal },
+];
 
 /** Short-lived animation shown on the stage after something happens. */
 type Reaction = "eat" | "play" | "train" | "sleep" | "evolve" | "hatch" | "pet" | "no";
 
 const OUTCOME_REACTION: Partial<Record<Outcome, Reaction>> = {
   ate: "eat",
+  treated: "eat",
   played: "play",
   trained: "train",
   "fell-asleep": "sleep",
@@ -59,6 +71,9 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
   const [slot, setSlot] = useState(0);
   const [menu, setMenu] = useState(0);
   const [confirmRelease, setConfirmRelease] = useState(false);
+  /** The shop is open (in place of the stage), with its cursor. */
+  const [shop, setShop] = useState<number | null>(null);
+  const items = useInventory((s) => s.items);
   const [reaction, setReaction] = useState<{ kind: Reaction; key: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -116,10 +131,26 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
     return () => clearTimeout(id);
   }, [reaction]);
 
-  const run = (item: MenuItem) => {
+  const buy = (item: ShopItem) => {
     const store = useTamagotchi.getState();
     if (item === "egg") return store.buyEgg();
-    if (!pet) return onNotice("Your party is empty. Adopt a Pokémon you caught from the LIST tab, or buy an egg.");
+    if (item === "treat") {
+      if (!pet || pet.dexId === null) return onNotice("Pick a hatched Pokémon in your party (▲▼) to give it a treat.");
+      return store.buyTreat(pet.uid, list);
+    }
+    if (useInventory.getState().buy(item)) {
+      const name = SHOP.find((x) => x.id === item)!.label;
+      onNotice(`You bought a ${name}! It goes in your battle bag (×${useInventory.getState().items[item]} extra).`);
+    }
+  };
+
+  const run = (item: MenuItem) => {
+    const store = useTamagotchi.getState();
+    if (item === "shop") {
+      setShop(0);
+      return onNotice("SHOP! ▲▼ choose   A: buy   B: close");
+    }
+    if (!pet) return onNotice("Your party is empty. Adopt a Pokémon you caught from the LIST tab, or buy an egg in the SHOP.");
     if (item === "release") {
       if (!confirmRelease) {
         setConfirmRelease(true);
@@ -143,6 +174,15 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
   /** Returns true when consumed. */
   const handle = (button: DeviceButton): boolean => {
     if (button === "MENU" || button === "ZOOM") return false;
+    if (shop !== null) {
+      if (button === "UP" || button === "DOWN") setShop((c) => wrap((c ?? 0) + (button === "UP" ? -1 : 1), SHOP.length));
+      else if (button === "A") buy(SHOP[shop].id);
+      else if (button === "B") {
+        setShop(null);
+        onNotice("See you again!");
+      }
+      return true;
+    }
     if (confirmRelease && button !== "A") {
       setConfirmRelease(false);
       onNotice("Phew! It stays with you.");
@@ -206,7 +246,15 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
       </div>
 
       <div className={styles.main}>
-        {pet ? (
+        {shop !== null ? (
+          <Shop
+            cursor={shop}
+            coins={coins}
+            owned={items}
+            treatFor={species?.name.toUpperCase() ?? null}
+            onPick={(i) => (i === shop ? buy(SHOP[i].id) : setShop(i))}
+          />
+        ) : pet ? (
           <>
             <Stage pet={pet} species={species} stage={species ? stageOf(species.id, dex) : 0} reaction={reaction} now={now} onPet={petIt} />
             <div className={styles.info}>
@@ -225,7 +273,7 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
         ) : (
           <div className={styles.emptyStage}>
             <p>No Pokémon yet.</p>
-            <p>Adopt one you caught in battle from the LIST tab (open it, then A), or buy an egg for {EGG_PRICE}₽.</p>
+            <p>Adopt one you caught in battle from the LIST tab (open it, then A), or buy an egg in the SHOP.</p>
           </div>
         )}
         <div className={styles.menu} role="toolbar" aria-label="Actions">
@@ -239,11 +287,55 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
                 run(item);
               }}
             >
-              {item === "sleep" && pet?.asleep ? "WAKE" : item === "egg" ? `EGG ${EGG_PRICE}₽` : item.toUpperCase()}
+              {item === "sleep" && pet?.asleep ? "WAKE" : item.toUpperCase()}
             </button>
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+const SHOP_INFO: Record<ShopItem, string> = {
+  egg: "Hatches into a random Pokémon. 1 in 16 is shiny!",
+  treat: "+40 FOOD, +25 JOY. Given right away.",
+  potion: "Battle bag: restores 60 HP.",
+  fullheal: "Battle bag: cures status and confusion.",
+};
+
+interface ShopProps {
+  cursor: number;
+  coins: number;
+  /** Battle items bought so far (on top of the standard bag). */
+  owned: Record<ItemId, number>;
+  /** Who gets a treat (the selected party member), or null. */
+  treatFor: string | null;
+  onPick: (index: number) => void;
+}
+
+/** Eggs, treats and battle items, paid with the party's coins. */
+function Shop({ cursor, coins, owned, treatFor, onPick }: ShopProps) {
+  const current = SHOP[cursor];
+  return (
+    <div className={styles.shop}>
+      <div className={styles.partyHeader}>
+        <span>SHOP</span>
+        <span className={styles.coins}>{coins}₽</span>
+      </div>
+      <ul role="menu" aria-label="Shop">
+        {SHOP.map((item, i) => (
+          <li key={item.id} role="menuitem" data-focused={i === cursor} data-short={coins < item.price} onClick={() => onPick(i)}>
+            <span className={styles.cursor}>{i === cursor ? "▶" : ""}</span>
+            <span>{item.label}</span>
+            <small>{item.id === "potion" || item.id === "fullheal" ? `×${owned[item.id]}` : ""}</small>
+            <span>{item.price}₽</span>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.shopInfo}>
+        {current.id === "treat" && treatFor ? `For ${treatFor}: ` : ""}
+        {SHOP_INFO[current.id]}
+      </p>
     </div>
   );
 }

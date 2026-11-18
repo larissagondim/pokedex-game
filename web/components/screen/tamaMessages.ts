@@ -1,4 +1,4 @@
-import { EGG_PRICE, MAX_SLOTS } from "@/lib/tamagotchi";
+import { EGG_PRICE, MAX_SLOTS, TREAT_PRICE } from "@/lib/tamagotchi";
 import type { TamaEvent } from "@/stores/tamagotchi";
 
 /** Dialog-box text for a Tamagotchi event. `nameOf` turns a dex number into a display name. */
@@ -19,13 +19,15 @@ export function describeEvent(event: TamaEvent, nameOf: (dexId: number | null) =
     case "full":
       return `Your party is full (${MAX_SLOTS}/${MAX_SLOTS}). Release one in the TAMAGOTCHI tab first.`;
     case "no-coins":
-      return `Not enough ₽ (an egg costs ${EGG_PRICE}₽). Play and train to earn more.`;
+      return `Not enough ₽ (it costs ${event.price}₽). Play, train and battle to earn more.`;
     case "action": {
       const name = nameOf(event.dexId);
       const coins = event.coins ? ` +${event.coins}₽` : "";
       switch (event.outcome) {
         case "ate":
           return `${name} munched happily!`;
+        case "treated":
+          return `${name} loved the treat! -${TREAT_PRICE}₽`;
         case "too-full":
           return `${name} is already full...`;
         case "played":

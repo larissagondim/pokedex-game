@@ -512,6 +512,12 @@ test("items: Super Potion heals 60, Full Heal cures, and they run out", () => {
   assert.ok(!empty.events.some((e) => e.kind === "item"));
 });
 
+test("items: side A can bring a bigger bag; the foe keeps the standard one", () => {
+  const st = createTeamBattle(team({}), team({}), { potion: 4, fullheal: 2 });
+  assert.deepEqual(st.bag.a, { potion: 4, fullheal: 2 });
+  assert.deepEqual(st.bag.b, { potion: 2, fullheal: 1 });
+});
+
 test("Sucker Punch fails if the foe switches", () => {
   const sucker = move({ id: "suckerpunch", name: "Sucker Punch", priority: 1, type: "dark" });
   const st = createTeamBattle(team({ moves: [sucker] }), team({}, {}));

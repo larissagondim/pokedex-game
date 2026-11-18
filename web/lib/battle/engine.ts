@@ -480,13 +480,13 @@ const fullBag = (): Record<ItemId, number> => ({ potion: ITEMS.potion.count, ful
 
 export const createBattle = (a: BattlePokemon, b: BattlePokemon): BattleState => createTeamBattle([a], [b]);
 
-/** The first Pokémon of each team leads. */
-export const createTeamBattle = (a: BattlePokemon[], b: BattlePokemon[]): BattleState => ({
+/** The first Pokémon of each team leads. `bagA`: side A's items, when not the standard bag (bought extras). */
+export const createTeamBattle = (a: BattlePokemon[], b: BattlePokemon[], bagA?: Record<ItemId, number>): BattleState => ({
   turn: 1,
   a: createFighter(a[0]),
   b: createFighter(b[0]),
   bench: { a: a.slice(1).map(createFighter), b: b.slice(1).map(createFighter) },
-  bag: { a: fullBag(), b: fullBag() },
+  bag: { a: bagA ? { ...bagA } : fullBag(), b: fullBag() },
   field: { a: emptyField(), b: emptyField() },
   weather: null,
   trickRoom: 0,

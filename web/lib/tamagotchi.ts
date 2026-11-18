@@ -11,6 +11,8 @@ import type { Pokemon } from "@/data/pokedex";
 export const MAX_SLOTS = 5;
 export const START_COINS = 150;
 export const EGG_PRICE = 100;
+/** A treat from the shop: much more filling and fun than ordinary food. */
+export const TREAT_PRICE = 20;
 export const EGG_HATCH_MS = 2 * 60_000;
 /** Chance that an egg hatches into a shiny Pokémon. */
 export const SHINY_CHANCE = 1 / 16;
@@ -49,10 +51,11 @@ export interface Pet {
   updatedAt: number;
 }
 
-export type Action = "feed" | "play" | "sleep" | "train";
+export type Action = "feed" | "play" | "sleep" | "train" | "treat";
 
 export type Outcome =
   | "ate"
+  | "treated"
   | "too-full"
   | "played"
   | "trained"
@@ -167,6 +170,8 @@ export function act(pet: Pet, action: Action, now: number): ActionResult {
     case "feed":
       if (p.fullness >= 95) return result("too-full", { happiness: p.happiness - 5 });
       return result("ate", { fullness: p.fullness + 30, happiness: p.happiness + 3, xp: p.xp + 1 });
+    case "treat":
+      return result("treated", { fullness: p.fullness + 40, happiness: p.happiness + 25, xp: p.xp + 2 });
     case "play":
       if (p.energy < 15) return result("too-tired");
       return result("played", { happiness: p.happiness + 20, energy: p.energy - 15, fullness: p.fullness - 5, xp: p.xp + 4 }, 5);

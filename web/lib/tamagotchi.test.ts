@@ -159,3 +159,11 @@ test("withCondition scales attack, sp. atk and speed without mutating", () => {
   assert.deepEqual(withCondition(set, "great").stats, { atk: 110, def: 100, spa: 110, spd: 100, spe: 110 });
   assert.equal(set.stats.atk, 100);
 });
+
+test("a treat feeds and cheers up, even when full", () => {
+  const r = act(pet({ fullness: 98, happiness: 50 }), "treat", T0);
+  assert.equal(r.outcome, "treated");
+  assert.equal(r.pet.fullness, 100);
+  assert.equal(r.pet.happiness, 75);
+  assert.equal(act(pet({ asleep: true }), "treat", T0).outcome, "is-asleep");
+});
