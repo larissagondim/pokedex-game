@@ -20,6 +20,7 @@ import {
 } from "@/lib/tamagotchi";
 import type { ItemId } from "@/lib/battle/engine";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
+import { useDexProgress } from "@/stores/dexProgress";
 import { ITEM_PRICES, useInventory } from "@/stores/inventory";
 import { usePokedex } from "@/stores/pokedex";
 import { useTamagotchi } from "@/stores/tamagotchi";
@@ -33,6 +34,9 @@ const REACTION_MS = 1600;
 
 type MenuItem = Exclude<Action, "treat"> | "shop" | "release";
 const MENU: MenuItem[] = ["feed", "play", "sleep", "train", "shop", "release"];
+
+/** The first partner offered to a new player (nothing caught, empty party). */
+const STARTERS = [1, 4, 7];
 
 type ShopItem = "egg" | "treat" | ItemId;
 const SHOP: { id: ShopItem; label: string; price: number }[] = [
@@ -74,6 +78,10 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
   /** The shop is open (in place of the stage), with its cursor. */
   const [shop, setShop] = useState<number | null>(null);
   const items = useInventory((s) => s.items);
+  const caughtNone = useDexProgress((s) => s.caught.size === 0);
+  /** First visit: pick a starter before anything else. */
+  const choosingStarter = caughtNone && pets.length === 0;
+  const [starter, setStarter] = useState(0);
   const [reaction, setReaction] = useState<{ kind: Reaction; key: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -172,8 +180,35 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
   };
 
   /** Returns true when consumed. */
+  // A first-time player is greeted with the choice, once per visit to the tab
+  // (onNotice changes on every render of the dialog, so it can't drive this).
+  const greeted = useRef(false);
+  useEffect(() => {
+    if (!active || !choosingStarter) {
+      greeted.current = false;
+      return;
+    }
+    if (greeted.current) return;
+    greeted.current = true;
+    onNotice("Welcome! Every trainer starts with a partner. ◀▶ choose   A: pick");
+  }, [active, choosingStarter, onNotice]);
+
+  const pickStarter = (index: number) => {
+    const id = STARTERS[index];
+    useDexProgress.getState().capture([id]);
+    useTamagotchi.getState().adopt(id);
+    const name = list.find((p) => p.id === id)?.name.toUpperCase() ?? "it";
+    onNotice(`You chose ${name}! Battle to catch more Pokémon, then adopt them from the LIST tab.`);
+  };
+
   const handle = (button: DeviceButton): boolean => {
     if (button === "MENU" || button === "ZOOM") return false;
+    if (choosingStarter) {
+      if (button === "LEFT" || button === "RIGHT") setStarter((i) => wrap(i + (button === "LEFT" ? -1 : 1), STARTERS.length));
+      else if (button === "A") pickStarter(starter);
+      else return button !== "B";
+      return true;
+    }
     if (shop !== null) {
       if (button === "UP" || button === "DOWN") setShop((c) => wrap((c ?? 0) + (button === "UP" ? -1 : 1), SHOP.length));
       else if (button === "A") buy(SHOP[shop].id);
@@ -246,7 +281,14 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
       </div>
 
       <div className={styles.main}>
-        {shop !== null ? (
+        {choosingStarter ? (
+          <Starters
+            ids={STARTERS}
+            names={STARTERS.map((id) => list.find((p) => p.id === id)?.name.toUpperCase() ?? `#${id}`)}
+            cursor={starter}
+            onPick={(i) => (i === starter ? pickStarter(i) : setStarter(i))}
+          />
+        ) : shop !== null ? (
           <Shop
             cursor={shop}
             coins={coins}
@@ -276,22 +318,42 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
             <p>Adopt one you caught in battle from the LIST tab (open it, then A), or buy an egg in the SHOP.</p>
           </div>
         )}
-        <div className={styles.menu} role="toolbar" aria-label="Actions">
-          {MENU.map((item, i) => (
-            <button
-              key={item}
-              type="button"
-              data-focused={i === menu}
-              onClick={() => {
-                setMenu(i);
-                run(item);
-              }}
-            >
-              {item === "sleep" && pet?.asleep ? "WAKE" : item.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        {!choosingStarter && (
+          <div className={styles.menu} role="toolbar" aria-label="Actions">
+            {MENU.map((item, i) => (
+              <button
+                key={item}
+                type="button"
+                data-focused={i === menu}
+                onClick={() => {
+                  setMenu(i);
+                  run(item);
+                }}
+              >
+                {item === "sleep" && pet?.asleep ? "WAKE" : item.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** First visit: three partners to choose from. */
+function Starters({ ids, names, cursor, onPick }: { ids: number[]; names: string[]; cursor: number; onPick: (index: number) => void }) {
+  return (
+    <div className={styles.starters}>
+      <p className={styles.startersTitle}>CHOOSE YOUR FIRST PARTNER!</p>
+      <div className={styles.starterRow} role="menu" aria-label="Starters">
+        {ids.map((id, i) => (
+          <button key={id} type="button" role="menuitem" data-focused={i === cursor} onClick={() => onPick(i)}>
+            <PetSprite className={styles.starterSprite} dexId={id} alt="" />
+            <span>{names[i]}</span>
+          </button>
+        ))}
+      </div>
+      <p className={styles.shopInfo}>◀▶ choose   A: this one! Win battles to catch more.</p>
     </div>
   );
 }

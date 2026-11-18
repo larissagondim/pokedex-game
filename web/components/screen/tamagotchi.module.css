@@ -293,6 +293,55 @@
   animation: wiggle 0.6s steps(4) infinite;
 }
 
+/* Starters: the first visit, in place of the stage. */
+.starters {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.startersTitle {
+  margin: 4px 0 0;
+  font-family: var(--font-pixel), monospace;
+  font-size: 13px;
+  text-align: center;
+}
+
+.starterRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  flex: 1;
+}
+
+.starterRow button {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  border: 3px solid transparent;
+  border-radius: 2px;
+  background: none;
+  color: var(--graphite);
+  font: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.starterRow button[data-focused="true"] {
+  border-color: var(--red);
+  background: var(--white);
+}
+
+.starterSprite {
+  width: 112px;
+  height: 112px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
 /* Shop: replaces the stage while open. */
 .shop {
   display: flex;
