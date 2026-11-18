@@ -3,6 +3,7 @@ import type { Pokemon } from "@/data/pokedex";
 import {
   act,
   type Action,
+  BATTLE_COST,
   dexOf,
   EGG_PRICE,
   eggPool,
@@ -51,7 +52,8 @@ interface TamagotchiState extends Saved {
   reward: (coins: number) => void;
   /**
    * A party member of this species battled: `xp` and joy on a win (it may
-   * evolve), a little less joy on a loss. Null if it isn't in the party.
+   * evolve), a little less joy on a loss, and some energy and food either
+   * way. Null if it isn't in the party.
    */
   battled: (dexId: number, won: boolean, xp: number, list: readonly Pokemon[]) => { xp: number; evolvedTo: number | null } | null;
   act: (uid: string, action: Action, list: readonly Pokemon[]) => void;
@@ -122,10 +124,15 @@ export const useTamagotchi = create<TamagotchiState>((set, get) => {
       const now = Date.now();
       const ticked = tick(pet, now);
       const xp = won ? winXp : 0;
+      const clamp = (n: number) => Math.max(0, Math.min(100, n));
+      // A battle tires it out and makes it hungry, win or lose.
       let next: Pet = {
         ...ticked,
         xp: ticked.xp + xp,
-        happiness: Math.max(0, Math.min(100, ticked.happiness + (won ? 10 : -5))),
+        happiness: clamp(ticked.happiness + (won ? 10 : -5)),
+        energy: clamp(ticked.energy - BATTLE_COST.energy),
+        fullness: clamp(ticked.fullness - BATTLE_COST.fullness),
+        asleep: false,
       };
       const evolved = evolve(next, dexOf(list));
       if (evolved) next = evolved;

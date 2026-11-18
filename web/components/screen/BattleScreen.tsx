@@ -5,6 +5,7 @@ import type { Pokemon } from "@/data/pokedex";
 import { useBattleRecord } from "@/stores/battleRecord";
 import { usePokedex } from "@/stores/pokedex";
 import { useFavorites } from "@/stores/favorites";
+import { battleCondition, tick } from "@/lib/tamagotchi";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import styles from "./battle.module.css";
 import { BattleArena } from "./BattleArena";
@@ -41,6 +42,21 @@ const randomPicks = (list: readonly Pokemon[], n: number) => {
   }
   return [...picked.values()];
 };
+
+const CONDITION_NOTE = { great: "is in great shape!", tired: "is tired and fights weaker.", hungry: "is hungry and fights weaker." } as const;
+
+/** "PIKACHU is tired and fights weaker." for each party member not in an ordinary condition. */
+function conditionNotes(team: readonly Pokemon[]): string {
+  const pets = useTamagotchi.getState().pets;
+  const now = Date.now();
+  return team
+    .flatMap((p) => {
+      const pet = pets.find((x) => x.dexId === p.id);
+      const c = pet ? battleCondition(tick(pet, now)) : "ok";
+      return c === "ok" ? [] : [`${p.name.toUpperCase()} ${CONDITION_NOTE[c]}`];
+    })
+    .join(" ");
+}
 
 const names = (team: readonly Pokemon[]) => team.map((p) => p.name.toUpperCase()).join(", ");
 
@@ -80,7 +96,8 @@ export function BattleScreen({ active, onNotice }: Props) {
   const startBattle = (foes: Pokemon[]) => {
     setFoeTeam(foes);
     setStep("battle");
-    onNotice(`${size === 1 ? foes[0].name.toUpperCase() : `A team of ${names(foes)}`} wants to battle! A: fight   B: new opponent`);
+    const notes = conditionNotes(playerTeam);
+    onNotice(`${size === 1 ? foes[0].name.toUpperCase() : `A team of ${names(foes)}`} wants to battle!${notes ? ` ${notes}` : ""} A: fight   B: new opponent`);
     usePokedex.getState().playCry(foes[0].id);
   };
 

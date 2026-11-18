@@ -25,6 +25,7 @@ import {
 } from "@/lib/battle/engine";
 import type { BattlePokemon, Status } from "@/lib/battle/types";
 import { playSfx } from "@/lib/sfx";
+import { type BattleCondition, battleCondition, tick, withCondition } from "@/lib/tamagotchi";
 import { loadBattleSets, preBattleSnapshot, predictWin } from "@/lib/winPrediction";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { usePokedex } from "@/stores/pokedex";
@@ -142,6 +143,17 @@ const viewOf = (st: BattleState): Record<Side, SideView> => ({ a: sideView(st, "
  */
 export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
   const single = player.length === 1 && foe.length === 1;
+  /** How each of your Pokémon that is in the Tamagotchi party feels (null: not in the party). */
+  const [conditions] = useState<(BattleCondition | null)[]>(() => {
+    const pets = useTamagotchi.getState().pets;
+    const now = Date.now();
+    return player.map((p) => {
+      const pet = pets.find((x) => x.dexId === p.id);
+      return pet ? battleCondition(tick(pet, now)) : null;
+    });
+  });
+  /** The ML model only knows plain sets: with a condition in play, the chance is simulated. */
+  const useModel = single && conditions.every((c) => c === null || c === "ok");
   const byId = useMemo(() => new Map([...player, ...foe].map((p) => [p.id, p])), [player, foe]);
   const [sets, setSets] = useState<{ a: BattlePokemon[]; b: BattlePokemon[] } | null>(null);
   /** Pre-battle win chance from the ML model (single battles only). */
@@ -226,14 +238,16 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     const controller = new AbortController();
     loadBattleSets()
       .then((all) => {
-        const a = player.map((p) => all[p.id]);
+        const raw = player.map((p) => all[p.id]);
         const b = foe.map((p) => all[p.id]);
-        if (cancelled || a.some((s) => !s) || b.some((s) => !s)) return;
+        if (cancelled || raw.some((s) => !s) || b.some((s) => !s)) return;
+        // Party members fight as well as they're looked after.
+        const a = raw.map((set, i) => withCondition(set, conditions[i] ?? "ok"));
         setSets({ a, b });
-        if (!single) updateLive(createTeamBattle(a, b));
+        if (!useModel) updateLive(createTeamBattle(a, b));
       })
       .catch(() => {});
-    if (single) {
+    if (useModel) {
       preBattleSnapshot(player[0].id, foe[0].id)
         .then((snapshot) => (snapshot ? predictWin(snapshot, controller.signal) : null))
         .then((p) => !cancelled && setChance(p?.probability ?? null))
@@ -257,7 +271,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     if (!sets) return onNotice("Loading the battle data...");
     // The pre-battle chance: the model's (1v1) or the simulation shown on the
     // ready screen (teams). A rematch keeps the one from the first start.
-    if (single) startOdds.current = chance ?? null;
+    if (useModel) startOdds.current = chance ?? null;
     else if (phase === "ready") startOdds.current = live;
     const st = createTeamBattle(sets.a, sets.b);
     useDexProgress.getState().see(foe.map((p) => p.id));
@@ -478,7 +492,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     setBattle(null);
     setView(null);
     onNotice("Got away safely!");
-    if (!single && sets) updateLive(createTeamBattle(sets.a, sets.b));
+    if (!useModel && sets) updateLive(createTeamBattle(sets.a, sets.b));
   };
 
   const command = (index: number) => {
@@ -631,8 +645,8 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
 
   let bottom;
   if (phase === "ready") {
-    const odds = single ? chance : (live ?? undefined);
-    bottom = <WinChance probability={odds} simulated={!single} record={record} prize={odds === undefined ? null : battleReward(odds, foe.length).coins} />;
+    const odds = useModel ? chance : (live ?? undefined);
+    bottom = <WinChance probability={odds} simulated={!useModel} team={!single} record={record} prize={odds === undefined ? null : battleReward(odds, foe.length).coins} />;
   } else if (phase === "command") {
     bottom = (
       <CommandMenu
@@ -782,10 +796,12 @@ function WinChance({
   simulated,
   record,
   prize,
+  team,
 }: {
   probability: number | null | undefined;
-  /** From simulating the battle (teams) rather than the ML model. */
+  /** From simulating the battle (teams, or a party member's condition) rather than the ML model. */
   simulated: boolean;
+  team: boolean;
   record?: { wins: number; losses: number };
   /** Coins for winning at these odds (null while they're being worked out). */
   prize: number | null;
@@ -794,7 +810,7 @@ function WinChance({
   return (
     <div className={styles.chance} role="meter" aria-label="Win chance" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined}>
       <div className={styles.chanceLabel}>
-        <span>{simulated ? "TEAM WIN CHANCE" : "WIN CHANCE"}</span>
+        <span>{team ? "TEAM WIN CHANCE" : simulated ? "WIN CHANCE (SIMULATED)" : "WIN CHANCE"}</span>
         <span>{probability === undefined ? "…" : pct === null ? "?" : `${pct}%`}</span>
       </div>
       <div className={styles.chanceTrack}>

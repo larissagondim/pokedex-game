@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { Pokemon } from "../data/pokedex.ts";
 import {
   act,
+  battleCondition,
   dexOf,
   EGG_HATCH_MS,
   eggPool,
@@ -16,6 +17,7 @@ import {
   SHINY_CHANCE,
   stageOf,
   tick,
+  withCondition,
 } from "./tamagotchi.ts";
 
 const HOUR = 3_600_000;
@@ -139,4 +141,21 @@ test("an egg hatches shiny with SHINY_CHANCE, and evolution keeps it", () => {
   assert.equal(hatch(egg, pool, T0 + EGG_HATCH_MS, rolls(0, SHINY_CHANCE))?.shiny, false);
   assert.equal(newPet("a", 1, T0).shiny, undefined); // adopted Pokémon are never shiny
   assert.equal(evolve(pet({ xp: 200, shiny: true }), dexOf(LIST))?.shiny, true);
+});
+
+test("battle condition follows the needs", () => {
+  assert.equal(battleCondition(pet({ fullness: 10 })), "hungry");
+  assert.equal(battleCondition(pet({ fullness: 60, energy: 10 })), "tired");
+  assert.equal(battleCondition(pet({ fullness: 60, energy: 80, asleep: true })), "tired");
+  assert.equal(battleCondition(pet({ fullness: 60, energy: 80, happiness: 90 })), "great");
+  assert.equal(battleCondition(pet({ fullness: 60, energy: 80, happiness: 40 })), "ok");
+});
+
+test("withCondition scales attack, sp. atk and speed without mutating", () => {
+  const set = { name: "X", stats: { atk: 100, def: 100, spa: 100, spd: 100, spe: 100 } };
+  assert.equal(withCondition(set, "ok"), set);
+  const tired = withCondition(set, "tired");
+  assert.deepEqual(tired.stats, { atk: 85, def: 100, spa: 85, spd: 100, spe: 85 });
+  assert.deepEqual(withCondition(set, "great").stats, { atk: 110, def: 100, spa: 110, spd: 100, spe: 110 });
+  assert.equal(set.stats.atk, 100);
 });

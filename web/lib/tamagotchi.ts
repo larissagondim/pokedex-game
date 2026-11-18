@@ -109,6 +109,35 @@ export function moodOf(pet: Pet): Mood {
   return "ok";
 }
 
+// Battle condition --------------------------------------------------------
+
+/**
+ * How a party member feels going into battle: hungry or tired ones fight
+ * worse, happy and well-kept ones a little better.
+ */
+export type BattleCondition = "great" | "ok" | "tired" | "hungry";
+
+/** Multiplier on Attack, Sp. Atk and Speed for each condition. */
+export const CONDITION_MULTIPLIER: Record<BattleCondition, number> = { great: 1.1, ok: 1, tired: 0.85, hungry: 0.85 };
+
+/** What a battle costs a party member. */
+export const BATTLE_COST = { energy: 10, fullness: 5 } as const;
+
+export function battleCondition(pet: Pet): BattleCondition {
+  if (pet.fullness < 20) return "hungry";
+  if (pet.energy < 20 || pet.asleep) return "tired";
+  if (pet.happiness >= 70 && pet.fullness >= 50 && pet.energy >= 50) return "great";
+  return "ok";
+}
+
+/** A copy of a battle set with Attack, Sp. Atk and Speed scaled by the condition. */
+export function withCondition<T extends { stats: { atk: number; def: number; spa: number; spd: number; spe: number } }>(set: T, condition: BattleCondition): T {
+  const m = CONDITION_MULTIPLIER[condition];
+  if (m === 1) return set;
+  const scale = (n: number) => Math.max(1, Math.round(n * m));
+  return { ...set, stats: { ...set.stats, atk: scale(set.stats.atk), spa: scale(set.stats.spa), spe: scale(set.stats.spe) } };
+}
+
 export interface ActionResult {
   pet: Pet;
   outcome: Outcome;
