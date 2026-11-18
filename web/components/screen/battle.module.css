@@ -510,6 +510,21 @@
   cursor: pointer;
 }
 
+/* Long menus (the league): tighter rows so they clear the detail box. */
+.menu[data-compact="true"] {
+  padding: 4px 14px 6px;
+}
+
+.menu[data-compact="true"] .menuTitle {
+  margin-bottom: 3px;
+}
+
+.menu[data-compact="true"] .menuItem {
+  padding: 0;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
 .menuDetail {
   position: absolute;
   right: 6px;

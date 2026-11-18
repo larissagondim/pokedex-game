@@ -6,6 +6,8 @@ import styles from "./battle.module.css";
 
 /** Above the main screen handler (10), like the other tabs. */
 const INPUT_PRIORITY = 11;
+/** Menus with more options than this use tighter rows. */
+const COMPACT_OVER = 6;
 
 export interface MenuOption {
   label: string;
@@ -60,7 +62,7 @@ export function BattleMenu({ title, options, active, onPick, onBack, children }:
   return (
     <div className={styles.scene} data-terrain="field">
       <div className={styles.backdrop} aria-hidden />
-      <div className={styles.menu} role="menu" aria-label={title}>
+      <div className={styles.menu} role="menu" aria-label={title} data-compact={options.length > COMPACT_OVER}>
         <div className={styles.menuTitle}>{title}</div>
         {options.map((o, i) => (
           <button

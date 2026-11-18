@@ -139,7 +139,7 @@ test("progress: kept by sanitizeSave, sorted, caught counted as seen", () => {
 
 test("progress: a malformed one is dropped, the save is kept", () => {
   const bad: unknown[] = [
-    progress({ league: 9 }),
+    progress({ league: 10 }),
     progress({ seen: [0] }),
     progress({ caught: ["4" as unknown as number] }),
     progress({ items: { potion: -1, fullheal: 0 } }),
