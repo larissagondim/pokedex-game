@@ -319,8 +319,7 @@ Ideas:
 - [x] Trainer in battles: your sprite in the arena intro and your name in the messages ("LARISSA sent out PIKACHU!")
 - [x] Badges on the trainer card
 - [x] Battle history on the profile: the last battles, the opponents and the results
-- [x] Deploy on Vercel. The win model runs in the browser, so no backend is needed
-- [ ] Live demo link in this README
+- [ ] Deploy on Vercel (the win model runs in the browser, so no backend is needed) and link the live demo here
 
 Progression:
 
