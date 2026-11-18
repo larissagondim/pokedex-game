@@ -271,8 +271,15 @@ export function DeviceScreen({ onRequestZoom }: Props) {
     setDetailId(null);
   };
 
+  /** Only caught species can be adopted; says how to catch one otherwise. */
+  const canAdopt = (pokemon: { id: number; name: string }) => {
+    if (useDexProgress.getState().caught.has(pokemon.id)) return true;
+    say(`You haven't caught ${pokemon.name.toUpperCase()} yet. Beat it in a battle to adopt it, or hatch an egg!`);
+    return false;
+  };
+
   const askToAdopt = () => {
-    if (!detailPokemon) return;
+    if (!detailPokemon || !canAdopt(detailPokemon)) return;
     setAdoptPrompt(true);
     say(`Adopt ${detailPokemon.name.toUpperCase()}? A: yes   B: no`);
   };
@@ -499,7 +506,7 @@ export function DeviceScreen({ onRequestZoom }: Props) {
         onBack={() => setDetailId(null)}
         favorite={favorites.has(detailPokemon.id)}
         onToggleFavorite={() => useFavorites.getState().toggle(detailPokemon.id)}
-        onAdopt={() => useTamagotchi.getState().adopt(detailPokemon.id)}
+        onAdopt={() => canAdopt(detailPokemon) && useTamagotchi.getState().adopt(detailPokemon.id)}
       />
     );
   } else {

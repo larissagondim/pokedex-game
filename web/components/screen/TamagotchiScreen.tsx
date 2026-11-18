@@ -119,7 +119,7 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
   const run = (item: MenuItem) => {
     const store = useTamagotchi.getState();
     if (item === "egg") return store.buyEgg();
-    if (!pet) return onNotice("Your party is empty. Adopt a Pokémon from the LIST tab, or buy an egg.");
+    if (!pet) return onNotice("Your party is empty. Adopt a Pokémon you caught from the LIST tab, or buy an egg.");
     if (item === "release") {
       if (!confirmRelease) {
         setConfirmRelease(true);
@@ -225,7 +225,7 @@ export function TamagotchiScreen({ active, onNotice }: Props) {
         ) : (
           <div className={styles.emptyStage}>
             <p>No Pokémon yet.</p>
-            <p>Adopt one from the LIST tab (open a Pokémon, then A), or buy an egg for {EGG_PRICE}₽.</p>
+            <p>Adopt one you caught in battle from the LIST tab (open it, then A), or buy an egg for {EGG_PRICE}₽.</p>
           </div>
         )}
         <div className={styles.menu} role="toolbar" aria-label="Actions">
