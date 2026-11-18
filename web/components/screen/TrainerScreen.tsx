@@ -64,6 +64,10 @@ const wrap = (i: number, n: number) => (i + n) % n;
 
 /** Pages of the card's right panel (▲▼). */
 const PAGES = ["STATS", "BADGES", "HISTORY", "DIARY"] as const;
+const BADGES_PAGE = PAGES.indexOf("BADGES");
+/** Badges per page of the BADGES card page; ▲▼ go through these pages too. */
+const BADGES_PER_PAGE = 6;
+const BADGE_PAGES = Math.ceil(BADGES.length / BADGES_PER_PAGE);
 
 /** What the dialog box says after trying to link to another device's code. */
 const LINK_NOTICE: Record<LinkResult, string> = {
@@ -103,6 +107,14 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
   /** A typed code waiting for "A: yes" (linking replaces this device's party). */
   const [linkConfirm, setLinkConfirm] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [badgePage, setBadgePage] = useState(0);
+  /** ▲▼ on the card: through the pages, and through the badge pages on BADGES. */
+  const turnPage = (delta: number) => {
+    if (page === BADGES_PAGE && badgePage + delta >= 0 && badgePage + delta < BADGE_PAGES) return setBadgePage(badgePage + delta);
+    const next = wrap(page + delta, PAGES.length);
+    setPage(next);
+    if (next === BADGES_PAGE) setBadgePage(delta > 0 ? 0 : BADGE_PAGES - 1);
+  };
   const editor = useRef<HTMLUListElement>(null);
 
   // Keep the focused editor row in view (the list scrolls).
@@ -246,7 +258,7 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
         return true;
       }
       if (created && (button === "UP" || button === "DOWN")) {
-        setPage((p) => wrap(p + (button === "UP" ? -1 : 1), PAGES.length));
+        turnPage(button === "UP" ? -1 : 1);
         return true;
       }
       return false; // tabs, back to the list
@@ -371,7 +383,18 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
   }
 
   return (
-    <TrainerCard bestId={totals.bestId} wins={totals.wins} losses={totals.losses} page={page} onPage={setPage} onEdit={startEditing} />
+    <TrainerCard
+      bestId={totals.bestId}
+      wins={totals.wins}
+      losses={totals.losses}
+      page={page}
+      badgePage={badgePage}
+      onPage={(p) => {
+        setPage(p);
+        if (p === BADGES_PAGE) setBadgePage(page === BADGES_PAGE ? (badgePage + 1) % BADGE_PAGES : 0);
+      }}
+      onEdit={startEditing}
+    />
   );
 }
 
@@ -453,6 +476,8 @@ interface CardProps {
   wins: number;
   losses: number;
   page: number;
+  /** Which page of badges the BADGES page shows. */
+  badgePage: number;
   onPage: (page: number) => void;
   onEdit: () => void;
 }
@@ -460,7 +485,7 @@ interface CardProps {
 const shortDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
 /** The trainer card: portrait on the left; stats, badges or history on the right. */
-function TrainerCard({ bestId, wins, losses, page, onPage, onEdit }: CardProps) {
+function TrainerCard({ bestId, wins, losses, page, badgePage, onPage, onEdit }: CardProps) {
   const name = useTrainer((s) => s.name);
   const appearance = useTrainer((s) => s.appearance);
   const id = useTrainer((s) => s.id);
@@ -487,7 +512,7 @@ function TrainerCard({ bestId, wins, losses, page, onPage, onEdit }: CardProps) 
           ))}
         </nav>
         {page === 0 && <StatsPage bestId={bestId} wins={wins} losses={losses} />}
-        {page === 1 && <BadgesPage />}
+        {page === BADGES_PAGE && <BadgesPage page={badgePage} />}
         {page === 2 && <HistoryPage />}
         {page === 3 && <DiaryPage />}
       </div>
@@ -560,25 +585,34 @@ function StatsPage({ bestId, wins, losses }: { bestId: number | null; wins: numb
 }
 
 /** Every badge: earned ones in color with the date, the rest grayed out with how to get them. */
-function BadgesPage() {
+function BadgesPage({ page }: { page: number }) {
   const badges = useTrainer((s) => s.badges);
   return (
-    <ul className={styles.badges}>
-      {BADGES.map((b) => {
-        const at = badges[b.id];
-        return (
-          <li key={b.id} data-earned={at !== undefined} title={b.hint}>
-            <span className={styles.badgeIcon} style={at !== undefined ? { background: b.color } : undefined} aria-hidden>
-              {at !== undefined ? b.icon : "?"}
-            </span>
-            <span className={styles.badgeText}>
-              <b>{b.name}</b>
-              <small>{at !== undefined ? `Earned ${shortDate(at)}` : b.hint}</small>
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+    <>
+      <ul className={styles.badges}>
+        {BADGES.slice(page * BADGES_PER_PAGE, (page + 1) * BADGES_PER_PAGE).map((b) => {
+          const at = badges[b.id];
+          return (
+            <li key={b.id} data-earned={at !== undefined} title={b.hint}>
+              <span className={styles.badgeIcon} style={at !== undefined ? { background: b.color } : undefined} aria-hidden>
+                {at !== undefined ? b.icon : "?"}
+              </span>
+              <span className={styles.badgeText}>
+                <b>{b.name}</b>
+                <small>{at !== undefined ? `Earned ${shortDate(at)}` : b.hint}</small>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {BADGE_PAGES > 1 && (
+        <p className={styles.badgePager}>
+          {page > 0 ? "▲ " : ""}
+          {page + 1}/{BADGE_PAGES}
+          {page < BADGE_PAGES - 1 ? " ▼" : ""}
+        </p>
+      )}
+    </>
   );
 }
 

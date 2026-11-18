@@ -138,6 +138,7 @@ button.card {
 
 .badges {
   display: grid;
+  flex: 1;
   grid-template-columns: 1fr 1fr;
   grid-auto-rows: 1fr;
   gap: 4px;
@@ -156,6 +157,14 @@ button.card {
   border: 2px solid #d6d6de;
   border-radius: 2px;
   background: var(--white);
+}
+
+.badgePager {
+  margin: 2px 0 0;
+  color: #6b6b76;
+  font-family: var(--font-pixel), monospace;
+  font-size: 10px;
+  text-align: right;
 }
 
 .badges li[data-earned="false"] {

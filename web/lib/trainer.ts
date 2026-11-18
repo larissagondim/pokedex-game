@@ -594,9 +594,18 @@ export interface BadgeInput {
   /** Hatched Pokémon in the Tamagotchi party. */
   party: number;
   favorites: number;
+  /** Species caught (Pokédex). */
+  caught: number;
+  /** League leaders beaten, and how many there are (the last one is the champion). */
+  league: number;
+  leagueSize: number;
+  /** Longest daily challenge streak reached (the current one is enough: badges are kept). */
+  dailyStreak: number;
 }
 
 export const UNDERDOG_ODDS = 0.3;
+export const CATCHER_CAUGHT = 100;
+export const REGULAR_STREAK = 7;
 export const STREAK_BADGE = 5;
 export const COLLECTOR_FAVORITES = 10;
 
@@ -623,6 +632,10 @@ export const BADGES = [
   { id: "streak", name: "ON FIRE", hint: `Win ${STREAK_BADGE} battles in a row`, icon: "♨", color: "#e86fa0", earned: (d: BadgeInput) => winStreak(d.log) >= STREAK_BADGE },
   { id: "party", name: "FULL PARTY", hint: "Raise 5 Pokémon in the Tamagotchi", icon: "♥", color: "#3fa66b", earned: (d: BadgeInput) => d.party >= 5 },
   { id: "collector", name: "COLLECTOR", hint: `Favorite ${COLLECTOR_FAVORITES} Pokémon`, icon: "◆", color: "#2fa3a8", earned: (d: BadgeInput) => d.favorites >= COLLECTOR_FAVORITES },
+  { id: "challenger", name: "CHALLENGER", hint: "Beat the first league leader", icon: "1", color: "#8a6d3b", earned: (d: BadgeInput) => d.league >= 1 },
+  { id: "champion", name: "CHAMPION", hint: "Beat the league champion", icon: "♛", color: "#c9a227", earned: (d: BadgeInput) => d.leagueSize > 0 && d.league >= d.leagueSize },
+  { id: "catcher", name: "CATCHER", hint: `Catch ${CATCHER_CAUGHT} Pokémon`, icon: "●", color: "#c8102e", earned: (d: BadgeInput) => d.caught >= CATCHER_CAUGHT },
+  { id: "regular", name: "REGULAR", hint: `Win the daily challenge ${REGULAR_STREAK} days in a row`, icon: "7", color: "#4f7cc4", earned: (d: BadgeInput) => d.dailyStreak >= REGULAR_STREAK },
 ] as const;
 
 export type BadgeId = (typeof BADGES)[number]["id"];

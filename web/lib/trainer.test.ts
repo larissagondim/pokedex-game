@@ -167,7 +167,7 @@ test("winStreak counts wins back from the newest battle", () => {
 });
 
 test("badges follow the data", () => {
-  const none: BadgeInput = { wins: 0, log: [], legendary: new Set([150]), party: 0, favorites: 0 };
+  const none: BadgeInput = { wins: 0, log: [], legendary: new Set([150]), party: 0, favorites: 0, caught: 0, league: 0, leagueSize: 9, dailyStreak: 0 };
   assert.deepEqual(qualifiedBadges(none), []);
   const lots: BadgeInput = {
     wins: 9,
@@ -182,8 +182,15 @@ test("badges follow the data", () => {
     legendary: new Set([150]),
     party: 5,
     favorites: 10,
+    caught: 100,
+    league: 9,
+    leagueSize: 9,
+    dailyStreak: 7,
   };
   assert.deepEqual(qualifiedBadges(lots), BADGES.map((b) => b.id));
+  // The league badges: the first leader, then only the champion completes it.
+  assert.deepEqual(qualifiedBadges({ ...none, league: 8 }), ["challenger"]);
+  assert.deepEqual(qualifiedBadges({ ...none, caught: 99, dailyStreak: 6 }), []);
   // Losses don't count, and unknown odds aren't an upset.
   const losses: BadgeInput = { ...none, log: [entry(false, 3), entry(false, 6, { foe: [150], odds: 0.1 }), entry(true, 1, { odds: null })] };
   assert.deepEqual(qualifiedBadges({ ...losses, wins: 1 }), ["first-win"]);

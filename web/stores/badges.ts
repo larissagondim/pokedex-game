@@ -1,13 +1,18 @@
+import { LEAGUE } from "@/lib/league";
 import { BADGES, type BadgeId, battleTotals, qualifiedBadges } from "@/lib/trainer";
 import { useBattleLog } from "./battleLog";
 import { useBattleRecord } from "./battleRecord";
+import { useDaily } from "./daily";
+import { useDexProgress } from "./dexProgress";
 import { useFavorites } from "./favorites";
+import { useLeague } from "./league";
 import { usePokedex } from "./pokedex";
 import { useTamagotchi } from "./tamagotchi";
 import { useTrainer } from "./trainer";
 
 /**
- * Checks every badge against the saved data (battles, party, favorites) and
+ * Checks every badge against the saved data (battles, party, favorites,
+ * Pokédex, league, daily challenge) and
  * marks the qualifying ones as earned. Returns the badges that are new.
  */
 export function checkBadges(): BadgeId[] {
@@ -19,6 +24,10 @@ export function checkBadges(): BadgeId[] {
       legendary: new Set(list.filter((p) => p.isLegendary || p.isMythical).map((p) => p.id)),
       party: useTamagotchi.getState().pets.filter((p) => p.dexId !== null).length,
       favorites: useFavorites.getState().ids.size,
+      caught: useDexProgress.getState().caught.size,
+      league: useLeague.getState().beaten,
+      leagueSize: LEAGUE.length,
+      dailyStreak: useDaily.getState().streak,
     }),
   );
 }
