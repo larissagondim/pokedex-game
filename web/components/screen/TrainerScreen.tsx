@@ -12,6 +12,9 @@ import {
   battleTotals,
   cleanName,
   NAME_MAX,
+  ACCESSORY_PRICES,
+  isAccessory,
+  lockedAccessories,
   randomAppearance,
   rankOf,
   stepAppearance,
@@ -24,6 +27,7 @@ import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { LEAGUE } from "@/lib/league";
 import { useDexProgress } from "@/stores/dexProgress";
 import { useLeague } from "@/stores/league";
+import { useWardrobe } from "@/stores/wardrobe";
 import { useFavorites } from "@/stores/favorites";
 import { usePokedex } from "@/stores/pokedex";
 import { useTamagotchi } from "@/stores/tamagotchi";
@@ -134,6 +138,8 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
   const hint: TrainerHint = keyPos ? "keyboard" : draft ? "edit" : created ? "card" : "new";
   useEffect(() => onHint(hint), [hint, onHint]);
 
+  const owned = useWardrobe((s) => s.owned);
+
   const startEditing = () => {
     setDraft({ name, appearance });
     setRow(created ? 1 : 0);
@@ -152,6 +158,12 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
       setRow(0);
       setKeyPos({ row: 0, col: 0 });
       return;
+    }
+    const locked = lockedAccessories(draft.appearance, owned);
+    if (locked.length > 0) {
+      // Accessories can be tried on, but only bought ones are kept.
+      const [id] = locked;
+      return onNotice(`Buy the ${id.toUpperCase()} first (A on its row, ${ACCESSORY_PRICES[id]}₽), or pick something else.`);
     }
     const first = !created;
     useTrainer.getState().save(clean, draft.appearance);
@@ -180,14 +192,25 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
   };
   const step = (r: Row, delta: number) => {
     if (r === "name" || r === "sync" || r === "save") return;
-    if (r === "random") return setDraft((d) => d && { ...d, appearance: randomAppearance() });
-    setDraft((d) => d && { ...d, appearance: stepAppearance(d.appearance, r, delta) });
+    if (r === "random") return setDraft((d) => d && { ...d, appearance: randomAppearance(Math.random, owned) });
+    if (!draft) return;
+    const appearance = stepAppearance(draft.appearance, r, delta);
+    setDraft({ ...draft, appearance });
+    const style = appearance[r];
+    if (isAccessory(style) && !owned.has(style)) onNotice(`${style.toUpperCase()}: ${ACCESSORY_PRICES[style]}₽ in the shop. A: buy   ◀▶: keep looking`);
+  };
+  /** A on a row showing an accessory not bought yet: buys it. */
+  const buyAccessory = (r: Row): boolean => {
+    const style = draft && r in draft.appearance ? draft.appearance[r as keyof typeof draft.appearance] : null;
+    if (!isAccessory(style) || owned.has(style)) return false;
+    if (useWardrobe.getState().buy(style)) onNotice(`You bought the ${style.toUpperCase()}! MENU saves your new look.`);
+    return true;
   };
   const choose = (r: Row) => {
     if (r === "name") setKeyPos({ row: 0, col: 0 });
     else if (r === "sync") openSync();
     else if (r === "save") save();
-    else step(r, 1);
+    else if (!buyAccessory(r)) step(r, 1);
   };
   const pressKey = (key: KeyDef, pos: KeyPos) => {
     if (!draft) return;
@@ -316,6 +339,7 @@ export function TrainerScreen({ active, onNotice, onHint }: Props) {
                   onSync={(value) => setSyncDraft(formatSyncDraft(value))}
                   onSubmit={r === "sync" ? submitSync : save}
                   onStep={(d) => step(r, d)}
+                  owned={owned}
                 />
               </li>
             ))}
@@ -361,9 +385,11 @@ interface EditorRowProps {
   /** Enter in the row's text field. */
   onSubmit: () => void;
   onStep: (delta: number) => void;
+  /** Accessories bought (the others show their price). */
+  owned: ReadonlySet<string>;
 }
 
-function EditorRow({ row, draft, syncDraft, onName, onSync, onSubmit, onStep }: EditorRowProps) {
+function EditorRow({ row, draft, syncDraft, onName, onSync, onSubmit, onStep, owned }: EditorRowProps) {
   if (row === "random") return <span className={styles.action}>🎲 RANDOM LOOK</span>;
   if (row === "save") return <span className={styles.action}>✔ SAVE</span>;
   if (row === "name" || row === "sync") {
@@ -406,7 +432,14 @@ function EditorRow({ row, draft, syncDraft, onName, onSync, onSubmit, onStep }: 
         <button type="button" className={styles.arrow} onClick={(e) => (stop(e), onStep(-1))} aria-label={`Previous ${field.label}`}>
           ◀
         </button>
-        {"text" in value ? <span>{value.text}</span> : <span className={styles.swatch} style={{ background: value.color }} />}
+        {"text" in value ? (
+          <span data-locked={isAccessory(draft.appearance[row]) && !owned.has(draft.appearance[row] as string)}>
+            {value.text}
+            {isAccessory(draft.appearance[row]) && !owned.has(draft.appearance[row] as string) && <small> {ACCESSORY_PRICES[draft.appearance[row] as keyof typeof ACCESSORY_PRICES]}₽</small>}
+          </span>
+        ) : (
+          <span className={styles.swatch} style={{ background: value.color }} />
+        )}
         <button type="button" className={styles.arrow} onClick={(e) => (stop(e), onStep(1))} aria-label={`Next ${field.label}`}>
           ▶
         </button>

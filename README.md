@@ -77,7 +77,7 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 | Area | Description |
 | --- | --- |
 | Tamagotchi | Adopt up to 5 of the Pokémon you caught. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Eggs hatch into random base-stage Pokémon, with a 1 in 16 chance of a ✦ shiny one (it keeps its colors when it evolves). Alerts when one needs attention. Saved in `localStorage`; with a database it is also saved in Postgres, so the same party shows up on every device that uses your sync code. |
-| Shop | In the Tamagotchi tab: eggs, treats (+40 food, +25 joy for the selected Pokémon) and extra Super Potions and Full Heals for the battle bag, on top of the standard one. Bought items are only used up once the standard ones are gone. |
+| Shop | In the Tamagotchi tab: eggs, treats (+40 food, +25 joy for the selected Pokémon) and extra Super Potions and Full Heals for the battle bag, on top of the standard one. Bought items are only used up once the standard ones are gone. Trainer accessories (bandana, scarf, shades, crown) are sold in the profile editor: try one on, A buys it. |
 | Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card has four pages (▲▼): **stats** (rank from Rookie to Champion, league progress, wins and losses, win streak, best partner, party, Pokédex progress and favorites, coins, start date), **badges**, **history** (the last 30 battles with the teams, the pre-battle win chance and the result) and **diary** (your sync code and the party's milestones: adoptions, eggs, hatchings, evolutions, level-ups and goodbyes). Your trainer stands in the arena before each battle and sends your Pokémon out by name. |
 | Badges | Eight badges, kept once earned: first win, a 3v3 win, a 6v6 win, beating a legendary or mythical, winning with under 30% win chance, 5 wins in a row, a full Tamagotchi party and 10 favorites. New ones are announced in the dialog box. |
 
@@ -223,7 +223,7 @@ To use the database from `npm run dev`, start only `db` (`docker compose up -d d
 
 ### Tamagotchi sync
 
-With a database, the Tamagotchi party (and the rest of the progress: seen and caught Pokémon, league, shop items and the daily challenge) is saved in Postgres under a **sync code** (e.g. `K7QM-2HXA-9RTB`), shown on the trainer card's DIARY page next to the party's milestones (adoptions, eggs, evolutions, level-ups). To share the party with another device, open the profile editor there and type the code in SYNC CODE; that device's own party is replaced, while its Pokédex, league and daily progress are merged in (they only move forward). Without a database (e.g. a static deploy) the save and the diary stay in `localStorage`.
+With a database, the Tamagotchi party (and the rest of the progress: seen and caught Pokémon, league, shop items, trainer accessories and the daily challenge) is saved in Postgres under a **sync code** (e.g. `K7QM-2HXA-9RTB`), shown on the trainer card's DIARY page next to the party's milestones (adoptions, eggs, evolutions, level-ups). To share the party with another device, open the profile editor there and type the code in SYNC CODE; that device's own party is replaced, while its Pokédex, league and daily progress are merged in (they only move forward). Without a database (e.g. a static deploy) the save and the diary stay in `localStorage`.
 
 Each write names the revision it was based on; if another device wrote first, the server's copy wins and the device takes it, merging the progress that only moves forward and sending the result back (`web/lib/tamaSync.ts`, tested in `tamaSync.test.ts`). The code is the only credential, so treat it like a password; the server stores just its hash.
 
@@ -334,7 +334,7 @@ Progression:
 
 Next ideas:
 
-- [ ] Trainer sprite accessories in the shop
+- [x] Trainer sprite accessories in the shop
 - [x] Sync the Pokédex progress, league, shop items and daily challenge with the Tamagotchi
 
 ## Legal notice

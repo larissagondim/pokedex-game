@@ -20,6 +20,8 @@ import { useDexProgress } from "./dexProgress";
 import { useInventory } from "./inventory";
 import { useLeague } from "./league";
 import { useTamagotchi } from "./tamagotchi";
+import { useWardrobe } from "./wardrobe";
+import { ACCESSORIES } from "@/lib/trainer";
 
 const STORAGE_KEY = "pokedex-game:tama-sync";
 const API_URL = "/api/tamagotchi";
@@ -111,6 +113,7 @@ function localProgress(): SyncedProgress {
     league: useLeague.getState().beaten,
     items: { ...useInventory.getState().items },
     dailyWon: useDaily.getState().lastWon,
+    accessories: ACCESSORIES.filter((id) => useWardrobe.getState().owned.has(id)),
   };
 }
 
@@ -119,6 +122,7 @@ function applyProgress(p: SyncedProgress) {
   useLeague.getState().replace(p.league);
   useInventory.getState().replace(p.items);
   useDaily.getState().replace(p.dailyWon);
+  useWardrobe.getState().replace(p.accessories ?? []);
 }
 
 /**
@@ -265,6 +269,7 @@ export const useTamaSync = create<SyncState>((set, get) => {
         useLeague.subscribe((s, prev) => (s.beaten !== prev.beaten ? progressChanged() : undefined)),
         useInventory.subscribe((s, prev) => (s.items !== prev.items ? progressChanged() : undefined)),
         useDaily.subscribe((s, prev) => (s.lastWon !== prev.lastWon ? progressChanged() : undefined)),
+        useWardrobe.subscribe((s, prev) => (s.owned !== prev.owned ? progressChanged() : undefined)),
       ];
       const pull = () => {
         if (document.visibilityState === "visible" && !timer) void run(sync);

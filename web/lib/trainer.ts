@@ -25,15 +25,26 @@ export const CLOTH_COLORS = [
 ] as const;
 
 export const HAIR_STYLES = ["short", "messy", "long", "ponytail", "bob", "bald"] as const;
-export const HAT_STYLES = ["none", "cap", "fedora", "beanie"] as const;
+export const HAT_STYLES = ["none", "cap", "fedora", "beanie", "bandana", "crown"] as const;
 export const TOP_STYLES = ["jacket", "tee", "hoodie", "sleeveless"] as const;
 export const BOTTOM_STYLES = ["pants", "shorts", "skirt"] as const;
-export const EXTRA_STYLES = ["none", "bag", "glasses"] as const;
+export const EXTRA_STYLES = ["none", "bag", "glasses", "scarf", "shades"] as const;
 export type HairStyle = (typeof HAIR_STYLES)[number];
 export type HatStyle = (typeof HAT_STYLES)[number];
 export type TopStyle = (typeof TOP_STYLES)[number];
 export type BottomStyle = (typeof BOTTOM_STYLES)[number];
 export type ExtraStyle = (typeof EXTRA_STYLES)[number];
+
+/** Accessories sold in the shop: they show up in the editor, but a look can only be saved once they're bought. */
+export const ACCESSORY_PRICES = { bandana: 60, scarf: 80, shades: 100, crown: 150 } as const;
+export type Accessory = keyof typeof ACCESSORY_PRICES;
+export const ACCESSORIES = Object.keys(ACCESSORY_PRICES) as Accessory[];
+
+export const isAccessory = (style: unknown): style is Accessory => typeof style === "string" && style in ACCESSORY_PRICES;
+
+/** The accessories this look wears that aren't owned yet. */
+export const lockedAccessories = (a: Appearance, owned: ReadonlySet<string>): Accessory[] =>
+  [a.hat, a.extra].filter((style): style is Accessory => isAccessory(style) && !owned.has(style));
 
 export interface Appearance {
   skin: number;
@@ -113,9 +124,13 @@ export function appearanceValue(a: Appearance, key: AppearanceKey): { text: stri
   return "styles" in f ? { text: String(a[key]).toUpperCase() } : { color: f.colors[a[key] as number] };
 }
 
-/** A random look (rng returns [0, 1)). */
-export function randomAppearance(rng: () => number = Math.random): Appearance {
-  return APPEARANCE_FIELDS.reduce((a, f) => withIndex(a, f, Math.floor(rng() * optionCount(f))), DEFAULT_APPEARANCE);
+/** A random look (rng returns [0, 1)), wearing only the accessories in `owned`. */
+export function randomAppearance(rng: () => number = Math.random, owned: ReadonlySet<string> = new Set()): Appearance {
+  return APPEARANCE_FIELDS.reduce((a, f) => {
+    const next = withIndex(a, f, Math.floor(rng() * optionCount(f)));
+    const style = next[f.key];
+    return isAccessory(style) && !owned.has(style) ? a : next;
+  }, DEFAULT_APPEARANCE);
 }
 
 /** Keeps saved data usable: unknown or out-of-range values fall back to the default. */
@@ -144,6 +159,7 @@ export function cleanName(name: string): string {
    s skin      h hair     c hat      t top      b bottom   f shoes
    n/y/q/u/d/x their shades (skin/hair/hat/top/bottom/strap)
    r bag strap  g sole    w white    k black    e lashes   i iris
+   z gold (j its shade)
    v eye white  m mouth   o outline */
 
 export const SPRITE_W = 24;
@@ -152,7 +168,7 @@ export const SPRITE_H = 40;
 type Grid = string[][];
 
 /** Base material → its shade. */
-const SHADE: Record<string, string> = { s: "n", h: "y", c: "q", t: "u", b: "d", r: "x" };
+const SHADE: Record<string, string> = { s: "n", h: "y", c: "q", t: "u", b: "d", r: "x", z: "j" };
 const MATERIAL: Record<string, string> = Object.fromEntries(Object.entries(SHADE).map(([base, shade]) => [shade, base]));
 /** Small details that don't cast or receive edge shading. */
 const DETAILS = new Set(["e", "i", "v", "m", "k"]);
@@ -302,6 +318,11 @@ function head(p: Paint, a: Appearance) {
     p.mpx(11, 9, "k");
     p.mspan(10, 9, 10, "k");
   }
+  if (a.extra === "shades") {
+    p.span(8, 7, 16, "k");
+    p.mspan(9, 8, 10, "k");
+    p.mpx(8, 9, "w"); // glint
+  }
 }
 
 function hairFront(p: Paint, style: HairStyle) {
@@ -369,6 +390,22 @@ function hat(p: Paint, style: HatStyle) {
       p.row(5, 9, "c");
       p.row(6, 8, "q");
       break;
+    case "bandana":
+      // A band across the forehead, knotted on the side.
+      p.row(4, 6, "c");
+      p.row(5, 6, "q");
+      p.px(18, 3, "c");
+      p.px(19, 4, "c");
+      p.px(19, 6, "q");
+      break;
+    case "crown":
+      p.row(4, 5, "z");
+      p.row(5, 5, "j");
+      [7, 11, 12, 16].forEach((x) => p.px(x, 3, "z")); // points
+      [7, 16].forEach((x) => p.px(x, 2, "z"));
+      p.span(2, 11, 12, "z");
+      p.span(4, 11, 12, "c"); // jewel
+      break;
     case "beanie":
       p.row(1, 4, "c");
       p.row(2, 5, "c");
@@ -377,6 +414,12 @@ function hat(p: Paint, style: HatStyle) {
       range(6, 17).filter((x) => x % 2 === 0).forEach((x) => p.px(x, 6, "c")); // ribbing
       break;
   }
+}
+
+function scarf(p: Paint) {
+  p.row(14, 4, "c");
+  p.row(15, 4, "q");
+  range(16, 18).forEach((y) => p.span(y, 14, 15, y === 18 ? "q" : "c")); // tail
 }
 
 function bag(p: Paint) {
@@ -424,6 +467,7 @@ export function spriteRows(a: Appearance): string[] {
   bottomPiece(p, a);
   topPiece(p, a);
   if (a.extra === "bag") bag(p);
+  if (a.extra === "scarf") scarf(p);
   head(p, a);
   hairFront(p, a.hair);
   hat(p, a.hat);
@@ -468,6 +512,8 @@ export function spritePalette(a: Appearance): Record<string, string> {
     i: EYE_COLORS[a.eyes],
     v: "#ffffff",
     m: darken(skin, 0.35),
+    z: "#f2c94c",
+    j: darken("#f2c94c", 0.28),
   };
 }
 

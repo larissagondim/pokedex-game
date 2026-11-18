@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  ACCESSORIES,
+  ACCESSORY_PRICES,
   BADGES,
   type BadgeInput,
   type BattleLogEntry,
@@ -11,6 +13,8 @@ import {
   EXTRA_STYLES,
   HAIR_STYLES,
   HAT_STYLES,
+  isAccessory,
+  lockedAccessories,
   LOG_MAX,
   logBattle,
   NAME_MAX,
@@ -50,11 +54,25 @@ test("every style combination gives a full-size sprite with known colors", () =>
   }
 });
 
-test("both eyes stay visible with every style", () => {
+test("both eyes stay visible with every style (shades hide them on purpose)", () => {
   for (const a of allStyles()) {
     const irises = spriteRows(a).join("").split("i").length - 1;
-    assert.equal(irises, 2, `${a.hair}/${a.hat}/${a.top}/${a.bottom}/${a.extra}`);
+    assert.equal(irises, a.extra === "shades" ? 0 : 2, `${a.hair}/${a.hat}/${a.top}/${a.bottom}/${a.extra}`);
   }
+});
+
+test("accessories: locked until owned, and random looks only use owned ones", () => {
+  const look = { ...DEFAULT_APPEARANCE, hat: "crown" as const, extra: "shades" as const };
+  assert.deepEqual(lockedAccessories(look, new Set()), ["crown", "shades"]);
+  assert.deepEqual(lockedAccessories(look, new Set(["crown"])), ["shades"]);
+  assert.deepEqual(lockedAccessories(DEFAULT_APPEARANCE, new Set()), []);
+  // 0.99 picks the last option of every field: crown and shades.
+  const none = randomAppearance(() => 0.99);
+  assert.ok(!isAccessory(none.hat) && !isAccessory(none.extra));
+  const all = randomAppearance(() => 0.99, new Set(ACCESSORIES));
+  assert.equal(all.hat, "crown");
+  assert.equal(all.extra, "shades");
+  for (const id of ACCESSORIES) assert.ok(ACCESSORY_PRICES[id] > 0);
 });
 
 test("the sprite is outlined and leaves no stray pixels", () => {
@@ -84,7 +102,7 @@ test("stepAppearance wraps both ways", () => {
   assert.equal(stepAppearance({ ...DEFAULT_APPEARANCE, hair: last }, "hair", 1).hair, HAIR_STYLES[0]);
   assert.equal(stepAppearance({ ...DEFAULT_APPEARANCE, hair: HAIR_STYLES[0] }, "hair", -1).hair, last);
   assert.equal(stepAppearance({ ...DEFAULT_APPEARANCE, skin: 0 }, "skin", -1).skin, SKIN_TONES.length - 1);
-  assert.equal(stepAppearance({ ...DEFAULT_APPEARANCE, hat: "beanie" }, "hat", 1).hat, "none");
+  assert.equal(stepAppearance({ ...DEFAULT_APPEARANCE, hat: HAT_STYLES[HAT_STYLES.length - 1] }, "hat", 1).hat, "none");
 });
 
 test("sanitizeAppearance keeps valid values and replaces bad ones", () => {

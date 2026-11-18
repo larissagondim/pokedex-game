@@ -1,5 +1,6 @@
 import { LEAGUE } from "./league.ts";
 import { levelOf, MAX_SLOTS, type Pet } from "./tamagotchi.ts";
+import { type Accessory, ACCESSORIES, isAccessory } from "./trainer.ts";
 
 /**
  * Tamagotchi sync: what the browser and the server (app/api/tamagotchi) agree
@@ -64,6 +65,8 @@ export interface SyncedProgress {
   items: { potion: number; fullheal: number };
   /** Last day ("2026-11-18") the daily challenge was won. */
   dailyWon: string | null;
+  /** Trainer accessories bought (absent in progress saved before they existed). */
+  accessories?: Accessory[];
 }
 
 /** A save as the server stores it. */
@@ -126,12 +129,14 @@ export function sanitizeSyncedProgress(value: unknown): SyncedProgress | null {
   if (!seen || !caught || !isIndex(p.league, LEAGUE.length) || !items) return null;
   if (!isIndex(items.potion, MAX_ITEMS) || !isIndex(items.fullheal, MAX_ITEMS)) return null;
   if (p.dailyWon !== null && !(typeof p.dailyWon === "string" && DAY.test(p.dailyWon))) return null;
+  if (p.accessories !== undefined && !(Array.isArray(p.accessories) && p.accessories.every(isAccessory))) return null;
   return {
     seen: [...new Set([...seen, ...caught])].sort((a, b) => a - b),
     caught,
     league: p.league,
     items: { potion: items.potion, fullheal: items.fullheal },
     dailyWon: p.dailyWon,
+    accessories: ACCESSORIES.filter((id) => (p.accessories as Accessory[] | undefined)?.includes(id)),
   };
 }
 
@@ -149,6 +154,7 @@ export function mergeProgress(local: SyncedProgress, remote: SyncedProgress): Sy
     league: Math.max(local.league, remote.league),
     items: { ...remote.items },
     dailyWon: daily.at(-1) ?? null,
+    accessories: ACCESSORIES.filter((id) => local.accessories?.includes(id) || remote.accessories?.includes(id)),
   };
 }
 

@@ -483,6 +483,15 @@ span.mini[data-egg] {
   text-align: center;
 }
 
+/* An accessory not bought yet: tried on, with its price. */
+.value > span[data-locked="true"] {
+  color: #6b6b76;
+}
+
+.value > span[data-locked="true"] small {
+  color: var(--red);
+}
+
 .arrow {
   padding: 0 4px;
   border: 0;
