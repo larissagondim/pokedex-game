@@ -25,7 +25,7 @@ import {
 } from "@/lib/battle/engine";
 import type { BattlePokemon, Status } from "@/lib/battle/types";
 import { playSfx } from "@/lib/sfx";
-import { type BattleCondition, battleCondition, tick, withCondition } from "@/lib/tamagotchi";
+import { isPlain, partyBoost, withCondition } from "@/lib/tamagotchi";
 import { loadBattleSets, preBattleSnapshot, predictWin } from "@/lib/winPrediction";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { usePokedex } from "@/stores/pokedex";
@@ -148,17 +148,14 @@ const viewOf = (st: BattleState): Record<Side, SideView> => ({ a: sideView(st, "
  */
 export function BattleArena({ player, foe, active, onNotice, onLeave, foeTrainer, onResult }: Props) {
   const single = player.length === 1 && foe.length === 1;
-  /** How each of your Pokémon that is in the Tamagotchi party feels (null: not in the party). */
-  const [conditions] = useState<(BattleCondition | null)[]>(() => {
+  /** Condition and level of each of your Pokémon that is in the Tamagotchi party (null: not in the party). */
+  const [boosts] = useState(() => {
     const pets = useTamagotchi.getState().pets;
     const now = Date.now();
-    return player.map((p) => {
-      const pet = pets.find((x) => x.dexId === p.id);
-      return pet ? battleCondition(tick(pet, now)) : null;
-    });
+    return player.map((p) => partyBoost(pets, p.id, now));
   });
-  /** The ML model only knows plain sets: with a condition in play, the chance is simulated. */
-  const useModel = single && conditions.every((c) => c === null || c === "ok");
+  /** The ML model only knows plain sets: with a party boost in play, the chance is simulated. */
+  const useModel = single && boosts.every(isPlain);
   const byId = useMemo(() => new Map([...player, ...foe].map((p) => [p.id, p])), [player, foe]);
   const [sets, setSets] = useState<{ a: BattlePokemon[]; b: BattlePokemon[] } | null>(null);
   /** Pre-battle win chance from the ML model (single battles only). */
@@ -246,8 +243,8 @@ export function BattleArena({ player, foe, active, onNotice, onLeave, foeTrainer
         const raw = player.map((p) => all[p.id]);
         const b = foe.map((p) => all[p.id]);
         if (cancelled || raw.some((s) => !s) || b.some((s) => !s)) return;
-        // Party members fight as well as they're looked after.
-        const a = raw.map((set, i) => withCondition(set, conditions[i] ?? "ok"));
+        // Party members fight as well as they're raised and looked after.
+        const a = raw.map((set, i) => withCondition(set, boosts[i]?.condition ?? "ok", boosts[i]?.level ?? 1));
         setSets({ a, b });
         if (!useModel) updateLive(createTeamBattle(a, b));
       })

@@ -17,6 +17,7 @@ import {
   SHINY_CHANCE,
   stageOf,
   tick,
+  levelBonus,
   withCondition,
 } from "./tamagotchi.ts";
 
@@ -166,4 +167,18 @@ test("a treat feeds and cheers up, even when full", () => {
   assert.equal(r.pet.fullness, 100);
   assert.equal(r.pet.happiness, 75);
   assert.equal(act(pet({ asleep: true }), "treat", T0).outcome, "is-asleep");
+});
+
+test("the level bonus grows 1% a level up to 20%", () => {
+  assert.equal(levelBonus(1), 0);
+  assert.ok(Math.abs(levelBonus(12) - 0.11) < 1e-9);
+  assert.equal(levelBonus(50), 0.2);
+});
+
+test("withCondition adds the level bonus to every stat but HP", () => {
+  const set = { name: "X", stats: { atk: 100, def: 100, spa: 100, spd: 100, spe: 100 } };
+  assert.deepEqual(withCondition(set, "ok", 11).stats, { atk: 110, def: 110, spa: 110, spd: 110, spe: 110 });
+  // Tired at level 11: x0.85 x1.1 on the attacking stats and speed.
+  assert.deepEqual(withCondition(set, "tired", 11).stats, { atk: 94, def: 110, spa: 94, spd: 110, spe: 94 });
+  assert.equal(withCondition(set, "ok", 1), set);
 });

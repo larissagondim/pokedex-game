@@ -133,12 +133,39 @@ export function battleCondition(pet: Pet): BattleCondition {
   return "ok";
 }
 
-/** A copy of a battle set with Attack, Sp. Atk and Speed scaled by the condition. */
-export function withCondition<T extends { stats: { atk: number; def: number; spa: number; spd: number; spe: number } }>(set: T, condition: BattleCondition): T {
-  const m = CONDITION_MULTIPLIER[condition];
-  if (m === 1) return set;
-  const scale = (n: number) => Math.max(1, Math.round(n * m));
-  return { ...set, stats: { ...set.stats, atk: scale(set.stats.atk), spa: scale(set.stats.spa), spe: scale(set.stats.spe) } };
+/** How a party member of this species goes into battle, or null if none is in the party. */
+export function partyBoost(pets: readonly Pet[], dexId: number, now: number): { condition: BattleCondition; level: number } | null {
+  const pet = pets.find((p) => p.dexId === dexId);
+  if (!pet) return null;
+  const ticked = tick(pet, now);
+  return { condition: battleCondition(ticked), level: levelOf(ticked.xp) };
+}
+
+/** Whether a boost changes anything (the ML model only knows plain sets). */
+export const isPlain = (boost: { condition: BattleCondition; level: number } | null) => !boost || (boost.condition === "ok" && boost.level <= 1);
+
+/** Stats bonus per Tamagotchi level above 1, and its ceiling: a well-raised partner hits harder. */
+export const LEVEL_BONUS_STEP = 0.01;
+export const LEVEL_BONUS_MAX = 0.2;
+
+/** 0 at level 1, +1% a level, at most +20%. */
+export const levelBonus = (level: number) => Math.min(LEVEL_BONUS_MAX, Math.max(0, level - 1) * LEVEL_BONUS_STEP);
+
+/**
+ * A copy of a battle set for a party member: Attack, Sp. Atk and Speed
+ * scaled by its condition, and every stat but HP raised by its level bonus.
+ */
+export function withCondition<T extends { stats: { atk: number; def: number; spa: number; spd: number; spe: number } }>(
+  set: T,
+  condition: BattleCondition,
+  level = 1,
+): T {
+  const c = CONDITION_MULTIPLIER[condition];
+  const l = 1 + levelBonus(level);
+  if (c === 1 && l === 1) return set;
+  const scale = (n: number, m: number) => Math.max(1, Math.round(n * m));
+  const { atk, def, spa, spd, spe } = set.stats;
+  return { ...set, stats: { atk: scale(atk, c * l), def: scale(def, l), spa: scale(spa, c * l), spd: scale(spd, l), spe: scale(spe, c * l) } };
 }
 
 export interface ActionResult {

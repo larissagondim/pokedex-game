@@ -7,7 +7,7 @@ import { usePokedex } from "@/stores/pokedex";
 import { useFavorites } from "@/stores/favorites";
 import { dailyBonus, dailyTeam, dayKey, liveStreak, nextStreak } from "@/lib/daily";
 import { canChallenge, LEAGUE, leagueBonus, leaderState, trainerTitle } from "@/lib/league";
-import { battleCondition, tick } from "@/lib/tamagotchi";
+import { levelBonus, partyBoost } from "@/lib/tamagotchi";
 import { useDaily } from "@/stores/daily";
 import { useLeague } from "@/stores/league";
 import { useTamagotchi } from "@/stores/tamagotchi";
@@ -49,19 +49,20 @@ const randomPicks = (list: readonly Pokemon[], n: number) => {
   return [...picked.values()];
 };
 
-const CONDITION_NOTE = { great: "is in great shape!", tired: "is tired and fights weaker.", hungry: "is hungry and fights weaker." } as const;
+const CONDITION_NOTE = { great: "in great shape", ok: "", tired: "tired, fights weaker", hungry: "hungry, fights weaker" } as const;
 
-/** "PIKACHU is tired and fights weaker." for each party member not in an ordinary condition. */
+/** "Your party: EEVEE Lv12 +11% (tired, fights weaker)." for the team members raised in the Tamagotchi. */
 function conditionNotes(team: readonly Pokemon[]): string {
   const pets = useTamagotchi.getState().pets;
   const now = Date.now();
-  return team
-    .flatMap((p) => {
-      const pet = pets.find((x) => x.dexId === p.id);
-      const c = pet ? battleCondition(tick(pet, now)) : "ok";
-      return c === "ok" ? [] : [`${p.name.toUpperCase()} ${CONDITION_NOTE[c]}`];
-    })
-    .join(" ");
+  const notes = team.flatMap((p) => {
+    const boost = partyBoost(pets, p.id, now);
+    if (!boost) return [];
+    const bonus = Math.round(levelBonus(boost.level) * 100);
+    const note = CONDITION_NOTE[boost.condition];
+    return [`${p.name.toUpperCase()} Lv${boost.level}${bonus ? ` +${bonus}%` : ""}${note ? ` (${note})` : ""}`];
+  });
+  return notes.length ? `Your party: ${notes.join(", ")}.` : "";
 }
 
 const names = (team: readonly Pokemon[]) => team.map((p) => p.name.toUpperCase()).join(", ");
