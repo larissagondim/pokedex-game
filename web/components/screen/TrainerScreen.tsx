@@ -21,7 +21,9 @@ import { badgeNotice, checkBadges } from "@/stores/badges";
 import { useBattleLog } from "@/stores/battleLog";
 import { useBattleRecord } from "@/stores/battleRecord";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
+import { LEAGUE } from "@/lib/league";
 import { useDexProgress } from "@/stores/dexProgress";
+import { useLeague } from "@/stores/league";
 import { useFavorites } from "@/stores/favorites";
 import { usePokedex } from "@/stores/pokedex";
 import { useTamagotchi } from "@/stores/tamagotchi";
@@ -467,6 +469,7 @@ function StatsPage({ bestId, wins, losses }: { bestId: number | null; wins: numb
   const coins = useTamagotchi((s) => s.coins);
   const favorites = useFavorites((s) => s.ids.size);
   const seen = useDexProgress((s) => s.seen.size);
+  const league = useLeague((s) => s.beaten);
   const caught = useDexProgress((s) => s.caught.size);
   const record = useBattleRecord((s) => (bestId !== null ? s.records[bestId] : undefined));
   const streak = useBattleLog((s) => winStreak(s.log));
@@ -478,7 +481,9 @@ function StatsPage({ bestId, wins, losses }: { bestId: number | null; wins: numb
     <div className={styles.page}>
       <div className={styles.rank}>
         <span>{rank.title}</span>
-        <small>{rank.next !== null ? `${rank.next} win${rank.next === 1 ? "" : "s"} to ${rankOf(wins + rank.next).title}` : "Top rank!"}</small>
+        <small>
+          {rank.next !== null ? `${rank.next} win${rank.next === 1 ? "" : "s"} to ${rankOf(wins + rank.next).title}` : "Top rank!"} · LEAGUE {league}/{LEAGUE.length}
+        </small>
       </div>
       <dl>
         <dt>BATTLES</dt>

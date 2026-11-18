@@ -5,7 +5,9 @@ import type { Pokemon } from "@/data/pokedex";
 import { useBattleRecord } from "@/stores/battleRecord";
 import { usePokedex } from "@/stores/pokedex";
 import { useFavorites } from "@/stores/favorites";
+import { canChallenge, LEAGUE, leagueBonus, leaderState } from "@/lib/league";
 import { battleCondition, tick } from "@/lib/tamagotchi";
+import { useLeague } from "@/stores/league";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import styles from "./battle.module.css";
 import { BattleArena } from "./BattleArena";
@@ -19,15 +21,16 @@ interface Props {
 }
 
 type Mode = "single" | "team" | "full";
-type Step = "menu" | "record" | "player" | "foeSource" | "foe" | "battle";
+type Step = "menu" | "record" | "league" | "player" | "foeSource" | "foe" | "battle";
 
 const TEAM_SIZE: Record<Mode, number> = { single: 1, team: 3, full: 6 };
 
-const MODES: { label: string; detail: string; mode?: Mode }[] = [
+const MODES: { label: string; detail: string; mode?: Mode; step?: Step }[] = [
   { label: "SINGLE BATTLE", detail: "1 vs 1. The ML model predicts the winner before you start.", mode: "single" },
   { label: "TEAM BATTLE", detail: "3 vs 3. Switch Pokémon, use items; the last one standing wins.", mode: "team" },
   { label: "FULL BATTLE", detail: "6 vs 6, a full team each, like a real trainer battle.", mode: "full" },
-  { label: "RECORD", detail: "Your wins and losses." },
+  { label: "LEAGUE", detail: "8 leaders, 3 vs 3, one after another. Beat them all!", step: "league" },
+  { label: "RECORD", detail: "Your wins and losses.", step: "record" },
 ];
 const FOE_SOURCES = [
   { label: "CHOOSE", detail: "Pick the opponent from the list." },
@@ -75,6 +78,9 @@ export function BattleScreen({ active, onNotice }: Props) {
   const [mode, setMode] = useState<Mode>("single");
   const [playerTeam, setPlayerTeam] = useState<Pokemon[]>([]);
   const [foeTeam, setFoeTeam] = useState<Pokemon[]>([]);
+  /** The league leader being challenged, or null for an ordinary battle. */
+  const [leader, setLeader] = useState<number | null>(null);
+  const beaten = useLeague((s) => s.beaten);
   const size = TEAM_SIZE[mode];
 
   // Tell the player what to do when entering a step.
@@ -84,6 +90,7 @@ export function BattleScreen({ active, onNotice }: Props) {
     if (!active || greeted.current === stepKey) return;
     greeted.current = stepKey;
     if (step === "menu") onNotice("BATTLE! ▲▼ choose   A: OK");
+    else if (step === "league") onNotice(beaten >= LEAGUE.length ? "You are the league champion! Fight any leader again." : `Next: LEADER ${LEAGUE[beaten].name}. A: challenge   B: back`);
     else if (step === "player" && size === 1) onNotice("Choose your Pokémon! ★ favorites come first. ▲ on the top row: search.");
     else if (step === "player") {
       onNotice(playerTeam.length ? `Team: ${names(playerTeam)}. Choose #${playerTeam.length + 1}! B: undo` : `Choose ${size} Pokémon for your team! ★ favorites first.`);
@@ -91,13 +98,14 @@ export function BattleScreen({ active, onNotice }: Props) {
     else if (step === "foe") {
       onNotice(size === 1 ? "Now choose your opponent! B: back" : `Choose the foe team (${foeTeam.length + 1}/${size}). B: undo`);
     }
-  }, [active, step, stepKey, size, playerTeam, foeTeam, onNotice]);
+  }, [active, step, stepKey, size, playerTeam, foeTeam, onNotice, beaten]);
 
-  const startBattle = (foes: Pokemon[]) => {
+  const startBattle = (foes: Pokemon[], team = playerTeam) => {
     setFoeTeam(foes);
     setStep("battle");
-    const notes = conditionNotes(playerTeam);
-    onNotice(`${size === 1 ? foes[0].name.toUpperCase() : `A team of ${names(foes)}`} wants to battle!${notes ? ` ${notes}` : ""} A: fight   B: new opponent`);
+    const notes = conditionNotes(team);
+    const who = leader !== null ? `LEADER ${LEAGUE[leader].name}` : size === 1 ? foes[0].name.toUpperCase() : `A team of ${names(foes)}`;
+    onNotice(`${who} wants to battle!${notes ? ` ${notes}` : ""} A: fight   B: ${leader !== null ? "back" : "new opponent"}`);
     usePokedex.getState().playCry(foes[0].id);
   };
 
@@ -109,10 +117,39 @@ export function BattleScreen({ active, onNotice }: Props) {
         foe={foeTeam}
         active={active}
         onNotice={onNotice}
+        foeTrainer={leader !== null ? `LEADER ${LEAGUE[leader].name}` : undefined}
+        onResult={leader !== null ? (won) => leagueResult(leader, won) : undefined}
         onLeave={() => {
           setFoeTeam([]);
-          setStep("foeSource");
+          setStep(leader !== null ? "league" : "foeSource");
         }}
+      />
+    );
+  }
+
+  if (step === "league") {
+    return (
+      <BattleMenu
+        key="league"
+        title={`LEAGUE · ${beaten}/${LEAGUE.length} BEATEN`}
+        options={LEAGUE.map((l, i) => {
+          const state = leaderState(i, beaten);
+          const team = l.team.map((id) => list.find((p) => p.id === id)?.name.toUpperCase() ?? `#${id}`).join(", ");
+          return {
+            label: `${state === "beaten" ? "✓" : state === "next" ? "\u00a0" : "·"} ${l.name} · ${l.type.toUpperCase()}`,
+            detail: state === "locked" ? `Beat ${LEAGUE[i - 1].name} first.` : `${team}. First win: +${leagueBonus(i)}₽`,
+          };
+        })}
+        active={active}
+        onPick={(i) => {
+          if (!canChallenge(i, beaten)) return onNotice(`LEADER ${LEAGUE[i].name} only accepts challengers who beat ${LEAGUE[beaten].name}.`);
+          setLeader(i);
+          setMode("team");
+          setPlayerTeam([]);
+          setFoeTeam([]);
+          setStep("player");
+        }}
+        onBack={() => (setStep("menu"), true)}
       />
     );
   }
@@ -181,11 +218,14 @@ export function BattleScreen({ active, onNotice }: Props) {
           const team = [...playerTeam, p];
           setPlayerTeam(team);
           usePokedex.getState().playCry(p.id);
-          if (team.length === size) setStep("foeSource");
+          if (team.length < size) return;
+          if (leader === null) return setStep("foeSource");
+          const foes = LEAGUE[leader].team.flatMap((id) => list.find((x) => x.id === id) ?? []);
+          startBattle(foes, team);
         }}
         onBack={() => {
           if (playerTeam.length) setPlayerTeam((t) => t.slice(0, -1));
-          else setStep("menu");
+          else setStep(leader !== null ? "league" : "menu");
           return true;
         }}
       />
@@ -200,7 +240,8 @@ export function BattleScreen({ active, onNotice }: Props) {
       active={active}
       onPick={(i) => {
         const chosen = MODES[i].mode;
-        if (!chosen) return setStep("record");
+        setLeader(null);
+        if (!chosen) return setStep(MODES[i].step ?? "menu");
         setMode(chosen);
         setPlayerTeam([]);
         setFoeTeam([]);
@@ -209,6 +250,15 @@ export function BattleScreen({ active, onNotice }: Props) {
       onBack={() => false}
     />
   );
+}
+
+/** Records a league battle: a first win against the next leader pays a bonus. */
+function leagueResult(index: number, won: boolean): string | null {
+  if (!useLeague.getState().result(index, won)) return null;
+  const bonus = leagueBonus(index);
+  useTamagotchi.getState().reward(bonus);
+  const champion = index === LEAGUE.length - 1;
+  return `You beat LEADER ${LEAGUE[index].name}! +${bonus}₽${champion ? " You are the LEAGUE CHAMPION!" : ` Next: ${LEAGUE[index + 1].name}.`}`;
 }
 
 /** Total wins and losses, and the Pokémon with the most wins. */

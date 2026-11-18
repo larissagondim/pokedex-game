@@ -118,6 +118,10 @@ interface Props {
   onNotice: (text: string) => void;
   /** Back to choosing the opponent. */
   onLeave: () => void;
+  /** The foe's trainer ("LEADER WREN"), if it has one. */
+  foeTrainer?: string;
+  /** Called when the battle ends; may return extra text for the result message. */
+  onResult?: (won: boolean) => string | null;
 }
 
 const names = (list: readonly Pokemon[]) => list.map((p) => p.name.toUpperCase()).join(", ");
@@ -142,7 +146,7 @@ const viewOf = (st: BattleState): Record<Side, SideView> => ({ a: sideView(st, "
  * one (messages, HP bars, hits, sounds). In a team battle, a fainted Pokémon
  * is replaced (you choose yours) until one side has nobody left.
  */
-export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
+export function BattleArena({ player, foe, active, onNotice, onLeave, foeTrainer, onResult }: Props) {
   const single = player.length === 1 && foe.length === 1;
   /** How each of your Pokémon that is in the Tamagotchi party feels (null: not in the party). */
   const [conditions] = useState<(BattleCondition | null)[]>(() => {
@@ -291,12 +295,12 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     const begun = beginBattle(st);
     if (begun.events.length > 0) {
       setPhase("playing");
-      onNotice(single ? go : `The foe sent out ${nameOf(st.b.dexId)}! ${go}`);
+      onNotice(single ? go : `${foeTrainer ?? "The foe"} sent out ${nameOf(st.b.dexId)}! ${go}`);
       timer.current = setTimeout(() => play(begun.events, begun.state), EVENT_MS);
       return;
     }
     setPhase("command");
-    onNotice(single ? `${go} What will it do?` : `The foe sent out ${nameOf(st.b.dexId)}! ${go}`);
+    onNotice(single ? `${go} What will it do?` : `${foeTrainer ?? "The foe"} sent out ${nameOf(st.b.dexId)}! ${go}`);
   };
 
   /** Applies one event to the screen; returns how long to show it. */
@@ -458,6 +462,8 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     } else {
       playSfx("lose");
     }
+    const extra = onResult?.(won);
+    if (extra) notes.push(extra);
     const fresh = checkBadges();
     const badges = fresh.length > 0 ? ` ${badgeNotice(fresh)}` : "";
     const result = won
@@ -821,7 +827,7 @@ function WinChance({
         <div className={styles.chanceFill} style={{ width: `${pct ?? 50}%` }} data-unknown={pct === null} />
       </div>
       <div className={styles.chanceHint}>
-        A: fight · B: change opponent{prize !== null ? ` · win +${prize}₽` : ""}{record ? ` · record ${record.wins}W ${record.losses}L` : ""}
+        A: fight · B: back{prize !== null ? ` · win +${prize}₽` : ""}{record ? ` · record ${record.wins}W ${record.losses}L` : ""}
       </div>
     </div>
   );
