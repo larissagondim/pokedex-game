@@ -5,8 +5,10 @@ import type { Pokemon } from "@/data/pokedex";
 import { useBattleRecord } from "@/stores/battleRecord";
 import { usePokedex } from "@/stores/pokedex";
 import { useFavorites } from "@/stores/favorites";
+import { DAILY_BONUS, dailyTeam, dayKey } from "@/lib/daily";
 import { canChallenge, LEAGUE, leagueBonus, leaderState } from "@/lib/league";
 import { battleCondition, tick } from "@/lib/tamagotchi";
+import { useDaily } from "@/stores/daily";
 import { useLeague } from "@/stores/league";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import styles from "./battle.module.css";
@@ -30,6 +32,7 @@ const MODES: { label: string; detail: string; mode?: Mode; step?: Step }[] = [
   { label: "TEAM BATTLE", detail: "3 vs 3. Switch Pokémon, use items; the last one standing wins.", mode: "team" },
   { label: "FULL BATTLE", detail: "6 vs 6, a full team each, like a real trainer battle.", mode: "full" },
   { label: "LEAGUE", detail: "8 leaders, 3 vs 3, one after another. Beat them all!", step: "league" },
+  { label: "DAILY CHALLENGE", detail: `Today's foe team, the same for everyone. First win of the day: +${DAILY_BONUS}₽` },
   { label: "RECORD", detail: "Your wins and losses.", step: "record" },
 ];
 const FOE_SOURCES = [
@@ -78,8 +81,9 @@ export function BattleScreen({ active, onNotice }: Props) {
   const [mode, setMode] = useState<Mode>("single");
   const [playerTeam, setPlayerTeam] = useState<Pokemon[]>([]);
   const [foeTeam, setFoeTeam] = useState<Pokemon[]>([]);
-  /** The league leader being challenged, or null for an ordinary battle. */
-  const [leader, setLeader] = useState<number | null>(null);
+  /** A fixed opponent (a league leader or today's team), or null for an ordinary battle. */
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const leader = challenge?.kind === "league" ? challenge.index : null;
   const beaten = useLeague((s) => s.beaten);
   const size = TEAM_SIZE[mode];
 
@@ -92,20 +96,27 @@ export function BattleScreen({ active, onNotice }: Props) {
     if (step === "menu") onNotice("BATTLE! ▲▼ choose   A: OK");
     else if (step === "league") onNotice(beaten >= LEAGUE.length ? "You are the league champion! Fight any leader again." : `Next: LEADER ${LEAGUE[beaten].name}. A: challenge   B: back`);
     else if (step === "player" && size === 1) onNotice("Choose your Pokémon! ★ favorites come first. ▲ on the top row: search.");
-    else if (step === "player") {
+    else if (step === "player" && challenge && playerTeam.length === 0) {
+      const foes = (challenge.kind === "league" ? LEAGUE[challenge.index].team : challenge.team).map((id) => list.find((p) => p.id === id)?.name.toUpperCase() ?? `#${id}`);
+      onNotice(`${challenge.kind === "league" ? `LEADER ${LEAGUE[challenge.index].name}'s` : "Today's"} team: ${foes.join(", ")}. Choose ${size} Pokémon!`);
+    } else if (step === "player") {
       onNotice(playerTeam.length ? `Team: ${names(playerTeam)}. Choose #${playerTeam.length + 1}! B: undo` : `Choose ${size} Pokémon for your team! ★ favorites first.`);
     } else if (step === "foeSource") onNotice("Who will you battle? B: back");
     else if (step === "foe") {
       onNotice(size === 1 ? "Now choose your opponent! B: back" : `Choose the foe team (${foeTeam.length + 1}/${size}). B: undo`);
     }
-  }, [active, step, stepKey, size, playerTeam, foeTeam, onNotice, beaten]);
+  }, [active, step, stepKey, size, playerTeam, foeTeam, onNotice, beaten, challenge, list]);
 
   const startBattle = (foes: Pokemon[], team = playerTeam) => {
     setFoeTeam(foes);
     setStep("battle");
     const notes = conditionNotes(team);
-    const who = leader !== null ? `LEADER ${LEAGUE[leader].name}` : size === 1 ? foes[0].name.toUpperCase() : `A team of ${names(foes)}`;
-    onNotice(`${who} wants to battle!${notes ? ` ${notes}` : ""} A: fight   B: ${leader !== null ? "back" : "new opponent"}`);
+    const who =
+      leader !== null ? `LEADER ${LEAGUE[leader].name}`
+      : challenge?.kind === "daily" ? `Today's challenger, a team of ${names(foes)},`
+      : size === 1 ? foes[0].name.toUpperCase()
+      : `A team of ${names(foes)}`;
+    onNotice(`${who} wants to battle!${notes ? ` ${notes}` : ""} A: fight   B: ${challenge ? "back" : "new opponent"}`);
     usePokedex.getState().playCry(foes[0].id);
   };
 
@@ -118,10 +129,10 @@ export function BattleScreen({ active, onNotice }: Props) {
         active={active}
         onNotice={onNotice}
         foeTrainer={leader !== null ? `LEADER ${LEAGUE[leader].name}` : undefined}
-        onResult={leader !== null ? (won) => leagueResult(leader, won) : undefined}
+        onResult={challenge ? (won) => (challenge.kind === "league" ? leagueResult(challenge.index, won) : dailyResult(challenge.day, won)) : undefined}
         onLeave={() => {
           setFoeTeam([]);
-          setStep(leader !== null ? "league" : "foeSource");
+          setStep(leader !== null ? "league" : challenge ? "menu" : "foeSource");
         }}
       />
     );
@@ -143,7 +154,7 @@ export function BattleScreen({ active, onNotice }: Props) {
         active={active}
         onPick={(i) => {
           if (!canChallenge(i, beaten)) return onNotice(`LEADER ${LEAGUE[i].name} only accepts challengers who beat ${LEAGUE[beaten].name}.`);
-          setLeader(i);
+          setChallenge({ kind: "league", index: i });
           setMode("team");
           setPlayerTeam([]);
           setFoeTeam([]);
@@ -219,13 +230,13 @@ export function BattleScreen({ active, onNotice }: Props) {
           setPlayerTeam(team);
           usePokedex.getState().playCry(p.id);
           if (team.length < size) return;
-          if (leader === null) return setStep("foeSource");
-          const foes = LEAGUE[leader].team.flatMap((id) => list.find((x) => x.id === id) ?? []);
-          startBattle(foes, team);
+          if (!challenge) return setStep("foeSource");
+          const ids = challenge.kind === "league" ? LEAGUE[challenge.index].team : challenge.team;
+          startBattle(ids.flatMap((id) => list.find((x) => x.id === id) ?? []), team);
         }}
         onBack={() => {
           if (playerTeam.length) setPlayerTeam((t) => t.slice(0, -1));
-          else setStep(leader !== null ? "league" : "menu");
+          else setStep(challenge?.kind === "league" ? "league" : "menu");
           return true;
         }}
       />
@@ -240,7 +251,15 @@ export function BattleScreen({ active, onNotice }: Props) {
       active={active}
       onPick={(i) => {
         const chosen = MODES[i].mode;
-        setLeader(null);
+        setChallenge(null);
+        if (MODES[i].label === "DAILY CHALLENGE") {
+          const day = dayKey(new Date());
+          setChallenge({ kind: "daily", day, team: dailyTeam(day, list.map((p) => p.id)) });
+          setMode("team");
+          setPlayerTeam([]);
+          setFoeTeam([]);
+          return setStep("player");
+        }
         if (!chosen) return setStep(MODES[i].step ?? "menu");
         setMode(chosen);
         setPlayerTeam([]);
@@ -250,6 +269,16 @@ export function BattleScreen({ active, onNotice }: Props) {
       onBack={() => false}
     />
   );
+}
+
+type Challenge = { kind: "league"; index: number } | { kind: "daily"; day: string; team: number[] };
+
+/** Records a daily challenge: the first win of the day pays a bonus. */
+function dailyResult(day: string, won: boolean): string | null {
+  if (!won) return null;
+  if (!useDaily.getState().win(day)) return "Daily challenge already won today. Come back tomorrow!";
+  useTamagotchi.getState().reward(DAILY_BONUS);
+  return `Daily challenge complete! +${DAILY_BONUS}₽`;
 }
 
 /** Records a league battle: a first win against the next leader pays a bonus. */
