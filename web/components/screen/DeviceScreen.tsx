@@ -10,6 +10,7 @@ import { REGIONS, regionIndexOf } from "@/lib/regions";
 import { normalize, searchPokemon } from "@/lib/search";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
 import { acceptsInput, useDeviceState } from "@/stores/deviceState";
+import { useDexProgress } from "@/stores/dexProgress";
 import { useFavorites } from "@/stores/favorites";
 import { BATTLE_TAB, TABS, TAMAGOTCHI_TAB, TRAINER_TAB, useScreen } from "@/stores/screen";
 import { useTamagotchi } from "@/stores/tamagotchi";
@@ -100,14 +101,15 @@ export function DeviceScreen({ onRequestZoom }: Props) {
   /** Showing the "coming soon" region after Paldea. */
   const [teaser, setTeaser] = useState(false);
   const favorites = useFavorites((s) => s.ids);
+  const caught = useDexProgress((s) => s.caught);
   const [trainerHint, setTrainerHint] = useState<TrainerHint>("card");
   const searchInput = useRef<HTMLInputElement>(null);
 
   /** What the list shows: search results (or everything), filtered and sorted. */
   const items = useMemo(() => {
     const base = query.trim() && searchIndex ? searchPokemon(searchIndex, query) : list;
-    return applyListing(base, { filter, sort, favorites });
-  }, [query, searchIndex, list, filter, sort, favorites]);
+    return applyListing(base, { filter, sort, favorites, caught });
+  }, [query, searchIndex, list, filter, sort, favorites, caught]);
 
   // Highlight the typed prefix in names (not for number searches).
   const normalizedQuery = normalize(query);

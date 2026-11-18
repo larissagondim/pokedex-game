@@ -21,6 +21,7 @@ import { badgeNotice, checkBadges } from "@/stores/badges";
 import { useBattleLog } from "@/stores/battleLog";
 import { useBattleRecord } from "@/stores/battleRecord";
 import { type DeviceButton, useDeviceInput } from "@/stores/deviceInput";
+import { useDexProgress } from "@/stores/dexProgress";
 import { useFavorites } from "@/stores/favorites";
 import { usePokedex } from "@/stores/pokedex";
 import { useTamagotchi } from "@/stores/tamagotchi";
@@ -465,6 +466,8 @@ function StatsPage({ bestId, wins, losses }: { bestId: number | null; wins: numb
   const pets = useTamagotchi((s) => s.pets);
   const coins = useTamagotchi((s) => s.coins);
   const favorites = useFavorites((s) => s.ids.size);
+  const seen = useDexProgress((s) => s.seen.size);
+  const caught = useDexProgress((s) => s.caught.size);
   const record = useBattleRecord((s) => (bestId !== null ? s.records[bestId] : undefined));
   const streak = useBattleLog((s) => winStreak(s.log));
   const rank = rankOf(wins);
@@ -505,8 +508,10 @@ function StatsPage({ bestId, wins, losses }: { bestId: number | null; wins: numb
             return <PetSprite key={pet.uid} className={styles.mini} dexId={pet.dexId} shiny={pet.shiny} alt={label} title={label} />;
           })}
         </dd>
-        <dt>FAVORITES</dt>
-        <dd>★ {favorites}</dd>
+        <dt>POKéDEX</dt>
+        <dd>
+          {caught} caught <small>· {seen} seen · ★ {favorites}</small>
+        </dd>
         <dt>COINS</dt>
         <dd className={styles.coins}>{coins}₽</dd>
         <dt>STARTED</dt>

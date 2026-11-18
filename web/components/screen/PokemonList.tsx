@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { formatDexNumber, type Pokemon } from "@/data/pokedex";
+import { markOf } from "@/lib/dexProgress";
+import { useDexProgress } from "@/stores/dexProgress";
 import styles from "./screen.module.css";
 
 export const VISIBLE_ROWS = 5;
@@ -23,6 +25,8 @@ export function PokemonList({ items, cursor, selectedId, favorites, highlight, o
   // Keep the cursor about a third of the way down the visible window.
   const start = Math.max(0, Math.min(cursor - 2, items.length - VISIBLE_ROWS));
   const rows = placeholder ? [] : items.slice(start, start + VISIBLE_ROWS);
+  const seen = useDexProgress((s) => s.seen);
+  const caught = useDexProgress((s) => s.caught);
 
   return (
     <div className={styles.panel + " " + styles.list}>
@@ -35,6 +39,7 @@ export function PokemonList({ items, cursor, selectedId, favorites, highlight, o
           {rows.map((p, i) => {
             const index = start + i;
             const name = p.name.toUpperCase();
+            const mark = markOf({ seen, caught }, p.id);
             return (
               <li
                 key={p.id}
@@ -67,6 +72,7 @@ export function PokemonList({ items, cursor, selectedId, favorites, highlight, o
                     <span key={t} className={styles.typeDot} data-type={t} />
                   ))}
                 </span>
+                <i className={styles.caughtMark} data-mark={mark ?? undefined} aria-label={mark ? (mark === "caught" ? "Caught" : "Seen") : undefined} />
                 <span className={styles.fav} aria-label={favorites.has(p.id) ? "Favorite" : undefined}>
                   {favorites.has(p.id) ? "★" : ""}
                 </span>

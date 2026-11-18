@@ -32,6 +32,7 @@ import { useScreen } from "@/stores/screen";
 import { badgeNotice, checkBadges } from "@/stores/badges";
 import { useBattleLog } from "@/stores/battleLog";
 import { useBattleRecord } from "@/stores/battleRecord";
+import { useDexProgress } from "@/stores/dexProgress";
 import { useTamagotchi } from "@/stores/tamagotchi";
 import { useTrainer } from "@/stores/trainer";
 import styles from "./battle.module.css";
@@ -116,6 +117,8 @@ interface Props {
   /** Back to choosing the opponent. */
   onLeave: () => void;
 }
+
+const names = (list: readonly Pokemon[]) => list.map((p) => p.name.toUpperCase()).join(", ");
 
 const team = (st: BattleState, side: Side) => [st[side], ...st.bench[side]];
 
@@ -257,6 +260,7 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     if (single) startOdds.current = chance ?? null;
     else if (phase === "ready") startOdds.current = live;
     const st = createTeamBattle(sets.a, sets.b);
+    useDexProgress.getState().see(foe.map((p) => p.id));
     shownHp.current = { a: { hp: st.a.hp, max: st.a.maxHp }, b: { hp: st.b.hp, max: st.b.maxHp } };
     shownId.current = { a: st.a.dexId, b: st.b.dexId };
     setLive(null);
@@ -429,6 +433,11 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     if (won) {
       playSfx("win");
       useTamagotchi.getState().reward(reward.coins);
+      // Beaten foes are caught: they count in the Pokédex and can be adopted.
+      const { caught } = useDexProgress.getState();
+      const fresh = foe.filter((p) => !caught.has(p.id));
+      useDexProgress.getState().capture(foe.map((p) => p.id));
+      if (fresh.length > 0) notes.push(`${names(fresh)} registered as caught!`);
     } else {
       playSfx("lose");
     }

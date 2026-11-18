@@ -14,7 +14,7 @@ interface Props {
 
 /** "TYPE ◀ FIRE ▶   SORT: BST" row between the search field and the region bar. */
 export function ListOptions({ filter, sort, selected, onFilterStep, onSortStep }: Props) {
-  const filterLabel = filter === "all" ? "ALL" : filter === "favorites" ? "★ FAV" : filter.toUpperCase();
+  const filterLabel = filter === "all" ? "ALL" : filter === "favorites" ? "★ FAV" : filter === "caught" ? "CAUGHT" : filter.toUpperCase();
   return (
     <div className={styles.options} data-selected={selected}>
       <span className={styles.optionLabel}>TYPE</span>

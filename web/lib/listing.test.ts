@@ -31,6 +31,11 @@ test("filters favorites", () => {
   assert.deepEqual(ids(applyListing(LIST, { filter: "favorites", sort: "auto", favorites: new Set([25, 1]) })), [1, 25]);
 });
 
+test("filters caught", () => {
+  assert.deepEqual(ids(applyListing(LIST, { filter: "caught", sort: "auto", favorites: none, caught: new Set([6, 4]) })), [4, 6]);
+  assert.deepEqual(ids(applyListing(LIST, { filter: "caught", sort: "auto", favorites: none })), []);
+});
+
 test("auto keeps the input order; other sorts reorder", () => {
   const shuffled = [LIST[3], LIST[0], LIST[4], LIST[2], LIST[1]];
   assert.deepEqual(ids(applyListing(shuffled, { filter: "all", sort: "auto", favorites: none })), [25, 1, 669, 6, 4]);

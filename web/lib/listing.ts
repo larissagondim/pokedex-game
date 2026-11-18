@@ -22,8 +22,8 @@ export const TYPES = [
   "fairy",
 ] as const;
 
-/** "all", favorites only, or one type. Cycled with ◀ ▶ on the options row. */
-export const FILTERS = ["all", "favorites", ...TYPES] as const;
+/** "all", favorites only, caught only, or one type. Cycled with ◀ ▶ on the options row. */
+export const FILTERS = ["all", "favorites", "caught", ...TYPES] as const;
 export type Filter = (typeof FILTERS)[number];
 
 /**
@@ -48,16 +48,20 @@ interface Options {
   filter: Filter;
   sort: Sort;
   favorites: ReadonlySet<number>;
+  /** Species caught (for the "caught" filter). */
+  caught?: ReadonlySet<number>;
 }
 
 /** Filters then sorts. Doesn't mutate `items`. O(n log n) when re-sorting. */
-export function applyListing(items: readonly Pokemon[], { filter, sort, favorites }: Options): Pokemon[] {
+export function applyListing(items: readonly Pokemon[], { filter, sort, favorites, caught }: Options): Pokemon[] {
   const filtered =
     filter === "all"
       ? [...items]
       : filter === "favorites"
         ? items.filter((p) => favorites.has(p.id))
-        : items.filter((p) => p.types.includes(filter));
+        : filter === "caught"
+          ? items.filter((p) => caught?.has(p.id))
+          : items.filter((p) => p.types.includes(filter));
   if (sort === "number") filtered.sort(byNumber);
   else if (sort === "name") filtered.sort(byName);
   else if (sort === "total") filtered.sort(byTotal);
