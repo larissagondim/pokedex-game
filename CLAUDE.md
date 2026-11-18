@@ -53,7 +53,7 @@ Guidance for coding agents working in this repo. The Next.js app lives in `web/`
 - Respect `prefers-reduced-motion` (`hooks/useReducedMotion.ts`): no float, instant hinge/camera, no boot animation.
 - The main screen is a drei `<Html transform occlude="blending">`. Keep any mesh behind it well separated in z (the blending "hole" must win the depth test) and don't add a scene background (the canvas is transparent; the page provides the light/dark background).
 - Sounds go through `lib/sfx.ts` / `audioEnabled()`; audio unlocks on the first user gesture.
-- After changes: `npx tsc --noEmit` and `npx eslint .` in `web/` must be clean.
+- After changes: `npx tsc --noEmit` and `npx eslint .` in `web/` must be clean. `npm run test:e2e` (Playwright, `web/e2e/`) drives the screens with the keyboard; it starts (or reuses) a dev server on :3123.
 
 ## Battle (`web/lib/battle/`)
 

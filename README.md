@@ -63,23 +63,23 @@ An interactive 3D Pokédex with turn-based battles, in-browser win-probability p
 | Area | Description |
 | --- | --- |
 | Modes | Single (1v1), team (3v3) and full (6v6) battles against a chosen or random opponent, with backdrops picked from the foe's type and original battle themes. |
-| League | Eight original leaders with themed 3v3 teams (normal up to dragon), unlocked in order. The first win against each pays a bonus that grows along the way; beaten leaders can be fought again. |
-| Daily challenge | A 3v3 against a foe team picked from the date with a seeded generator: the same for everyone that day, with no server. The first win of the day pays a bonus. |
+| League | Eight original leaders with themed 3v3 teams (normal up to dragon), then the champion with a full 6v6 team, unlocked in order. The first win against each pays a bonus that grows along the way; beaten ones can be fought again. |
+| Daily challenge | A 3v3 against a foe team picked from the date with a seeded generator: the same for everyone that day, with no server. The first win of the day pays a bonus that grows with the streak of days in a row (up to a week). |
 | Fight menu | Classic FIGHT / BAG / POKéMON / RUN flow with type-effectiveness hints, Super Potions, Full Heals and switching. Turns play back event by event. |
 | Engine | Hand-written, pure TypeScript (`web/lib/battle`). Priority and speed, damage formula, STAB, type chart, crits, accuracy, stat stages, PP, status conditions (freeze included), drain, recoil, multi-hit, flinch, confusion, Protect, Substitute, Leech Seed, locked, recharge and two-turn moves. Abilities (Intimidate, Levitate, Sturdy, Multiscale, weather setters...) and held items (Leftovers, Life Orb, Choice items, Focus Sash, berries...). The field: entry hazards, screens, weather, Trick Room, Tailwind, Wish. Pivots (U-turn, Volt Switch) and forced switches (Roar, Dragon Tail, Red Card). |
 | Foe AI | Greedy: takes the surest KO when available, avoids useless status moves, and in team battles sends out its best matchup and switches out of losing ones. |
 | Win chance | Shown before the fight (ML model) and re-estimated every turn (Monte Carlo, 600 simulations per estimate in the browser). Team win chances are simulated, since the model is 1v1. |
 | Rewards | Coins and party XP scale with the pre-battle win chance: an even fight pays the base amount, a sure win ×0.2, an upset up to ×2 (shown before you fight). Beaten foes are caught. Party members gain joy (they can evolve) and every Pokémon keeps a win/loss record. |
-| Party condition | A Tamagotchi party member fights as well as it is looked after: hungry or tired ones get −15% Attack, Sp. Atk and Speed, happy well-kept ones +10%. A battle costs it energy and food. With a condition in play the 1v1 win chance is simulated, since the model only knows plain sets. |
+| Party condition and level | A Tamagotchi party member fights as well as it is raised and looked after: +1% to every stat but HP per level (up to +20%), −15% Attack, Sp. Atk and Speed when hungry or tired, +10% when happy and well kept. A battle costs it energy and food. With a bonus in play the 1v1 win chance is simulated, since the model only knows plain sets. |
 
 ### Tamagotchi and trainer
 
 | Area | Description |
 | --- | --- |
-| Tamagotchi | Adopt up to 5 of the Pokémon you caught. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Eggs hatch into random base-stage Pokémon, with a 1 in 16 chance of a ✦ shiny one (it keeps its colors when it evolves). Alerts when one needs attention. Saved in `localStorage`; with a database it is also saved in Postgres, so the same party shows up on every device that uses your sync code. |
+| Tamagotchi | A new player first picks one of three starters. Adopt up to 5 of the Pokémon you caught. Food, joy and energy decay in real time; feed, play, sleep and train. XP raises the level and triggers evolution. Eggs hatch into random base-stage Pokémon, with a 1 in 16 chance of a ✦ shiny one (it keeps its colors when it evolves). Alerts when one needs attention. Saved in `localStorage`; with a database it is also saved in Postgres, so the same party shows up on every device that uses your sync code. |
 | Shop | In the Tamagotchi tab: eggs, treats (+40 food, +25 joy for the selected Pokémon) and extra Super Potions and Full Heals for the battle bag, on top of the standard one. Bought items are only used up once the standard ones are gone. Trainer accessories (bandana, scarf, shades, crown) are sold in the profile editor: try one on, A buys it. |
 | Trainer profile | Pick a name and design an original 24×40 pixel sprite (hair, hat, clothes, shoes, extras), or randomize it. The trainer card has four pages (▲▼): **stats** (rank from Rookie to Champion, league progress, wins and losses, win streak, best partner, party, Pokédex progress and favorites, coins, start date), **badges**, **history** (the last 30 battles with the teams, the pre-battle win chance and the result) and **diary** (your sync code and the party's milestones: adoptions, eggs, hatchings, evolutions, level-ups and goodbyes). Your trainer stands in the arena before each battle and sends your Pokémon out by name. |
-| Badges | Eight badges, kept once earned: first win, a 3v3 win, a 6v6 win, beating a legendary or mythical, winning with under 30% win chance, 5 wins in a row, a full Tamagotchi party and 10 favorites. New ones are announced in the dialog box. |
+| Badges | Twelve badges, kept once earned: first win, a 3v3 win, a 6v6 win, beating a legendary or mythical, winning with under 30% win chance, 5 wins in a row, a full Tamagotchi party, 10 favorites, the first league leader, the league champion, 100 caught and a 7-day daily streak. Six per page (▲▼). New ones are announced in the dialog box. |
 
 ## Screenshots
 
@@ -190,6 +190,7 @@ npm run dev      # http://localhost:3000
 ```bash
 npm run lint     # ESLint
 npm test         # unit tests (lib/)
+npm run test:e2e # Playwright smoke tests of the screens (Chromium; starts the dev server on :3123)
 npm run build    # production build
 npm run start    # serve the production build
 ```
@@ -247,8 +248,8 @@ Gamepads with the standard mapping also work: D-pad or left stick, A/B, Start = 
 <summary>Per-tab controls</summary>
 
 - **Battle:** pick SINGLE, TEAM (3v3) or FULL BATTLE (6v6), then your Pokémon and the opponent (A confirms, B goes back or undoes the last pick). LEAGUE lists the leaders (A challenges the next one or a beaten one); DAILY CHALLENGE shows today's foes, then you pick your three. In the arena, A starts the battle; the D-pad moves through FIGHT / BAG / POKéMON / RUN, A confirms, B goes back, and A skips messages while a turn plays. When it ends, A fights again and B returns to the lists.
-- **Tamagotchi:** ↑ ↓ pick a Pokémon, ← → pick an action, A does it, B goes back. In the SHOP, ↑ ↓ pick an item, A buys it and B closes it.
-- **Trainer:** ↑ ↓ flip the card's pages (stats, badges, battle history, Tamagotchi diary); A creates or edits the profile. In the editor, ↑ ↓ pick a row, ← → change it, A on NAME or SYNC CODE opens the keyboard, MENU saves and B cancels.
+- **Tamagotchi:** on the first visit, ← → pick a starter and A chooses it. Then ↑ ↓ pick a Pokémon, ← → pick an action, A does it, B goes back. In the SHOP, ↑ ↓ pick an item, A buys it and B closes it.
+- **Trainer:** ↑ ↓ flip the card's pages (stats, the badge pages, battle history, Tamagotchi diary); A creates or edits the profile. In the editor, ↑ ↓ pick a row, ← → change it, A on NAME or SYNC CODE opens the keyboard, A on an accessory not bought yet buys it, MENU saves and B cancels.
 
 </details>
 
@@ -293,7 +294,7 @@ This project is developed in pair with an AI coding agent ([Claude Code](https:/
 
 - **Small, reviewable commits** following [Conventional Commits](https://www.conventionalcommits.org/) (`feat(screen): …`, `fix(screen): …`, `docs: …`).
 - **Agent guidance lives in the repo:** [`CLAUDE.md`](CLAUDE.md) holds the conventions (3D device, battle engine, commits) and [`web/AGENTS.md`](web/AGENTS.md) tells agents to read the bundled Next.js docs first, since this Next.js version has breaking changes.
-- **Quality gates:** `npx tsc --noEmit`, `npx eslint .` and `npm test` in `web/` must be clean.
+- **Quality gates:** `npx tsc --noEmit`, `npx eslint .` and `npm test` in `web/` must be clean; `npm run test:e2e` covers the main screens.
 
 ## Roadmap
 
@@ -335,6 +336,12 @@ Next ideas:
 
 - [x] Trainer sprite accessories in the shop
 - [x] Sync the Pokédex progress, league, shop items and daily challenge with the Tamagotchi
+- [x] A party member's level counts in battle
+- [x] Starter choice for new players
+- [x] Badges for the league, the Pokédex and the daily streak
+- [x] Daily challenge streak
+- [x] League champion (6v6)
+- [x] Playwright smoke tests
 
 ## Legal notice
 
