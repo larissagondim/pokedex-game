@@ -5,6 +5,7 @@ import { formatDexNumber, type Pokemon } from "@/data/pokedex";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { chooseAction, chooseReplacement } from "@/lib/battle/ai";
 import { choiceWinChance, winChance } from "@/lib/battle/montecarlo";
+import { battleReward } from "@/lib/battle/rewards";
 import { effectiveness } from "@/lib/typeChart";
 import {
   type BattleEvent,
@@ -40,8 +41,6 @@ import { TrainerSprite } from "./TrainerSprite";
 
 /** Above the main screen handler (10), like the other tabs. */
 const INPUT_PRIORITY = 11;
-/** Coins per foe Pokémon beaten. */
-const WIN_REWARD = 15;
 /** How long each event stays on screen (A skips ahead). */
 const EVENT_MS = 1100;
 const SILENT_EVENT_MS = 450;
@@ -415,27 +414,28 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
     const won = final.winner === "a";
     useBattleLog.getState().add({ at: Date.now(), player: player.map((p) => p.id), foe: foe.map((p) => p.id), won, odds: startOdds.current });
     const list = usePokedex.getState().list;
+    // The less likely the win, the bigger the reward.
+    const reward = battleReward(startOdds.current, foe.length);
     const notes: string[] = [];
     for (const p of player) {
       useBattleRecord.getState().record(p.id, won);
       // A party member of this species gets XP (and may evolve).
-      const pet = useTamagotchi.getState().battled(p.id, won, list);
+      const pet = useTamagotchi.getState().battled(p.id, won, reward.xp, list);
       if (won && pet) {
         const evolved = pet.evolvedTo ? list.find((x) => x.id === pet.evolvedTo)?.name.toUpperCase() : null;
         notes.push(`${p.name.toUpperCase()} gained ${pet.xp} XP!${evolved ? ` It evolved into ${evolved}!` : ""}`);
       }
     }
     if (won) {
-      const coins = WIN_REWARD * foe.length;
       playSfx("win");
-      useTamagotchi.getState().reward(coins);
+      useTamagotchi.getState().reward(reward.coins);
     } else {
       playSfx("lose");
     }
     const fresh = checkBadges();
     const badges = fresh.length > 0 ? ` ${badgeNotice(fresh)}` : "";
     const result = won
-      ? `You won! +${WIN_REWARD * foe.length}₽ ${notes.join(" ")}`
+      ? `You won! +${reward.coins}₽ ${notes.join(" ")}`
       : single
         ? `${nameOf(final.a.dexId)} lost...`
         : "Your team was defeated...";
@@ -622,7 +622,8 @@ export function BattleArena({ player, foe, active, onNotice, onLeave }: Props) {
 
   let bottom;
   if (phase === "ready") {
-    bottom = <WinChance probability={single ? chance : (live ?? undefined)} simulated={!single} record={record} />;
+    const odds = single ? chance : (live ?? undefined);
+    bottom = <WinChance probability={odds} simulated={!single} record={record} prize={odds === undefined ? null : battleReward(odds, foe.length).coins} />;
   } else if (phase === "command") {
     bottom = (
       <CommandMenu
@@ -771,11 +772,14 @@ function WinChance({
   probability,
   simulated,
   record,
+  prize,
 }: {
   probability: number | null | undefined;
   /** From simulating the battle (teams) rather than the ML model. */
   simulated: boolean;
   record?: { wins: number; losses: number };
+  /** Coins for winning at these odds (null while they're being worked out). */
+  prize: number | null;
 }) {
   const pct = probability == null ? null : Math.round(probability * 100);
   return (
@@ -788,7 +792,7 @@ function WinChance({
         <div className={styles.chanceFill} style={{ width: `${pct ?? 50}%` }} data-unknown={pct === null} />
       </div>
       <div className={styles.chanceHint}>
-        A: fight · B: change opponent{record ? ` · record ${record.wins}W ${record.losses}L` : ""}
+        A: fight · B: change opponent{prize !== null ? ` · win +${prize}₽` : ""}{record ? ` · record ${record.wins}W ${record.losses}L` : ""}
       </div>
     </div>
   );
